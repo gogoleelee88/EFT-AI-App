@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오프라인 상태 - EFT AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 400px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
+        
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        p {
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 25px;
+            opacity: 0.9;
+        }
+        
+        .retry-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+        
+        .retry-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .tips {
+            margin-top: 30px;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        
+        .tips h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: #FFE4E1;
+        }
+        
+        .tips ul {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+        
+        .tips li {
+            margin-bottom: 5px;
+        }
+        
+        @media (max-width: 480px) {
+            .container {
+                margin: 20px;
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+            
+            .icon {
+                font-size: 3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🌿</div>
+        <h1>오프라인 상태입니다</h1>
+        <p>인터넷 연결을 확인하고 다시 시도해주세요.<br>
+        마음챙김은 언제나 함께 있습니다.</p>
+        
+        <button class="retry-btn" onclick="window.location.reload()">
+            🔄 다시 시도
+        </button>
+        
+        <button class="retry-btn" onclick="goHome()">
+            🏠 홈으로
+        </button>
+        
+        <div class="tips">
+            <h3>💡 오프라인에서도 할 수 있는 마음챙김</h3>
+            <ul>
+                <li>• 깊은 숨쉬기 (4초 들이쉬기, 4초 참기, 4초 내쉬기)</li>
+                <li>• 현재 순간에 집중하기</li>
+                <li>• 감사한 일 3가지 떠올리기</li>
+                <li>• 몸의 감각 느껴보기</li>
+                <li>• 마음속으로 긍정적인 확언하기</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        function goHome() {
+            window.location.href = '/';
+        }
+        
+        // 자동 재시도 (30초마다)
+        let retryCount = 0;
+        const maxRetries = 5;
+        
+        function autoRetry() {
+            if (navigator.onLine && retryCount < maxRetries) {
+                window.location.reload();
+            }
+            retryCount++;
+        }
+        
+        // 온라인 상태 감지
+        window.addEventListener('online', function() {
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        });
+        
+        // 주기적 재시도
+        setInterval(autoRetry, 30000);
+        
+        console.log('🌿 EFT AI - 오프라인 모드');
+    </script>
+</body>
+</html>

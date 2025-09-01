@@ -1,0 +1,70 @@
+{
+  "name": "eft-ai-app",
+  "private": false,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "EFT 기반 AI 심리관리 앱 - AI와 함께하는 마음 여행",
+  "keywords": [
+    "EFT",
+    "AI",
+    "심리관리",
+    "마음챙김",
+    "감정관리",
+    "PWA",
+    "React",
+    "Transformers.js"
+  ],
+  "author": "EFT AI Team",
+  "license": "MIT",
+  "homepage": "https://eft-ai-app.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eft-ai-team/eft-ai-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eft-ai-team/eft-ai-app/issues"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.2",
+    "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@mediapipe/face_detection": "^0.4.1646425229",
+    "@mediapipe/face_mesh": "^0.4.1633559619",
+    "@mediapipe/hands": "^0.4.1675469240",
+    "@mediapipe/pose": "^0.5.1675469404",
+    "@react-three/drei": "^10.7.3",
+    "@react-three/fiber": "^9.3.0",
+    "@tailwindcss/postcss": "^4.1.12",
+    "@tailwindcss/typography": "^0.5.16",
+    "@types/three": "^0.179.0",
+    "autoprefixer": "^10.4.21",
+    "firebase": "^12.1.0",
+    "lucide-react": "^0.541.0",
+    "postcss": "^8.5.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.1",
+    "tailwindcss": "^4.1.12",
+    "three": "^0.179.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "eslint": "^9.33.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.39.1",
+    "vite": "^7.1.2",
+    "vite-plugin-pwa": "^1.0.2",
+    "workbox-window": "^7.3.0"
+  }
+}

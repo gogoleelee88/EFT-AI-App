@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    
+    <!-- 기본 메타 정보 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>EFT AI 마음챙김 - AI와 함께하는 마음 여행</title>
+    <meta name="description" content="EFT 기반 AI 심리관리 앱. 감정 체크인, AI 상담, 개인화된 통찰로 마음 건강을 관리하세요." />
+    <meta name="keywords" content="EFT, 마음챙김, AI 상담, 심리관리, 감정관리, 명상, 스트레스 완화" />
+    <meta name="author" content="EFT AI Team" />
+    
+    <!-- PWA 매니페스트 -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- 파비콘 및 아이콘 -->
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png" />
+    
+    <!-- iOS 메타태그 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="EFT AI" />
+    <link rel="apple-touch-startup-image" href="/icons/icon-512x512.png" />
+    
+    <!-- Android/Chrome 메타태그 -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#4F46E5" />
+    <meta name="background-color" content="#6366F1" />
+    
+    <!-- Windows 타일 -->
+    <meta name="msapplication-TileColor" content="#4F46E5" />
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    
+    <!-- Open Graph (소셜 미디어 공유) -->
+    <meta property="og:title" content="EFT AI 마음챙김" />
+    <meta property="og:description" content="AI와 함께하는 마음 여행 - EFT 기반 개인 심리관리 앱" />
+    <meta property="og:image" content="/icons/icon-512x512.png" />
+    <meta property="og:url" content="https://eft-ai-app.com" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ko_KR" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="EFT AI 마음챙김" />
+    <meta name="twitter:description" content="AI와 함께하는 마음 여행" />
+    <meta name="twitter:image" content="/icons/icon-512x512.png" />
+    
+    <!-- 보안 및 성능 -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="referrer" content="no-referrer-when-downgrade" />
+    
+    <!-- 스플래시 스크린 스타일 -->
+    <style>
+      /* 초기 로딩 스플래시 */
+      #initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      
+      #initial-loader .logo {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        animation: pulse 2s infinite;
+      }
+      
+      #initial-loader .title {
+        font-size: 1.5rem;
+        margin-bottom: 10px;
+        font-weight: 600;
+      }
+      
+      #initial-loader .subtitle {
+        font-size: 1rem;
+        opacity: 0.8;
+        margin-bottom: 30px;
+      }
+      
+      #initial-loader .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top: 3px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* 앱이 로드되면 스플래시 숨기기 */
+      .app-loaded #initial-loader {
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.5s ease, visibility 0.5s ease;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 초기 스플래시 스크린 -->
+    <div id="initial-loader">
+      <div class="logo">🌿</div>
+      <div class="title">EFT AI 마음챙김</div>
+      <div class="subtitle">AI와 함께하는 마음 여행</div>
+      <div class="spinner"></div>
+    </div>
+    
+    <!-- React 앱 루트 -->
+    <div id="root"></div>
+    
+    <!-- React 앱 로드 -->
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Service Worker 등록 (배포 빌드에서만) -->
+    <script type="module">
+      // Vite는 index.html의 type="module" 스크립트에서 import.meta.env 사용 가능
+      if ('serviceWorker' in navigator && import.meta.env.PROD) {
+        window.addEventListener('load', async () => {
+          try {
+            const reg = await navigator.serviceWorker.register('/sw.js');
+            console.log('✅ Service Worker 등록 성공 (prod):', reg.scope);
+
+            // 🔑 VAPID 공개키 주입 (활성된 후 전달)
+            const sendVapidKey = (sw) => {
+              if (sw?.postMessage && import.meta.env.VITE_VAPID_PUBLIC_KEY) {
+                sw.postMessage({
+                  type: 'SET_VAPID',
+                  key: import.meta.env.VITE_VAPID_PUBLIC_KEY
+                });
+              }
+            };
+
+            // 즉시 활성화된 SW가 있으면 키 전달
+            if (reg.active) {
+              sendVapidKey(reg.active);
+            } else if (reg.installing) {
+              // 설치 중인 SW가 활성화되면 키 전달
+              reg.installing.addEventListener('statechange', () => {
+                if (reg.active) sendVapidKey(reg.active);
+              });
+            }
+
+            // 업데이트 감지
+            reg.addEventListener('updatefound', () => {
+              const newSW = reg.installing;
+              newSW?.addEventListener('statechange', () => {
+                if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                  // 새 버전 사용 가능 알림
+                  if (confirm('새로운 버전이 사용 가능합니다. 지금 업데이트하시겠습니까?')) {
+                    window.location.reload();
+                  }
+                }
+              });
+            });
+
+          } catch (error) {
+            console.log('❌ Service Worker 등록 실패:', error);
+          }
+        });
+      } else if (import.meta.env.DEV) {
+        console.log('🛠️ 개발 환경: Service Worker 비활성화됨');
+      }
+
+      // 앱 설치 프롬프트 (A2HS)
+      let deferredPrompt;
+      
+      window.addEventListener('beforeinstallprompt', (e) => {
+        console.log('💡 앱 설치 프롬프트 준비됨');
+        e.preventDefault();
+        deferredPrompt = e;
+        
+        // 설치 버튼 표시 (나중에 UI에서 사용)
+        window.dispatchEvent(new CustomEvent('app-install-available'));
+      });
+      
+      // 앱 설치 함수 (전역으로 사용 가능)
+      window.promptAppInstall = () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+              console.log('✅ 사용자가 앱 설치 수락');
+            } else {
+              console.log('❌ 사용자가 앱 설치 거부');
+            }
+            deferredPrompt = null;
+          });
+        }
+      };
+      
+      // 푸시 알림 권한 요청 (나중에 사용)
+      window.requestNotificationPermission = () => {
+        if ('Notification' in window && 'serviceWorker' in navigator) {
+          Notification.requestPermission().then((permission) => {
+            console.log('🔔 알림 권한:', permission);
+          });
+        }
+      };
+      
+      // React 앱 로드 완료 시 스플래시 숨기기
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          document.body.classList.add('app-loaded');
+        }, 1500); // 1.5초 후 스플래시 숨기기
+      });
+      
+      console.log('🌿 EFT AI PWA 초기화 완료');
+    </script>
+  </body>
+</html>
