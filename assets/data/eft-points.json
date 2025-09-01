@@ -1,0 +1,117 @@
+{
+  "tappingPoints": [
+    {
+      "id": 1,
+      "name": "정수리 (Crown)",
+      "koreanName": "백회혈",
+      "location": "머리 꼭대기",
+      "description": "스트레스와 불안감 완화",
+      "instructions": "검지와 중지로 정수리를 7-10회 가볍게 두드리세요",
+      "position": { "x": 0, "y": -100, "z": 0 },
+      "benefits": ["스트레스 완화", "정신 집중", "불안감 해소"]
+    },
+    {
+      "id": 2,
+      "name": "눈썹머리 (Eyebrow)",
+      "koreanName": "찬죽혈",
+      "location": "눈썹 안쪽 끝",
+      "description": "트라우마와 두려움 완화",
+      "instructions": "검지로 눈썹 안쪽을 7-10회 가볍게 두드리세요",
+      "position": { "x": -30, "y": -50, "z": 30 },
+      "benefits": ["트라우마 해소", "두려움 완화", "감정 안정"]
+    },
+    {
+      "id": 3,
+      "name": "눈옆 (Side of Eye)",
+      "koreanName": "동자료혈",
+      "location": "눈 바깥쪽 끝",
+      "description": "분노와 원망 해소",
+      "instructions": "검지로 눈 바깥쪽을 7-10회 가볍게 두드리세요",
+      "position": { "x": 40, "y": -40, "z": 20 },
+      "benefits": ["분노 해소", "원망 완화", "마음의 평화"]
+    },
+    {
+      "id": 4,
+      "name": "눈 아래 (Under Eye)",
+      "koreanName": "승읍혈",
+      "location": "눈 아래 뼈 부분",
+      "description": "불안과 걱정 완화",
+      "instructions": "검지로 눈 아래를 7-10회 가볍게 두드리세요",
+      "position": { "x": 0, "y": -30, "z": 25 },
+      "benefits": ["불안감 해소", "걱정 완화", "감정 균형"]
+    },
+    {
+      "id": 5,
+      "name": "코 아래 (Under Nose)",
+      "koreanName": "인중혈",
+      "location": "코와 윗입술 사이",
+      "description": "당황과 혼란 해소",
+      "instructions": "검지로 인중을 7-10회 가볍게 두드리세요",
+      "position": { "x": 0, "y": -10, "z": 30 },
+      "benefits": ["당황감 해소", "혼란 정리", "집중력 향상"]
+    },
+    {
+      "id": 6,
+      "name": "턱 (Chin)",
+      "koreanName": "승장혈",
+      "location": "아래턱 중앙 아래",
+      "description": "부끄러움과 수치심 완화",
+      "instructions": "검지로 턱 아래를 7-10회 가볍게 두드리세요",
+      "position": { "x": 0, "y": 10, "z": 25 },
+      "benefits": ["수치심 해소", "자신감 향상", "감정 해방"]
+    },
+    {
+      "id": 7,
+      "name": "쇄골 (Collarbone)",
+      "koreanName": "기사혈",
+      "location": "쇄골 아래 움푹한 곳",
+      "description": "전반적인 스트레스와 긴장 완화",
+      "instructions": "주먹으로 쇄골 아래를 7-10회 가볍게 두드리세요",
+      "position": { "x": 0, "y": 80, "z": 15 },
+      "benefits": ["전체적 긴장 완화", "스트레스 해소", "에너지 순환"]
+    },
+    {
+      "id": 8,
+      "name": "겨드랑이 (Under Arm)",
+      "koreanName": "극천혈",
+      "location": "겨드랑이 아래 10cm",
+      "description": "죄책감과 자기비판 완화",
+      "instructions": "손바닥으로 겨드랑이 아래를 7-10회 가볍게 두드리세요",
+      "position": { "x": -80, "y": 60, "z": 0 },
+      "benefits": ["죄책감 해소", "자기수용", "내면의 평화"]
+    },
+    {
+      "id": 9,
+      "name": "손목 (Wrist)",
+      "koreanName": "신문혈",
+      "location": "손목 안쪽",
+      "description": "전반적인 감정 균형과 마무리",
+      "instructions": "반대 손가락으로 손목 안쪽을 7-10회 가볍게 두드리세요",
+      "position": { "x": 0, "y": 150, "z": 0 },
+      "benefits": ["감정 균형", "세션 마무리", "내적 조화"]
+    }
+  ],
+  "sequence": {
+    "preparation": [
+      "편안한 자세로 앉거나 서세요",
+      "깊게 3번 숨을 들이마시고 내쉬세요",
+      "현재 감정 상태를 1-10으로 평가하세요"
+    ],
+    "setupPhrase": {
+      "format": "이런 {emotion}이 있지만, 나는 나 자신을 깊이 사랑하고 받아들입니다",
+      "repetitions": 3,
+      "while": "karate_chop_point"
+    },
+    "tappingRounds": {
+      "rounds": 3,
+      "pointsPerRound": 9,
+      "tapsPerPoint": "7-10",
+      "rhythm": "gentle_steady"
+    },
+    "completion": [
+      "깊게 3번 숨을 들이마시고 내쉬세요",
+      "다시 감정 상태를 1-10으로 평가하세요",
+      "개선된 정도를 확인하세요"
+    ]
+  }
+}

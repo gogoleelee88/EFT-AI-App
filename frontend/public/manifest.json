@@ -1,0 +1,69 @@
+{
+  "name": "EFT AI 마음챙김 앱 - AI와 함께하는 마음 여행",
+  "short_name": "EFT AI",
+  "description": "Level 2 AI 상담사와 함께하는 EFT 기반 개인 심리관리 앱. 감정 체크인, AI 대화, 통찰 해제, RPG 게임화로 재미있게 마음 건강을 관리하세요.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#6366F1",
+  "theme_color": "#4F46E5",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "ko",
+  "categories": ["health", "lifestyle", "medical"],
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/vite.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "AI 상담 시작",
+      "short_name": "AI 상담",
+      "description": "Level 2 AI 동반자와 실시간 마음 대화",
+      "url": "/ai-chat"
+    },
+    {
+      "name": "감정 체크인",
+      "short_name": "감정체크",
+      "description": "현재 감정 상태 빠른 체크",
+      "url": "/?action=emotion-check"
+    }
+  ]
+  
+  // ⚠️ 아래 기능들은 실제 파일이 준비되면 활성화할 것
+  
+  // "screenshots": PWA 설치 시 미리보기 이미지로 사용
+  // 앱 스토어나 브라우저에서 "이 앱을 설치하시겠습니까?" 프롬프트에 표시됨
+  // 사용자가 앱의 모습을 미리 볼 수 있어 설치율 향상에 도움
+  /*
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile-dashboard.png",  // 모바일용 스크린샷
+      "sizes": "320x640",
+      "type": "image/png",
+      "form_factor": "narrow"  // 좁은 화면(모바일)용
+    },
+    {
+      "src": "/screenshots/desktop-dashboard.png",  // 데스크톱용 스크린샷  
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"    // 넓은 화면(데스크톱)용
+    }
+  ]
+  */
+}
