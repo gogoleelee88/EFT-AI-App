@@ -5,6 +5,7 @@ import Login from './components/auth/Login';
 import Dashboard from './pages/Dashboard';
 import AIChat from './components/feature/AIChat';
 import EFTSessionSelector from './components/feature/EFTSessionSelector';
+import ARDemo from './pages/ARDemo';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 
 const App: React.FC = () => {
@@ -52,6 +53,10 @@ const App: React.FC = () => {
           <Route 
             path="/eft-guide" 
             element={<EFTSessionSelector onClose={() => window.history.back()} />} 
+          />
+          <Route 
+            path="/ar-demo" 
+            element={<ARDemo />} 
           />
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
