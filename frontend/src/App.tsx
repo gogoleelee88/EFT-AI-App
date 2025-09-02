@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import AIChat from './components/feature/AIChat';
 import EFTSessionSelector from './components/feature/EFTSessionSelector';
 import ARDemo from './pages/ARDemo';
+import ArCalibrationPage from './pages/ArCalibrationPage';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 
 const App: React.FC = () => {
@@ -57,6 +58,10 @@ const App: React.FC = () => {
           <Route 
             path="/ar-demo" 
             element={<ARDemo />} 
+          />
+          <Route 
+            path="/ar/calibration" 
+            element={<ArCalibrationPage />} 
           />
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />

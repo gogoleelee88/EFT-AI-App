@@ -19,6 +19,7 @@ export interface EFTStep {
 
 export interface EFTSessionPlan {
   title: string;
+  introTip?: string;       // 세션 시작 전 안내문 (20자 이내)
   steps: EFTStep[];        // 예: 8~12 스텝
 }
 
