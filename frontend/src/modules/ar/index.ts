@@ -1,5 +1,6 @@
 // 메인 컴포넌트
 export { default as ARSession } from './components/ARSession';
+export { default as ARSessionSimple } from './components/ARSessionSimple';
 export { default as Calibration } from './components/Calibration';
 export { default as FramingOverlay } from './components/FramingOverlay';
 export { default as OverlayCanvas } from './components/OverlayCanvas';
