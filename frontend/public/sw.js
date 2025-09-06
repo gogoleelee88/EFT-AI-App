@@ -74,11 +74,31 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// 개발/번들러 관련 요청 우회(캐시 금지)
+const shouldBypass = (url) => {
+  try {
+    const u = new URL(url);
+    // Vite / HMR / source map / dev tools 류
+    if (u.pathname.startsWith('/@vite') || u.pathname.includes('vite'))
+      return true;
+    if (u.pathname.endsWith('.map')) return true;
+    // HMR client
+    if (u.host === 'localhost:5173') return true;
+  } catch {}
+  return false;
+};
+
 // Fetch 이벤트 - 네트워크 요청 처리
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   
+  // WebSocket은 SW가 가로채지 않음(안전하게 우회)
+  if (request.headers.get('upgrade') === 'websocket') return;
+
+  // 개발/빌드 도구 요청은 우회
+  if (shouldBypass(url.href)) return;
+
   // Chrome extension 요청 무시
   if (url.protocol === 'chrome-extension:') {
     return;
@@ -175,8 +195,27 @@ async function networkFirstStrategy(request) {
   }
 }
 
-// Network First with Cache Fallback - 페이지용
+// Network First with Cache Fallback - 페이지용 (네비게이션 우선)
 async function networkFirstWithCacheFallback(request) {
+  // 네비게이션 요청은 "네트워크 우선, 실패 시 캐시" 전략
+  if (request.mode === 'navigate') {
+    try {
+      const fresh = await fetch(request);
+      if (fresh.ok) {
+        const cache = await caches.open(DYNAMIC_CACHE_NAME);
+        cache.put(request, fresh.clone());
+      }
+      return fresh;
+    } catch (error) {
+      console.log('페이지 로딩 실패 - 캐시에서 찾는 중...');
+      const cache = await caches.open('app-shell');
+      const cached = await cache.match('/index.html');
+      if (cached) return cached;
+      throw error;
+    }
+  }
+
+  // 정적 리소스는 기존 로직
   try {
     const networkResponse = await fetch(request);
     

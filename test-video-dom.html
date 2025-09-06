@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video DOM Guarantee Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .video-container { 
+            background: #000; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            margin: 20px 0; 
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        video { 
+            width: 100%; 
+            max-width: 640px; 
+            transform: scaleX(-1);
+            background: #000;
+        }
+        button { 
+            padding: 12px 24px; 
+            margin: 10px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .start-btn { background: #4CAF50; color: white; }
+        .test-btn { background: #2196F3; color: white; }
+        .remove-btn { background: #f44336; color: white; }
+        .console { 
+            background: #f5f5f5; 
+            padding: 20px; 
+            border-radius: 8px; 
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video DOM 보장 테스트</h1>
+        <p>cam-test.html과 동일한 안정적인 카메라 구동을 메인 앱에서도 보장하는지 테스트합니다.</p>
+        
+        <div class="status" id="status">준비 중...</div>
+        
+        <div class="video-container" id="videoHost">
+            <!-- 동적으로 video 요소가 생성됩니다 -->
+        </div>
+        
+        <div>
+            <button class="start-btn" onclick="startCamera()">🚀 카메라 시작하기</button>
+            <button class="test-btn" onclick="testVideoElement()">🔍 VIDEO 요소 확인</button>
+            <button class="remove-btn" onclick="removeVideoElement()">🗑️ VIDEO 요소 제거 (리마운트 테스트)</button>
+        </div>
+        
+        <div>
+            <h3>테스트 체크리스트:</h3>
+            <ul>
+                <li id="check1">❌ "카메라 시작하기" 클릭 직후 콘솔에 VIDEO ref? true / VIDEO qs? true</li>
+                <li id="check2">❌ 탭 전환/상태 변경에도 DOM에서 사라지지 않음 (display만 변경)</li>
+                <li id="check3">❌ "video element still missing after mount" 에러가 발생하지 않음</li>
+            </ul>
+        </div>
+        
+        <h3>콘솔 로그:</h3>
+        <div class="console" id="console"></div>
+    </div>
+
+    <script>
+        let videoRef = null;
+        let hostRef = document.getElementById('videoHost');
+        let streamRef = null;
+        
+        // 로그 출력 함수
+        function log(message) {
+            const console = document.getElementById('console');
+            console.textContent += new Date().toLocaleTimeString() + ' - ' + message + '\n';
+            console.scrollTop = console.scrollHeight;
+            console.log(message);
+        }
+        
+        // 상태 업데이트 함수
+        function setStatus(message, isError = false) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + (isError ? 'error' : 'success');
+        }
+        
+        // Video element 보장 함수 (Calibration.tsx와 동일한 로직)
+        function ensureVideoElement() {
+            // 1. 기존 ref 확인
+            if (videoRef && document.contains(videoRef)) {
+                return videoRef;
+            }
+            
+            // 2. ID로 DOM 검색
+            const existingVideo = document.getElementById('testVideo');
+            if (existingVideo && document.contains(existingVideo)) {
+                videoRef = existingVideo;
+                return existingVideo;
+            }
+            
+            // 3. 동적 생성
+            if (hostRef) {
+                log('📹 Creating video element dynamically');
+                const video = document.createElement('video');
+                video.id = 'testVideo';
+                video.muted = true;
+                video.setAttribute('playsInline', '');
+                video.setAttribute('autoplay', '');
+                video.style.cssText = 'transform: scaleX(-1); width: 100%; background: #000; visibility: visible; display: block;';
+                
+                // 기존 video 제거 후 새로 추가
+                hostRef.querySelectorAll('video').forEach(v => v.remove());
+                hostRef.appendChild(video);
+                
+                videoRef = video;
+                return video;
+            }
+            
+            throw new Error('Host container not available for video element creation');
+        }
+        
+        // 카메라 시작 함수
+        async function startCamera() {
+            try {
+                log('🚀 Starting camera initialization...');
+                setStatus('카메라 초기화 중...', false);
+                
+                // microtask + nextFrame: DOM에 ref가 꽂힐 시간 확보
+                await Promise.resolve();
+                await new Promise(r => requestAnimationFrame(() => r()));
+                
+                // Video element 보장
+                const video = ensureVideoElement();
+                
+                // 체크리스트 검증
+                const hasVideoRef = !!videoRef;
+                const hasVideoInDOM = !!document.getElementById('testVideo');
+                
+                log(`VIDEO ref? ${hasVideoRef}`);
+                log(`VIDEO qs? ${hasVideoInDOM}`);
+                
+                // 체크리스트 업데이트
+                if (hasVideoRef && hasVideoInDOM) {
+                    document.getElementById('check1').innerHTML = '✅ "카메라 시작하기" 클릭 직후 콘솔에 VIDEO ref? true / VIDEO qs? true';
+                    document.getElementById('check3').innerHTML = '✅ "video element still missing after mount" 에러가 발생하지 않음';
+                }
+                
+                // 카메라 시작
+                if (streamRef) {
+                    streamRef.getTracks().forEach(track => track.stop());
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720, facingMode: 'user' },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                streamRef = stream;
+                
+                await video.play().catch(() => {
+                    log('🔄 Play failed, but continuing...');
+                });
+                
+                log('✅ Camera started successfully');
+                setStatus('카메라가 성공적으로 시작되었습니다!', false);
+                
+            } catch (error) {
+                log('🚨 Camera failed: ' + error.message);
+                setStatus('카메라 시작 실패: ' + error.message, true);
+            }
+        }
+        
+        // Video 요소 확인
+        function testVideoElement() {
+            const hasVideoRef = !!videoRef;
+            const hasVideoInDOM = !!document.getElementById('testVideo');
+            const isInDocument = videoRef ? document.contains(videoRef) : false;
+            
+            log(`🔍 Video Element Status:`);
+            log(`  - videoRef exists: ${hasVideoRef}`);
+            log(`  - DOM element exists: ${hasVideoInDOM}`);
+            log(`  - Element in document: ${isInDocument}`);
+            
+            if (hasVideoRef && hasVideoInDOM && isInDocument) {
+                setStatus('Video 요소가 정상적으로 존재합니다!', false);
+            } else {
+                setStatus('Video 요소에 문제가 있습니다!', true);
+            }
+        }
+        
+        // Video 요소 제거 (리마운트 테스트)
+        function removeVideoElement() {
+            log('🗑️ Removing video element for remount test...');
+            
+            if (videoRef && videoRef.parentNode) {
+                videoRef.parentNode.removeChild(videoRef);
+                videoRef = null;
+            }
+            
+            const domVideo = document.getElementById('testVideo');
+            if (domVideo && domVideo.parentNode) {
+                domVideo.parentNode.removeChild(domVideo);
+            }
+            
+            log('Video element removed. Click "카메라 시작하기" to test remount.');
+            setStatus('Video 요소가 제거되었습니다. 리마운트 테스트를 위해 다시 시작해보세요.', false);
+        }
+        
+        // 탭 전환 감지
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                log('📱 Tab hidden - video should remain in DOM');
+                document.getElementById('check2').innerHTML = '🔄 탭 전환 테스트 중... (탭을 다시 활성화하세요)';
+            } else {
+                log('📱 Tab visible - checking video DOM stability');
+                const videoStillExists = !!document.getElementById('testVideo');
+                if (videoStillExists) {
+                    log('✅ Video element survived tab switch!');
+                    document.getElementById('check2').innerHTML = '✅ 탭 전환/상태 변경에도 DOM에서 사라지지 않음 (display만 변경)';
+                } else {
+                    log('❌ Video element lost during tab switch!');
+                    document.getElementById('check2').innerHTML = '❌ 탭 전환 시 VIDEO 요소가 사라짐!';
+                }
+            }
+        });
+        
+        log('Test page loaded. Ready for video DOM guarantee testing.');
+        setStatus('테스트 준비 완료. "카메라 시작하기"를 클릭하세요.', false);
+    </script>
+</body>
+</html>

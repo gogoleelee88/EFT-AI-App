@@ -81,9 +81,9 @@ export default function FramingOverlay({ videoRef, isAligned, onAlignmentChange 
       if (!isAligned) {
         // 거리 가이드
         ctx.font = '14px sans-serif';
-        ctx.fillText('📏 카메라에서 60-100cm 거리', centerX, 50);
-        ctx.fillText('💡 충분한 조명 확인', centerX, 80);
-        ctx.fillText('📱 화면을 세로로 고정', centerX, 110);
+        ctx.fillText('📏 팔 길이 정도 거리 유지', centerX, 50);
+        ctx.fillText('💡 밝은 곳에서 촬영', centerX, 80);
+        ctx.fillText('📱 화면을 안정적으로 고정', centerX, 110);
       }
     };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 export default function OverlayCanvas({ draw, width, height }: { 
   draw: (ctx:CanvasRenderingContext2D)=>void; 

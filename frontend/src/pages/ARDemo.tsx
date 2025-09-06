@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ARSession } from '../modules/ar';
-import samplePlan from '../modules/ar/sample-plan.json';
+import samplePlanData from '../modules/ar/sample-plan.json';
 import type { EFTSessionPlan } from '../modules/ar/types';
 
 export default function ARDemo() {
-  const [sessionPlan] = useState<EFTSessionPlan>(samplePlan);
+  const [sessionPlan] = useState<EFTSessionPlan>(samplePlanData as EFTSessionPlan);
   const [settings, setSettings] = useState({
     autoPlay: true,
     enableTTS: true,

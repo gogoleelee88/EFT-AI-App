@@ -84,11 +84,6 @@ export default defineConfig({
   },
   server: {
     host: 'localhost',      // HMR 안정성을 위해 명시적 설정
-    port: 5173,
-    clientPort: 5173,       // HMR 클라이언트 포트 명시
-    hmr: {
-      host: 'localhost',
-      port: 5173
-    }
+    hmr: true               // 동적 포트 할당 허용
   }
 })
