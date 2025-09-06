@@ -9,6 +9,7 @@ import { drawMarker, drawLabel, drawTip } from '../utils/draw';
 import PermissionGate from './PermissionGate';
 import Countdown from './Countdown';
 import GuideBox from './GuideBox';
+import { AR } from '../ar-config';
 
 interface ARSessionProps {
   plan: EFTSessionPlan;
@@ -18,15 +19,16 @@ interface ARSessionProps {
   showGuide?: boolean;
 }
 
-export default function ARSession({ 
-  plan, 
-  autoPlay = true, 
+export default function ARSession({
+  plan,
+  autoPlay = true,
   enableTTS = true,
   enableSmoothing = true,
   showGuide = true
 }: ARSessionProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null); // 🎥 Video DOM 보장용 호스트
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGuideBox, setShowGuideBox] = useState(showGuide);
@@ -36,26 +38,59 @@ export default function ARSession({
   const smoothing = useSmoothing(0.3);
   const player = useStepPlayer(plan, autoPlay, enableTTS);
 
-  // AR 렌더링 루프
+  // 🎥 Video element 보장 함수
+  const ensureVideoElement = (): HTMLVideoElement => {
+    // 1. 기존 ref 확인
+    if (videoRef.current && document.contains(videoRef.current)) {
+      return videoRef.current;
+    }
+    
+    // 2. ID로 DOM 검색
+    const existingVideo = document.getElementById('arSessionVideo') as HTMLVideoElement;
+    if (existingVideo && document.contains(existingVideo)) {
+      videoRef.current = existingVideo;
+      return existingVideo;
+    }
+    
+    // 3. 동적 생성
+    if (hostRef.current) {
+      console.log('📹 Creating AR video element dynamically');
+      const video = document.createElement('video');
+      video.id = 'arSessionVideo';
+      video.className = 'w-full h-auto block';
+      video.muted = true;
+      video.setAttribute('playsInline', '');
+      video.style.transform = 'scaleX(-1)'; // 미러 반전
+      
+      // 기존 video 제거 후 새로 추가
+      hostRef.current.querySelectorAll('video').forEach(v => v.remove());
+      hostRef.current.appendChild(video);
+      
+      videoRef.current = video;
+      return video;
+    }
+    
+    throw new Error('Host container not available for AR video element creation');
+  };
+
+  // AR 렌더 루프
   useEffect(() => {
     if (!isReady || !pose.isReady || !player.currentStep) return;
 
     let animationId: number;
-
     const render = async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
       if (!video || !canvas) return;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // 캔버스 크기 조정
+      // 캔버스 크기 동기화
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
 
-      // 포즈 검출
+      // 포즈 추정
       const timestamp = performance.now();
       const result = pose.detectPose(video, timestamp);
 
@@ -63,37 +98,32 @@ export default function ARSession({
 
       if (result?.landmarks?.[0]) {
         const landmarks = result.landmarks[0];
-        
-        // EFT 포인트 계산
+
         const eftPoint = mapEFTPoint(
-          { landmarks }, 
-          player.currentStep.point, 
-          player.currentStep.side
+          { landmarks },
+          player.currentStep?.point || 'brow',
+          player.currentStep?.side || 'center'
         );
 
         if (eftPoint) {
-          // 스무딩 적용
-          const smoothedPoint = enableSmoothing 
-            ? smoothing.smooth(`${player.currentStep.point}_${player.currentStep.side}`, eftPoint)
+          const smoothedPoint = enableSmoothing
+            ? smoothing.smooth(`${player.currentStep?.point}_${player.currentStep?.side}`, eftPoint)
             : eftPoint;
 
           if (smoothedPoint) {
             const x = smoothedPoint.x * canvas.width;
             const y = smoothedPoint.y * canvas.height;
 
-            // 마커 그리기
             const pulseTime = (timestamp / 1000) % 1;
-            drawMarker(ctx, x, y, undefined, pulseTime);
-            
-            // 라벨 그리기
-            const label = `${player.currentStep.point} (${player.timeLeft}s)`;
+            drawMarker(ctx, x, y, AR.markerRadius, pulseTime, AR.color);
+            const label = `${player.currentStep?.point || 'EFT'} (${player.timeLeft}s)`;
             drawLabel(ctx, x, y, label);
           }
         }
       }
 
-      // 팁 표시
-      if (player.currentStep.tip) {
+      // 상단 팁
+      if (player.currentStep?.tip) {
         drawTip(ctx, player.currentStep.tip, canvas.width);
       }
 
@@ -101,34 +131,29 @@ export default function ARSession({
     };
 
     render();
-
-    return () => {
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-    };
+    return () => { if (animationId) cancelAnimationFrame(animationId); };
   }, [isReady, pose.isReady, player.currentStep, player.timeLeft, enableSmoothing, smoothing]);
 
   const handlePermissionGranted = async () => {
     try {
-      const video = videoRef.current;
-      if (!video) return;
+      // Video element 보장
+      const video = ensureVideoElement();
 
       // 카메라 시작
       await camera.startCamera(video);
-      
-      // 포즈 검출 초기화
+
+      // 포즈 초기화
       await pose.initializePose();
-      
+
       setIsReady(true);
       setError(null);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'AR 세션 초기화 실패';
+      const errorMsg = err instanceof Error ? err.message : 'AR 초기화 실패';
       setError(errorMsg);
     }
   };
 
-  // 정리
+  // 언마운트 정리
   useEffect(() => {
     return () => {
       camera.stopCamera();
@@ -143,7 +168,7 @@ export default function ARSession({
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p>AR 세션을 준비하고 있습니다...</p>
+            <p>AR 모듈을 초기화하는 중입니다…</p>
           </div>
         </div>
       </PermissionGate>
@@ -159,22 +184,26 @@ export default function ARSession({
       )}
 
       {/* 메인 AR 화면 */}
-      <div className="relative mx-auto rounded-xl overflow-hidden shadow-lg bg-black">
+      <div 
+        ref={hostRef}
+        className="relative mx-auto rounded-xl overflow-hidden shadow-lg bg-black"
+      >
         <video
+          id="arSessionVideo"
           ref={videoRef}
           className="w-full h-auto block"
           muted
           playsInline
-          style={{ transform: 'scaleX(-1)' }} // 거울 효과
+          style={{ transform: 'scaleX(-1)' }} // 미러 반전
         />
         <canvas
           ref={canvasRef}
           className="absolute inset-0 pointer-events-none"
-          style={{ transform: 'scaleX(-1)' }} // 거울 효과
+          style={{ transform: 'scaleX(-1)' }} // 미러 반전
         />
-        
-        {/* 카운트다운 오버레이 */}
-        <Countdown 
+
+        {/* 3-2-1 카운트다운 */}
+        <Countdown
           count={player.timeLeft <= 3 ? player.timeLeft : 0}
           isVisible={player.isCountingDown}
         />
@@ -194,18 +223,18 @@ export default function ARSession({
         />
       )}
 
-      {/* 컨트롤 패널 */}
+      {/* 컨트롤 */}
       <div className="mt-6 p-4 bg-white rounded-lg shadow">
-        {/* 세션 정보 */}
+        {/* 상태 헤더 */}
         <div className="text-center mb-4">
           <h3 className="text-lg font-semibold">{plan.title}</h3>
           <div className="flex items-center justify-center gap-4 mt-2 text-sm text-gray-600">
             <span>스텝 {player.stepIndex + 1}/{player.totalSteps}</span>
-            <span>•</span>
+            <span>·</span>
             <span>{player.currentStep?.point} ({player.currentStep?.side})</span>
             {player.currentStep?.tip && (
               <>
-                <span>•</span>
+                <span>·</span>
                 <span className="text-blue-600">{player.currentStep.tip}</span>
               </>
             )}
@@ -214,13 +243,13 @@ export default function ARSession({
 
         {/* 진행 바 */}
         <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-          <div 
+          <div
             className="bg-blue-600 h-2 rounded-full transition-all duration-1000"
             style={{ width: `${player.progress * 100}%` }}
           />
         </div>
 
-        {/* 컨트롤 버튼 */}
+        {/* 버튼 */}
         <div className="flex items-center justify-center gap-3">
           <button
             onClick={player.prevStep}
@@ -229,14 +258,14 @@ export default function ARSession({
           >
             이전
           </button>
-          
+
           <button
             onClick={player.togglePlay}
             className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             {player.isPlaying ? '일시정지' : '재생'}
           </button>
-          
+
           <button
             onClick={player.nextStep}
             disabled={player.stepIndex === player.totalSteps - 1}
@@ -246,10 +275,10 @@ export default function ARSession({
           </button>
         </div>
 
-        {/* 세션 완료 */}
+        {/* 완료 섹션 */}
         {player.isComplete && (
           <div className="mt-4 p-3 bg-green-100 border border-green-300 rounded-md text-center">
-            <p className="text-green-700 font-semibold">세션이 완료되었습니다! 🎉</p>
+            <p className="text-green-700 font-semibold">세션이 완료되었습니다!</p>
             <button
               onClick={player.reset}
               className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"

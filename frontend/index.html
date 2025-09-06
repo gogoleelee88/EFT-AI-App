@@ -136,7 +136,8 @@
     <!-- Service Worker 등록 (배포 빌드에서만) -->
     <script type="module">
       // Vite는 index.html의 type="module" 스크립트에서 import.meta.env 사용 가능
-      if ('serviceWorker' in navigator && import.meta.env.PROD) {
+      if ('serviceWorker' in navigator) {
+        if (import.meta.env.PROD) {
         window.addEventListener('load', async () => {
           try {
             const reg = await navigator.serviceWorker.register('/sw.js');
@@ -179,8 +180,16 @@
             console.log('❌ Service Worker 등록 실패:', error);
           }
         });
-      } else if (import.meta.env.DEV) {
-        console.log('🛠️ 개발 환경: Service Worker 비활성화됨');
+        } else {
+          // DEV: 혹시 남아 있던 SW를 전부 제거
+          console.log('🛠️ 개발 환경: Service Worker 비활성화됨');
+          navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => {
+              registration.unregister();
+              console.log('🧹 개발 모드에서 Service Worker 제거:', registration.scope);
+            });
+          });
+        }
       }
 
       // 앱 설치 프롬프트 (A2HS)

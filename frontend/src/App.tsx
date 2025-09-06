@@ -46,6 +46,7 @@ const App: React.FC = () => {
     <Router>
       <ResponsiveContainer>
         <Routes>
+          <Route path="/dashboard" element={<Dashboard user={user} />} />
           <Route path="/" element={<Dashboard user={user} />} />
           <Route 
             path="/ai-chat" 

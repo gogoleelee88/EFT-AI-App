@@ -181,16 +181,16 @@ export default function GuideBox({
 
         {/* 호흡 가이드 */}
         <div className="bg-gray-50 p-3 rounded-lg">
-          <h4 className="font-medium text-gray-900 mb-2">호흡 리듬 🫁</h4>
+          <h4 className="font-medium text-gray-900 mb-2">호흡과 함께 🫁</h4>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <div className="flex-1">
               <div className="flex items-center gap-1 mb-1">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                <span>들이마시기 (4초)</span>
+                <span>깊게 들이마시기</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" style={{animationDelay: '2s'}}></div>
-                <span>내쉬기 (6초)</span>
+                <span>천천히 내쉬기</span>
               </div>
             </div>
           </div>

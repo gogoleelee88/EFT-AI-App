@@ -1,9 +1,12 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Calibration, ARSession } from "../modules/ar";
-import plan from "../modules/ar/sample-plan.json";
+import planData from "../modules/ar/sample-plan.json";
+import type { EFTSessionPlan } from "../modules/ar/types";
 
 export default function ArCalibrationPage(){
   const [ready, setReady] = useState(false);
+  const plan = planData as EFTSessionPlan;
+  
   return ready ? (
     <ARSession plan={plan} />
   ) : (

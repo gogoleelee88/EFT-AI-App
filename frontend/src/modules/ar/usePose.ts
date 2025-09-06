@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { FilesetResolver, PoseLandmarker, PoseLandmarkerResult } from '@mediapipe/tasks-vision';
+import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+import type { PoseLandmarkerResult } from '@mediapipe/tasks-vision';
 
 export function usePose() {
   const poseLandmarkerRef = useRef<PoseLandmarker | null>(null);

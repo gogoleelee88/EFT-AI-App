@@ -40,13 +40,49 @@ interface ARSessionSimpleProps {
 export default function ARSessionSimple({ plan }: ARSessionSimpleProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [ready, setReady] = useState(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [, setReady] = useState(false);
   const player = useStepPlayer(plan, true);
+
+  // 🎥 Video element 보장 함수
+  const ensureVideoElement = (): HTMLVideoElement => {
+    // 1. 기존 ref 확인
+    if (videoRef.current && document.contains(videoRef.current)) {
+      return videoRef.current;
+    }
+    
+    // 2. ID로 DOM 검색
+    const existingVideo = document.getElementById('arSimpleVideo') as HTMLVideoElement;
+    if (existingVideo && document.contains(existingVideo)) {
+      videoRef.current = existingVideo;
+      return existingVideo;
+    }
+    
+    // 3. 동적 생성
+    if (hostRef.current) {
+      console.log('📹 Creating AR Simple video element dynamically');
+      const video = document.createElement('video');
+      video.id = 'arSimpleVideo';
+      video.className = 'rounded-xl shadow';
+      video.muted = true;
+      video.setAttribute('playsInline', '');
+      video.style.transform = 'scaleX(-1)';
+      
+      // 기존 video 제거 후 새로 추가
+      hostRef.current.querySelectorAll('video').forEach(v => v.remove());
+      hostRef.current.appendChild(video);
+      
+      videoRef.current = video;
+      return video;
+    }
+    
+    throw new Error('Host container not available for AR Simple video element creation');
+  };
 
   useEffect(() => {
     let raf = 0, running = true, pose: any;
     (async () => {
-      const v = videoRef.current!;
+      const v = ensureVideoElement();
       await getCameraStream(v, 640, 480);
       pose = await createPose();
       setReady(true);
@@ -84,8 +120,12 @@ export default function ARSessionSimple({ plan }: ARSessionSimpleProps) {
 
   return (
     <div className="w-full grid gap-3">
-      <div className="relative mx-auto">
+      <div 
+        ref={hostRef}
+        className="relative mx-auto"
+      >
         <video 
+          id="arSimpleVideo"
           ref={videoRef} 
           className="rounded-xl shadow" 
           muted 
@@ -100,11 +140,11 @@ export default function ARSessionSimple({ plan }: ARSessionSimpleProps) {
       </div>
       <div className="flex items-center justify-center gap-2">
         <button onClick={player.prevStep} className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
-          이전
+          이전 단계
         </button>
         <div>{player.stepIndex + 1}/{plan.steps.length}</div>
         <button onClick={player.nextStep} className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
-          다음
+          다음 단계
         </button>
       </div>
     </div>

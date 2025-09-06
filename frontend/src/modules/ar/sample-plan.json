@@ -1,72 +1,72 @@
 {
-  "title": "면접 불안 진정 루틴",
-  "introTip": "초록 박스에 상반신을 맞춰주세요",
+  "title": "스트레스 해소 EFT 루틴",
+  "introTip": "화면에 상반신을 맞춰주세요",
   "steps": [
     {
       "point": "brow",
       "side": "left",
       "durationSec": 5,
-      "tip": "깊게 숨을 들이마시고"
+      "tip": "깊게 호흡하며 시작"
     },
     {
       "point": "brow",
       "side": "right", 
       "durationSec": 5,
-      "tip": "천천히 내쉬세요"
+      "tip": "긴장을 천천히 풀어요"
     },
     {
       "point": "side_eye",
       "side": "left",
       "durationSec": 5,
-      "tip": "긴장을 내려놓기"
+      "tip": "마음의 무게를 내려놓기"
     },
     {
       "point": "side_eye",
       "side": "right",
       "durationSec": 5,
-      "tip": "어깨 힘을 빼세요"
+      "tip": "어깨와 목의 힘 빼기"
     },
     {
       "point": "under_eye",
       "side": "center",
       "durationSec": 6,
-      "tip": "나는 충분히 준비했다"
+      "tip": "나는 이 순간에 집중한다"
     },
     {
       "point": "under_nose",
       "side": "center",
       "durationSec": 5,
-      "tip": "배로 천천히 호흡"
+      "tip": "복부 호흡으로 안정감"
     },
     {
       "point": "chin",
       "side": "center",
       "durationSec": 5,
-      "tip": "나는 자신감이 있다"
+      "tip": "나는 평온함을 선택한다"
     },
     {
       "point": "clavicle",
       "side": "center",
       "durationSec": 6,
-      "tip": "마음을 안정시키고"
+      "tip": "마음이 차분해진다"
     },
     {
       "point": "under_arm",
       "side": "left",
       "durationSec": 5,
-      "tip": "리듬감 있게 두드리기"
+      "tip": "부드러운 리듬으로"
     },
     {
       "point": "under_arm",
       "side": "right",
       "durationSec": 5,
-      "tip": "부드럽게 터치하기"
+      "tip": "따뜻한 에너지 전달"
     },
     {
       "point": "top_head",
       "side": "center",
       "durationSec": 6,
-      "tip": "차분하고 평온함을 유지"
+      "tip": "완전한 평온과 안정감"
     }
   ]
 }

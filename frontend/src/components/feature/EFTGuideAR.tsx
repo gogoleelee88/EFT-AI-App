@@ -8,8 +8,8 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { FaceMesh } from '@mediapipe/face_mesh';
 import { Hands } from '@mediapipe/hands';
 import { Pose } from '@mediapipe/pose';
-import { Camera } from '@mediapipe/camera_utils';
-import { validateAndAssertRefs, createUserFriendlyError } from '../../utils/debug';
+import { useCamera } from '../../modules/ar/useCamera';
+import Calibration from '../../modules/ar/components/Calibration';
 
 // EFT 포인트와 얼굴 랜드마크 매핑 (MediaPipe Face Mesh 정확한 인덱스)
 const EFT_FACE_MAPPINGS = [
@@ -129,12 +129,32 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const cameraRef = useRef<Camera | null>(null);
   const faceMeshRef = useRef<FaceMesh | null>(null);
   const handsRef = useRef<Hands | null>(null);
+  const didInitRef = useRef(false); // 🔒 중복 초기화 가드
+  
+  // ── 세션/루프/처리 상태 ───────────────────────────────────────────────
+  const sessionStartedRef = useRef(false);
+  const loopRef = useRef<number | null>(null);
+  const processingRef = useRef(false);
+  
+  // 개선된 카메라 훅 사용
+  const camera = useCamera();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [calibrationReady, setCalibrationReady] = useState(false);
+  const calibrationLockedRef = useRef(false); // 🔒 캘리브레이션 잠금
+  
+  // ── 임계치 튜닝용 ref ─────────────────────────────────────────────────
+  const lastDetectedRef = useRef<number>(0);
+  const tunedAtRef = useRef<number>(0);
+  const loosenedOnceRef = useRef<boolean>(false);
+  const startTimeRef = useRef<number>(performance.now());
+
+  // ── 페이지 가시성 ref ────────────────────────────────────────────────
+  const pageVisibleRef = useRef(true);
+  const resumeJitterBlockRef = useRef<number>(0);
+  
   const [currentPointIndex, setCurrentPointIndex] = useState(0);
   const [completedPoints, setCompletedPoints] = useState<boolean[]>(
     new Array(TOTAL_POINTS).fill(false)
@@ -148,6 +168,11 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
   const poseLoadedRef = useRef(false);
   const poseRetryDelayRef = useRef(300);
   const [showHint, setShowHint] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [detecting, setDetecting] = useState(true);
+  const framesRef = useRef(0);
+  const lastHitRef = useRef<number>(Date.now());
+  const frameNoRef = useRef(0);
 
   // MediaPipe 모델 초기화
   const initializeMediaPipe = useCallback(async () => {
@@ -209,25 +234,53 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
       setIsLoading(true);
       
       // 얼굴 메시 모델 설정 (468개 랜드마크 제공)
-      const faceMesh = new FaceMesh({
-        locateFile: (file: string) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-        }
+      console.log('🎯 FaceMesh 초기화 시작...');
+      const base = import.meta.env.DEV
+        ? 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619'
+        : '/mediapipe/face_mesh';
+      console.log('📦 MediaPipe base:', base);
+
+      const faceMesh = new FaceMesh({ 
+        locateFile: (f: string) => `${base}/${f}` 
       });
 
       faceMesh.setOptions({
+        selfieMode: true,
         maxNumFaces: 1,
-        refineLandmarks: true, // 더 정확한 랜드마크를 위해
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
+        refineLandmarks: true,
+        minDetectionConfidence: 0.2,   // 초기 관대
+        minTrackingConfidence: 0.2,
       });
 
-      faceMesh.onResults((results) => {
-        if (canvasRef.current && videoRef.current) {
-          console.log('Face mesh results:', results.multiFaceLandmarks?.length || 0);
-          drawFaceOverlay(results);
+      let boosted = false;
+
+      function onFaceResults(res: any) {
+        const pts = res?.multiFaceLandmarks?.[0];
+        console.log('🧪 onResults:', { hasFace: !!pts, len: pts?.length ?? 0 });
+        
+        if (pts && pts.length) {
+          if (boosted) {
+            // 붙은 뒤엔 품질 복원
+            faceMesh.setOptions({
+              minDetectionConfidence: 0.5,
+              minTrackingConfidence: 0.5,
+              refineLandmarks: true,
+            });
+            boosted = false;
+            console.log('🔁 Restored FaceMesh thresholds');
+          }
+          lastHitRef.current = Date.now();
+          setDetecting(false);
+        } else {
+          setDetecting(true);
         }
-      });
+        
+        if (canvasRef.current && videoRef.current) {
+          drawFaceOverlay(pts ? { multiFaceLandmarks: [pts] } : null);
+        }
+      }
+
+      faceMesh.onResults(onFaceResults);
 
       // 손 인식 모델 설정
       const hands = new Hands({
@@ -264,56 +317,177 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
 
     } catch (err) {
       console.error('MediaPipe 초기화 오류:', err);
-      setError('AR 기능을 초기화할 수 없습니다.');
+      setErrorMsg(err instanceof Error ? err.message : 'AR 기능을 초기화할 수 없습니다.');
       setIsLoading(false);
     }
   }, []);
 
-  // 카메라 초기화
+  // 🎥 콜백 ref: DOM 붙는 순간에 카메라 초기화
+  // 🎥 비디오 ref 콜백 (동기 함수로 변경)
+  const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    
+    if (!node) {
+      // Video element unmounted - 로그 노이즈 제거
+      return;
+    }
+
+    console.log('📹 Video element mounted, ready for camera init');
+  }, []);
+
+  // 🎥 카메라 초기화 (비디오 DOM이 준비된 후 별도 실행)
   const initializeCamera = useCallback(async () => {
-    console.log('🎥 Initializing camera...');
-    
-    const refsToCheck = [
-      { name: 'Video', ref: videoRef, type: HTMLVideoElement },
-      { name: 'Face mesh', ref: faceMeshRef },
-      { name: 'Hands', ref: handsRef }
-    ];
-    
-    // 🚀 통합 Ref 검증 (존재 + 타입 + 로그)
-    if (!validateAndAssertRefs(refsToCheck, (userMsg, techMsg) => {
-      setError(userMsg);
-      console.error('🚨 Camera initialization failed:', techMsg);
-    })) {
+    if (!videoRef.current || didInitRef.current) {
+      console.log('🔒 Camera already initialized or video not ready');
       return;
     }
 
     try {
-      console.log('Creating Camera instance...');
-      const camera = new Camera(videoRef.current, {
-        onFrame: async () => {
-          if (faceMeshRef.current && handsRef.current && videoRef.current) {
-            try {
-              await faceMeshRef.current.send({ image: videoRef.current });
-              await handsRef.current.send({ image: videoRef.current });
-            } catch (err) {
-              console.error('Error processing frame:', err);
-            }
-          }
-        },
-        width: 640,
-        height: 480
+      console.log('🎥 Initializing camera with DOM-ready video element...');
+      didInitRef.current = true;
+      
+      await camera.startCamera(videoRef.current, { 
+        width: 640, 
+        height: 480, 
+        facingMode: 'user' 
       });
-
-      console.log('Starting camera...');
-      await camera.start();
-      cameraRef.current = camera;
-      console.log('Camera initialized successfully');
-
-    } catch (err) {
-      console.error('카메라 초기화 오류:', err);
-      setError('카메라에 접근할 수 없습니다.');
+      
+      console.log('✅ Camera initialized successfully');
+      
+    } catch (err: any) {
+      console.error('🚨 Camera initialization failed:', err);
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      didInitRef.current = false; // 실패하면 다시 시도 허용
     }
+  }, [camera]);
+
+  // 캘리브레이션 완료 핸들러 (한 번만 실행)
+  const handleCalibrationReady = useCallback(() => {
+    if (calibrationLockedRef.current) return; // 이미 완료됨
+    calibrationLockedRef.current = true;
+    setCalibrationReady(true);
+    console.log('Calibration completed, AR session ready (locked)');
   }, []);
+
+  // 카메라 준비 상태 대기 헬퍼 (레이스 조건 해결)
+  const waitUntil = useCallback((pred: () => boolean, timeoutMs = 1500, stepMs = 50) => {
+    return new Promise<boolean>(resolve => {
+      const start = performance.now();
+      const tick = () => {
+        if (pred()) return resolve(true);
+        if (performance.now() - start >= timeoutMs) return resolve(false);
+        setTimeout(tick, stepMs);
+      };
+      tick();
+    });
+  }, []);
+
+  const ensureCameraReady = useCallback(async () => {
+    // 1) 이미 활성화면 패스
+    if (camera.isActive || (videoRef.current?.readyState ?? 0) >= 2) return true;
+
+    // 2) 초기화 시도
+    await initializeCamera();
+
+    // 3) "isActive OR readyState≥2" 둘 중 하나 될 때까지 대기
+    const ok = await waitUntil(
+      () => camera.isActive || (videoRef.current?.readyState ?? 0) >= 2,
+      1500, 50
+    );
+    return ok;
+  }, [camera, initializeCamera, waitUntil]);
+
+  // 🎯 FaceMesh 초기화 함수
+  const createFaceMesh = useCallback(async (): Promise<FaceMesh> => {
+    console.log('🎯 createFaceMesh 초기화 시작...');
+    const fm = new FaceMesh({
+      locateFile: (file) => {
+        const url = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        console.log('📦 Loading MediaPipe file:', url);
+        return url;
+      }
+    });
+    
+    fm.setOptions({
+      selfieMode: true,
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.2,   // ↓ 0.5 → 0.2 (초기 탐지 더 관대하게)
+      minTrackingConfidence: 0.2,    // ↓ 0.5 → 0.2 (초기 탐지 더 관대하게)
+    });
+    
+    // 결과 핸들러 등록
+    fm.onResults((results) => {
+      const lm = results?.multiFaceLandmarks?.[0];
+      const now = performance.now();
+      const has = !!(lm && lm.length);
+      
+      // 디버그
+      console.log('🧪 onResults:', { has, lm: lm?.length ?? 0, w: results.image?.width, h: results.image?.height });
+
+      if (has) {
+        lastDetectedRef.current = now;
+        lastHitRef.current = Date.now();
+        // 감지 성공 후 3초 쿨다운마다 살짝 상향
+        if (now - (tunedAtRef.current || 0) > 3000) {
+          fm.setOptions({ minDetectionConfidence: 0.4, minTrackingConfidence: 0.4 });
+          tunedAtRef.current = now;
+          console.log('✅ Face detected → tightened thresholds to 0.4');
+        }
+        setDetecting(false);
+      } else {
+        // 초기에만 1회 완화(스팸 방지)
+        if (!loosenedOnceRef.current) {
+          fm.setOptions({ minDetectionConfidence: 0.2, minTrackingConfidence: 0.2 });
+          loosenedOnceRef.current = true;
+          console.log('🔽 Loosened thresholds to 0.2 for warm-up');
+        }
+        setDetecting(true);
+      }
+      
+      if (canvasRef.current && videoRef.current) {
+        drawFaceOverlay(results);
+      }
+    });
+    
+    return fm;
+  }, []);
+
+
+  // ── RAF 탐지 루프(플래그/재진입 가드) ─────────────────────────────────
+  const loop = useCallback(async () => {
+    if (!sessionStartedRef.current) {
+      // 세션 중단 시 루프 종료
+      return;
+    }
+    const video = videoRef.current;
+    const fm = faceMeshRef.current;
+    const now = performance.now();
+    
+    // 탭 복귀 직후 잠깐 스킵(노이즈 감소)
+    if (now < resumeJitterBlockRef.current) {
+      loopRef.current = requestAnimationFrame(loop);
+      return;
+    }
+    
+    if (video && video.readyState >= 2 && fm && !processingRef.current) {
+      processingRef.current = true;
+      try {
+        await fm.send({ image: video });
+        if (handsRef.current) {
+          await handsRef.current.send({ image: video });
+        }
+      } catch (e) {
+        console.error('send error', e);
+        setErrorMsg(e instanceof Error ? e.message : String(e));
+      } finally {
+        processingRef.current = false;
+      }
+    }
+    loopRef.current = requestAnimationFrame(loop);
+  }, []);
+
+
 
   // 얼굴 오버레이 그리기
   const drawFaceOverlay = (results: any) => {
@@ -398,7 +572,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
             isActive: crownIndex === currentPointIndex && sessionStarted,
             isCompleted: completedPoints[crownIndex]
           });
-          console.log(`Crown point calculated: x=${crown.x.toFixed(1)}, y=${crown.y.toFixed(1)}`);
+          // Crown point calculated - 로그 노이즈 제거
         } else if (process.env.NODE_ENV === 'development') {
           console.warn('crown missing for this frame');
         }
@@ -428,14 +602,19 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
         isCompleted: completedPoints[realIndex]
       });
       
-      console.log(`Fixed point ${realIndex} (${point.name}): x=${x.toFixed(1)}, y=${y.toFixed(1)}, canvas: ${canvas.width}x${canvas.height}`);
+      // Fixed point logged - 로그 노이즈 제거
     });
     
     // 2. 얼굴 기반 포인트들 (얼굴이 감지된 경우만) - Face Mesh 결과 사용
     if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
       const faceLandmarks = results.multiFaceLandmarks[0]; // 첫 번째 얼굴만 사용
+      
+      // 얼굴 감지되면 detecting 상태 해제
+      if (detecting) {
+        setDetecting(false);
+      }
 
-      console.log('Face mesh detected! Adding face points...', faceLandmarks.length, 'landmarks');
+      // Face mesh detected - 로그 간소화
       
       EFT_FACE_MAPPINGS.forEach((mapping, index) => {
         if (faceLandmarks[mapping.landmarkIndex]) {
@@ -453,7 +632,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
             isCompleted: completedPoints[index]
           });
           
-          console.log(`Face point ${index} (${mapping.name}): landmark=${mapping.landmarkIndex}, x=${x.toFixed(1)}, y=${y.toFixed(1)}`);
+          // Face point logged - 로그 노이즈 제거
         } else {
           console.warn(`Landmark ${mapping.landmarkIndex} not found for ${mapping.name}`);
         }
@@ -462,7 +641,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
       console.log('No face mesh detected, showing fixed points only');
     }
     
-    console.log(`Total points to draw: ${points.length}, canvas size: ${canvas.width}x${canvas.height}, session: ${sessionStarted}`);
+    // Total points to draw logged - 로그 간소화
 
     setDetectedPoints(points);
 
@@ -492,7 +671,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
     const alpha = point.isCompleted ? 0.5 : 1.0;
     
     // 초대형 탭핑 포인트 그리기 (카메라에서 잘 보이도록)
-    console.log(`Drawing LARGE point: ${point.name} at (${point.x.toFixed(1)}, ${point.y.toFixed(1)}), active: ${isCurrentTarget}`);
+    // Drawing point logged - 로그 노이즈 제거
     
     ctx.save();
 
@@ -534,7 +713,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
       ctx.globalAlpha = 0.5;
       ctx.stroke();
       
-      console.log(`ACTIVE POINT PULSING: ${point.name}`);
+      // Active point pulsing - 로그 노이즈 제거
     }
 
     // 적절한 크기의 라벨
@@ -614,51 +793,65 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
 
   // 세션 제어 (이중 클릭 방지 + 안정화)
   const togglingRef = useRef(false);
-  const toggleSession = useCallback(() => {
+  const toggleSession = useCallback(async () => {
     if (togglingRef.current) return;
     togglingRef.current = true;
 
-    console.log('🔄 toggleSession called, sessionStarted:', sessionStarted);
-    console.log('🔄 Button click detected!');
-
     try {
-      if (sessionStarted) {
-        console.log('🛑 Stopping AR session...');
+      if (sessionStartedRef.current) {
+        // ⏹ Stop
+        console.log('⏹ Stop clicked → sessionStartedRef = false');
+        sessionStartedRef.current = false;
         setSessionStarted(false);
+        if (loopRef.current) cancelAnimationFrame(loopRef.current);
+        loopRef.current = null;
+        camera.stopCurrentStream?.();
         setCurrentPointIndex(0);
-        setCompletedPoints(
-          new Array(EFT_FACE_MAPPINGS.length + ADDITIONAL_POINTS.length).fill(false)
-        );
+        setCompletedPoints(new Array(TOTAL_POINTS).fill(false));
         return;
       }
 
-      const refsToCheck = [
-        { name: 'Camera', ref: cameraRef },
-        { name: 'Face mesh', ref: faceMeshRef },
-        { name: 'Hands', ref: handsRef },
-      ];
-
-      if (!validateAndAssertRefs(refsToCheck, (userMsg, techMsg) => {
-        setError(userMsg);
-        console.error('🚨 AR session initialization failed:', techMsg);
-        // 에러 상황에서도 사용자가 알 수 있도록 alert 추가
-        alert(`AR 세션 시작 실패: ${userMsg}`);
-      })) {
+      // 🚀 Start
+      console.log('🚀 toggleSession: Starting session...');
+      
+      // (중복 초기화 방지) 이미 카메라가 준비되어 있으면 재초기화 금지
+      const ok = await ensureCameraReady();
+      if (!ok) {
+        console.warn('Camera not ready after wait');
+        setErrorMsg('카메라 준비 실패: 브라우저 권한/다른 앱 점유를 확인하세요.');
         return;
       }
 
-      console.log('✅ All refs validated, starting session...');
+      // FaceMesh 준비 확인
+      if (!faceMeshRef.current) {
+        console.log('🎯 FaceMesh not ready, initializing...');
+        try {
+          faceMeshRef.current = await createFaceMesh();
+        } catch (e) {
+          setErrorMsg('AR 엔진 준비 실패: ' + (e as any)?.message);
+          return;
+        }
+      }
+
+      // 세션 플래그를 먼저 세우고 루프 시작
+      console.log('▶ Start clicked → sessionStartedRef = true');
+      sessionStartedRef.current = true;
       setSessionStarted(true);
+      startTimeRef.current = performance.now();
       setCurrentPointIndex(0);
       setCompletedPoints(new Array(TOTAL_POINTS).fill(false));
+      setDetecting(true);
+      framesRef.current = 0;
+      lastHitRef.current = Date.now();
+      
+      if (!loopRef.current) {
+        console.log('🎬 RAF 루프 시작됨');
+        loopRef.current = requestAnimationFrame(loop);
+      }
     } finally {
-      // 200ms 이후 다시 클릭 허용 (연타 방지)
-      setTimeout(() => {
-        togglingRef.current = false;
-      }, 200);
+      togglingRef.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionStarted]);
+  }, [loop, camera, ensureCameraReady, createFaceMesh]);
 
   // 초기화
   useEffect(() => {
@@ -678,17 +871,61 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
     }
   }, [sessionStarted, currentPointIndex]); // currentPointIndex 의존성 추가
 
+  // 감지 워치독 - 무한 "감지 중" 방지
   useEffect(() => {
-    if (!isLoading && !error && isActive) {
-      initializeCamera();
-    }
+    if (!sessionStarted) return;
+    
+    const watchdogInterval = setInterval(() => {
+      const noHitFor = Date.now() - lastHitRef.current;
+      if (sessionStartedRef.current && noHitFor > 5000) {
+        console.warn('⚠️ No face detected for 5 seconds - loosening detection');
+        if (faceMeshRef.current) {
+          faceMeshRef.current.setOptions({
+            minDetectionConfidence: 0.15,
+            minTrackingConfidence: 0.15,
+            refineLandmarks: false,
+          });
+          console.log('🔽 Emergency loosened thresholds to 0.15');
+        }
+      }
+    }, 1000);
+    
+    return () => clearInterval(watchdogInterval);
+  }, [sessionStarted]);
 
-    return () => {
-      console.log('Cleaning up camera...');
-      cameraRef.current?.stop();
-      cameraRef.current = null;
+  // 페이지 가시성 변화 시: 루프만 일시 정지/재개(세션 플래그 유지)
+  useEffect(() => {
+    const onVis = () => {
+      const vis = document.visibilityState === 'visible';
+      pageVisibleRef.current = vis;
+      if (!vis) {
+        // 숨김 → 루프만 중단
+        if (loopRef.current) cancelAnimationFrame(loopRef.current);
+        loopRef.current = null;
+      } else {
+        // 보임 → 복귀 직후 잠깐 스킵 후 재개
+        resumeJitterBlockRef.current = performance.now() + 300;
+        if (sessionStartedRef.current && !loopRef.current) {
+          loopRef.current = requestAnimationFrame(loop);
+        }
+      }
     };
-  }, [isLoading, error, isActive, initializeCamera]);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [loop]);
+
+  // 🧹 언마운트 정리
+  useEffect(() => {
+    return () => {
+      console.log('🧹 EFTGuideAR unmount cleanup');
+      sessionStartedRef.current = false;
+      setSessionStarted(false);
+      if (loopRef.current) cancelAnimationFrame(loopRef.current);
+      loopRef.current = null;
+      camera.stopCamera();
+      didInitRef.current = false;
+    };
+  }, [camera]);
 
   // 캔버스 크기 조정
   useEffect(() => {
@@ -704,10 +941,25 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
           canvasHeight: canvas.height
         });
         
-        // 동영상이 로드되면 캔버스 크기 조정
+        // 🎨 DPR 고려한 고화질 캔버스 크기 조정
         if (video.videoWidth && video.videoHeight) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          const dpr = window.devicePixelRatio || 1;
+          
+          // 캔버스 내부 해상도 (실제 렌더링 해상도)
+          canvas.width = video.videoWidth * dpr;
+          canvas.height = video.videoHeight * dpr;
+          
+          // 캔버스 표시 크기 (CSS 크기)
+          canvas.style.width = `${video.videoWidth}px`;
+          canvas.style.height = `${video.videoHeight}px`;
+          
+          // 컨텍스트 스케일링
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          }
+          
+          console.log(`🎨 Canvas synced with DPR ${dpr}: ${video.videoWidth}×${video.videoHeight} → ${canvas.width}×${canvas.height}`);
         }
       }
     };
@@ -723,8 +975,20 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
 
   if (!isActive) return null;
 
+  // ✅ (해결) 항상 렌더 + CSS 표시만 제어 - 조건부 렌더링 금지
+  const showCalibration = (!calibrationReady && !calibrationLockedRef.current) || errorMsg;
+
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center">
+      {/* ✅ 항상 렌더되는 Calibration - display 속성으로만 제어 */}
+      <div style={{ display: showCalibration ? 'block' : 'none', position: 'absolute', inset: 0, zIndex: 50 }}>
+        <Calibration
+          onReady={handleCalibrationReady}
+          message="AR EFT 세션을 위해 카메라를 설정해주세요"
+          showBackButton={true}
+        />
+      </div>
+
       {/* 로딩 표시 */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
@@ -736,10 +1000,10 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
       )}
 
       {/* 에러 표시 */}
-      {error && (
+      {errorMsg && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
           <div className="text-center">
-            <p className="text-red-400 mb-4">{error}</p>
+            <p className="text-red-400 mb-4">{errorMsg}</p>
             <button
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-blue-500 text-white rounded"
@@ -750,11 +1014,13 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
         </div>
       )}
 
-      {/* 비디오 스트림 */}
+      {/* 비디오 스트림 - 콜백 ref 사용 */}
       <video
-        ref={videoRef}
+        ref={setVideoRef}
         className="w-full h-full object-cover"
         playsInline
+        muted
+        autoPlay
         style={{ transform: 'scaleX(-1)' }} // 거울 모드
       />
 
@@ -821,8 +1087,18 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
         </div>
       )}
 
+      {/* 얼굴 감지 상태 표시 */}
+      {sessionStarted && detecting && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-black/60 text-white text-sm font-semibold shadow-lg">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            <span>🎯 얼굴 감지 중... 화면 중앙에 얼굴을 맞춰주세요</span>
+          </div>
+        </div>
+      )}
+
       {/* 상단 안내 카드: 세션 중에만 잠깐 표시 */}
-      {sessionStarted && showHint && (
+      {sessionStarted && !detecting && showHint && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-black/60 text-white text-sm font-semibold shadow-lg">
             <span>👆 {detectedPoints[currentPointIndex]?.name || '포인트'}에 손가락을 가져다 대세요</span>

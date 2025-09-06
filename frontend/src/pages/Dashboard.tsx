@@ -128,7 +128,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const handle3DGuide = () => {
     console.log('3D/AR EFT 가이드 시작');
     setShowMenu(false);
-    navigate('/eft-guide');
+    navigate('/eft-guide'); // EFT 세션 선택기로 이동
   };
 
   const handleViewInsight = (insightId: string | number) => {
@@ -144,9 +144,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     console.log(`메뉴 클릭: ${item}`);
     setShowMenu(false);
     
-    // 메뉴에서 AI 상담 클릭 시에도 AI 채팅으로 네비게이션
-    if (item === 'AI 상담') {
-      navigate('/ai-chat');
+    // 메뉴 항목별 네비게이션 처리
+    switch (item) {
+      case 'AI 상담':
+        navigate('/ai-chat');
+        break;
+      case 'EFT 세션':
+        navigate('/eft-guide'); // EFT 세션 선택기로 이동
+        break;
+      case '감정 체크인':
+        handleEmotionCheck();
+        break;
+      case '나의 통찰':
+        // 통찰 페이지로 이동 (추후 구현)
+        console.log('통찰 페이지로 이동');
+        break;
+      case '내 프로필':
+        // 프로필 페이지로 이동 (추후 구현)
+        console.log('프로필 페이지로 이동');
+        break;
+      default:
+        console.log(`${item} 메뉴 - 추후 구현 예정`);
     }
   };
 
