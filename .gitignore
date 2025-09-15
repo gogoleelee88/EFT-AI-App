@@ -58,3 +58,4 @@ __pycache__/
 *.backup# Git에서 제외할 파일들
 frontend/nul
 backend/=2.6.0
+backend/config.env
