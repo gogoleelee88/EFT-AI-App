@@ -129,6 +129,7 @@ export default function ARSessionSimple({ plan }: ARSessionSimpleProps) {
           ref={videoRef} 
           className="rounded-xl shadow" 
           muted 
+          autoPlay
           playsInline 
           style={{ transform: 'scaleX(-1)' }}
         />

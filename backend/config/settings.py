@@ -3,13 +3,18 @@ EFT AI 서버 설정 관리
 환경변수 및 모델 설정
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from typing import List, Optional, Dict
 import os
 from pathlib import Path
 
 class Settings(BaseSettings):
     """서버 설정 클래스"""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
     
     # 서버 기본 설정
     HOST: str = "0.0.0.0"
@@ -30,9 +35,9 @@ class Settings(BaseSettings):
     MODEL_NAME: str = "microsoft/DialoGPT-medium"  # 기본 무료 모델
     MODEL_CACHE_DIR: str = "./models"  # 모델 캐시 디렉토리
     
-    # 티어별 모델 설정
-    FREE_TIER_MODEL: str = "microsoft/DialoGPT-medium"      # 무료: 기본 대화 (토큰 제한 필요)
-    PREMIUM_TIER_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"  # 프리미엄: 실제 Llama 3.1
+    # 티어별 모델 설정 (DialoGPT 완전 폐기!)
+    FREE_TIER_MODEL: str = "ENGINE_AB_ONLY"  # 무료: Engine A/B 병렬 비교만 사용
+    PREMIUM_TIER_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"  # 프리미엄: Llama 3.1
     ENTERPRISE_TIER_MODEL: str = "meta-llama/Llama-3.1-70B-Instruct"  # 기업: 최고급
     
     # A/B 테스트용 무료 모델 엔진들
@@ -80,8 +85,14 @@ class Settings(BaseSettings):
     LOG_FILE: str = "./logs/eft_ai_server.log"
     
     # API 키 (필요한 경우)
-    HUGGINGFACE_TOKEN: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None  # 폴백용
+    HUGGINGFACE_TOKEN: str | None = None
+    OPENAI_API_KEY: str | None = None  # 폴백용
+    
+    # vLLM 서버 URL/모델 (기본값은 로컬, .env로 덮어쓰기)
+    FREE_AI_BASE_URL: str = Field("http://localhost:8001/v1", env="FREE_AI_BASE_URL")
+    PREMIUM_AI_BASE_URL: str = Field("http://localhost:8002/v1", env="PREMIUM_AI_BASE_URL")
+    FREE_AI_MODEL: str = Field("meta-llama/Llama-3.1-8B-Instruct", env="FREE_AI_MODEL")
+    PREMIUM_AI_MODEL: str = Field("Qwen/Qwen2.5-7B-Instruct", env="PREMIUM_AI_MODEL")
     
     # 성능 최적화 설정
     BATCH_SIZE: int = 1
@@ -124,10 +135,6 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-change-this"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    class Config:
-        env_file = ".env"  # .env 파일 사용
-        env_file_encoding = "utf-8"
-        env_ignore_empty = True
 
 # 설정 싱글톤
 _settings = None

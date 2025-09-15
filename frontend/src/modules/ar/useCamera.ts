@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
+import { startCamera as startCameraUtil, stopCamera as stopCameraUtil } from '../../lib/camera';
 
 export interface CameraConfig {
   width?: number;

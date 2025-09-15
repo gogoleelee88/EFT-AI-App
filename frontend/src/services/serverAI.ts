@@ -39,6 +39,27 @@ interface ChatResponse {
   response_id: string;
 }
 
+// 새로운 병렬 비교 응답 인터페이스
+interface ComparisonResponse {
+  llama3_response: {
+    model: string;
+    response: string;
+    processing_time: number;
+    success: boolean;
+    error?: string;
+  };
+  qwen25_response: {
+    model: string;
+    response: string;
+    processing_time: number;
+    success: boolean;
+    error?: string;
+  };
+  comparison_time: number;
+  faster_model: 'llama3' | 'qwen25' | 'none';
+  timestamp: string;
+}
+
 interface ServerStatus {
   status: string;
   model_loaded: boolean;
@@ -96,7 +117,73 @@ class ServerAI {
   }
 
   /**
-   * AI 채팅 (단일 응답)
+   * 병렬 비교 채팅 (Llama-3 vs Qwen-2.5) - DialoGPT 대체!
+   */
+  async chatCompare(
+    userMessage: string,
+    options: {
+      userId?: string;
+      maxTokens?: number;
+      temperature?: number;
+    } = {}
+  ): Promise<ComparisonResponse> {
+    
+    const request = {
+      message: userMessage,
+      max_tokens: options.maxTokens || 512,
+      temperature: options.temperature || 0.7
+    };
+
+    try {
+      console.log('🤖 병렬 비교 요청:', { message: userMessage, baseURL: this.baseURL });
+
+      const response = await fetch(`${this.baseURL}/api/chat/compare`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`비교 API 오류 (${response.status}): ${errorText}`);
+      }
+
+      const comparisonResponse: ComparisonResponse = await response.json();
+
+      // 대화 히스토리에 사용자 메시지만 추가 (응답은 두 개이므로 별도 처리)
+      this.addToHistory('user', userMessage);
+      
+      // 성공한 응답이 있으면 히스토리에 추가 (더 빠른 것을 우선)
+      if (comparisonResponse.faster_model !== 'none') {
+        const winnerResponse = comparisonResponse.faster_model === 'llama3' 
+          ? comparisonResponse.llama3_response 
+          : comparisonResponse.qwen25_response;
+        
+        if (winnerResponse.success) {
+          this.addToHistory('assistant', winnerResponse.response);
+        }
+      }
+
+      console.log('✅ 병렬 비교 응답:', {
+        faster_model: comparisonResponse.faster_model,
+        llama3_time: comparisonResponse.llama3_response.processing_time,
+        qwen25_time: comparisonResponse.qwen25_response.processing_time,
+        total_time: comparisonResponse.comparison_time
+      });
+
+      return comparisonResponse;
+
+    } catch (error) {
+      console.error('❌ 병렬 비교 실패:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * AI 채팅 (Engine A/B 병렬 비교) - DialoGPT 완전 대체!
    */
   async chat(
     userMessage: string, 
@@ -108,56 +195,61 @@ class ServerAI {
     } = {}
   ): Promise<ChatResponse> {
     
-    const request: ChatRequest = {
-      message: userMessage,
-      conversation_history: this.conversationHistory.slice(-10), // 최근 10개만 전송
-      user_profile: {
-        user_id: options.userId,
-        eft_experience_level: 'beginner', // 기본값
-        communication_style: 'empathetic',
-        emotional_sensitivity: 0.7,
-        previous_sessions: this.conversationHistory.length / 2 // 대략적 계산
-      },
-      max_tokens: options.maxTokens || 400,
-      temperature: options.temperature || 0.7,
-      include_eft_recommendations: options.includeEFTRecommendations !== false,
-      session_id: this.sessionId || undefined
-    };
-
     try {
-      console.log('🤖 서버 AI 요청 전송:', { message: userMessage, baseURL: this.baseURL });
+      console.log('🤖 Engine A/B 병렬 비교 시작:', { message: userMessage, baseURL: this.baseURL });
 
-      const response = await fetch(`${this.baseURL}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(request),
+      // Engine A/B 병렬 비교 수행
+      const comparisonResult = await this.chatCompare(userMessage, {
+        userId: options.userId,
+        maxTokens: options.maxTokens,
+        temperature: options.temperature
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`AI 서버 오류 (${response.status}): ${errorText}`);
+      // 병렬 비교 결과를 ChatResponse 형태로 변환
+      const winnerResponse = comparisonResult.faster_model === 'llama3' 
+        ? comparisonResult.llama3_response 
+        : comparisonResult.qwen25_response;
+
+      // 성공한 응답이 있는지 확인
+      if (!winnerResponse.success) {
+        throw new Error(`Engine A/B 모두 실패: ${winnerResponse.error}`);
       }
 
-      const chatResponse: ChatResponse = await response.json();
+      // 기본 ChatResponse 형태로 반환
+      const chatResponse: ChatResponse = {
+        response: winnerResponse.response,
+        emotion_analysis: {
+          primary_emotion: 'neutral' as any,
+          secondary_emotion: null,
+          intensity: 0.7,
+          confidence: 0.8,
+          emotional_keywords: []
+        },
+        eft_recommendations: [],
+        suggested_actions: [],
+        confidence_score: 0.85,
+        processing_time: comparisonResult.comparison_time,
+        model_version: `Engine ${comparisonResult.faster_model === 'llama3' ? 'A (Llama-3)' : 'B (Qwen-2.5)'}`,
+        timestamp: comparisonResult.timestamp,
+        tier: 'free',
+        requires_followup: false,
+        emergency_detected: false,
+        professional_referral: false,
+        response_id: `ab_${Date.now()}`
+      };
 
-      // 대화 히스토리 업데이트
-      this.addToHistory('user', userMessage);
-      this.addToHistory('assistant', chatResponse.response);
-
-      console.log('✅ 서버 AI 응답 수신:', {
+      console.log('✅ Engine A/B 병렬 응답 완료:', {
+        winner: comparisonResult.faster_model,
         response: chatResponse.response.substring(0, 100) + '...',
-        emotion: chatResponse.emotion_analysis.primary_emotion,
-        confidence: chatResponse.confidence_score,
-        processingTime: chatResponse.processing_time
+        processingTime: comparisonResult.comparison_time,
+        llama3_time: comparisonResult.llama3_response.processing_time,
+        qwen25_time: comparisonResult.qwen25_response.processing_time
       });
 
       return chatResponse;
 
     } catch (error) {
-      console.error('❌ 서버 AI 요청 실패:', error);
+      console.error('❌ Engine A/B 병렬 비교 실패:', error);
       
       // 폴백 응답 생성
       return this.createFallbackResponse(userMessage, error as Error);
@@ -390,4 +482,4 @@ export function getServerAI(): ServerAI {
 }
 
 export default ServerAI;
-export type { ChatResponse };
+export type { ChatResponse, ComparisonResponse };

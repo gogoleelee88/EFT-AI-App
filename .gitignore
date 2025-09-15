@@ -55,4 +55,6 @@ __pycache__/
 
 # 백업 파일
 *.bak
-*.backup
+*.backup# Git에서 제외할 파일들
+frontend/nul
+backend/=2.6.0

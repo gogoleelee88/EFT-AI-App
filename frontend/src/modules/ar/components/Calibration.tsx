@@ -521,8 +521,8 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: false })
           ref={setVideoRef}
           className="w-full h-auto block bg-black"
           muted
-          playsInline
           autoPlay
+          playsInline
           style={{ 
             transform: 'scaleX(-1)', 
             maxWidth: '640px', 

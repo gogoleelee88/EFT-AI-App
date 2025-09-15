@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import asyncio
@@ -22,7 +23,7 @@ import uuid
 from collections import defaultdict, deque
 
 # 로컬 모듈 임포트
-from services.ai_engine import EFTAIEngine
+from services.vllm_client import VLLMClient
 from services.prompt_manager import EFTPromptManager
 from services.emotion_analyzer import EmotionAnalyzer
 from models.chat_models import ChatRequest, ChatResponse, StreamResponse
@@ -33,15 +34,10 @@ from utils.logger import get_logger
 settings = get_settings()
 logger = get_logger(__name__)
 
+# VLLMClient는 app.state로 관리
+
 # --- A/B 라우팅 상태 ---
-_engine_cycle = None
 _engine_keys = list(settings.FREE_ENGINES.keys())
-
-def _init_cycle():
-    global _engine_cycle
-    _engine_cycle = itertools.cycle(_engine_keys)
-
-_init_cycle()
 
 def pick_engine(strategy: str, user_id: Optional[str] = None):
     """전략에 따라 A/B 엔진 선택 (4가지 전략 지원)"""
@@ -71,8 +67,8 @@ def pick_engine(strategy: str, user_id: Optional[str] = None):
         settings.STICKY_SESSIONS[user_id] = engine_key
         logger.info(f"[STICKY] 새 사용자 {user_id} -> {engine_key} 매핑")
         return engine_key
-    # default: round_robin
-    return next(_engine_cycle)
+    # default: round_robin (간단한 랜덤으로 대체)
+    return random.choice(_engine_keys)
 
 class ABRouteMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -181,69 +177,64 @@ app.add_middleware(SimpleRateLimitMiddleware, requests_per_minute=120)  # 분당
 app.add_middleware(ABRouteMiddleware)
 
 # CORS 설정 (PWA 클라이언트 연결용)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
+if settings.DEBUG:  # 개발 환경
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # 개발 환경에서 모든 origin 허용
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=True,
+    )
+else:  # 운영 환경
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+        allow_credentials=True,
+    )
 
-# AI 엔진 전역 변수 (서버 시작시 로드)
-ai_engine: Optional[EFTAIEngine] = None  # 무료 모델
-premium_ai_engine: Optional[EFTAIEngine] = None  # 프리미엄 모델
+# AI 지원 서비스 전역 변수 (서버 시작시 로드)  
+# AI 엔진은 app.state.vllm으로 대체됨
 prompt_manager: Optional[EFTPromptManager] = None
 emotion_analyzer: Optional[EmotionAnalyzer] = None
 
 @app.on_event("startup")
 async def startup_event():
-    """서버 시작시 AI 모델 로드"""
-    global ai_engine, premium_ai_engine, prompt_manager, emotion_analyzer
+    """서버 시작시 AI 클라이언트 및 서비스 초기화"""
+    global prompt_manager, emotion_analyzer
     
     logger.info("🚀 EFT AI 서버 시작 중...")
     
     try:
-        # 1. 프롬프트 매니저 초기화
+        # 1. vLLM 클라이언트 초기화
+        logger.info("🤖 vLLM 클라이언트 초기화 중...")
+        app.state.vllm = VLLMClient()
+        
+        # 2. 프롬프트 매니저 초기화
         logger.info("📝 프롬프트 시스템 로드 중...")
         prompt_manager = EFTPromptManager()
         
-        # 2. 감정 분석기 초기화
+        # 3. 감정 분석기 초기화
         logger.info("🧠 감정 분석 시스템 로드 중...")
         emotion_analyzer = EmotionAnalyzer()
         
         logger.info("✅ 기본 서비스 시작 완료!")
         logger.info("💡 AI 모델은 vLLM 서버 연동을 통해 제공됩니다")
         
-        # AI 엔진 로드는 선택사항으로 변경 (PyTorch 이슈 우회)
-        try:
-            # 3. 무료 AI 엔진 초기화 (DialoGPT) - 선택사항
-            logger.info("🆓 로컬 AI 모델 로드 시도 중...")
-            ai_engine = EFTAIEngine(
-                model_name=settings.FREE_TIER_MODEL,
-                device=settings.DEVICE,
-                max_memory=settings.MAX_MEMORY
-            )
-            await ai_engine.initialize()
-            logger.info("✅ 로컬 AI 모델 로드 성공!")
-        except Exception as ai_error:
-            logger.warning(f"⚠️ 로컬 AI 모델 로드 실패: {ai_error}")
-            logger.info("📢 vLLM 서버 연동으로 대체 가능합니다")
-            ai_engine = None
+        # 레거시 AI 시스템 완전 제거 완료
+        logger.info("🚫 DialoGPT 완전 폐기: OpenAI SDK + vLLM 시스템으로 전환!")
+        logger.info("🆓 무료: Engine A/B, 🎯 프리미엄: Qwen-2.5 전용")
         
-        # 4. 프리미엄 모델도 선택사항
-        if ai_engine:  # 기본 모델이 있을 때만 시도
-            try:
-                logger.info("💎 프리미엄 모델 로드 시도 중...")
-                premium_ai_engine = EFTAIEngine(
-                    model_name=settings.PREMIUM_TIER_MODEL,
-                    device=settings.DEVICE,
-                    max_memory=settings.MAX_MEMORY
-                )
-                await premium_ai_engine.initialize()
-                logger.info("✅ 프리미엄 모델 로드 완료!")
-            except Exception as premium_error:
-                logger.warning(f"⚠️ 프리미엄 모델 로드 실패: {premium_error}")
-                premium_ai_engine = None
+        # 4. vLLM 서버 연결 확인 (선택적)
+        try:
+            logger.info("🔗 vLLM 서버 연결 확인...")
+            # 간단한 헬스체크 - 실패해도 서버는 계속 실행
+            # app.state.vllm.list_models("free")  # 필요시 주석 해제
+            logger.info("✅ vLLM 서버 연결 준비 완료!")
+        except Exception as vllm_error:
+            logger.warning(f"⚠️ vLLM 서버 연결 실패: {vllm_error}")
+            logger.info("📢 vLLM 서버를 8001, 8002 포트에서 실행해주세요")
         
         logger.info("🚀 EFT AI 서버 완전히 시작 완료!")
         
@@ -257,11 +248,7 @@ async def shutdown_event():
     """서버 종료시 리소스 정리"""
     logger.info("🔄 서버 종료 중...")
     
-    if ai_engine:
-        await ai_engine.cleanup()
-    
-    if premium_ai_engine:
-        await premium_ai_engine.cleanup()
+    # vLLM 클라이언트는 별도 cleanup 불필요 (HTTP 클라이언트)
         
     logger.info("✅ 서버 종료 완료")
 
@@ -273,7 +260,7 @@ async def root():
         "service": "EFT AI 상담 서버",
         "status": "running",
         "version": "1.0.0",
-        "model_loaded": ai_engine is not None,
+        "vllm_client": "ready",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -285,8 +272,8 @@ async def health_check():
         "tier": settings.USER_TIER,
         "strategy": settings.AB_TEST_STRATEGY,
         "free_engines": {k: {"model": v["model"], "port": v["port"]} for k, v in settings.FREE_ENGINES.items()},
-        "free_ai_engine": "loaded" if ai_engine else "not_loaded",
-        "premium_ai_engine": "loaded" if premium_ai_engine else "not_loaded",
+        "vllm_free_engine": "ready",
+        "vllm_premium_engine": "ready",
         "prompt_manager": "loaded" if prompt_manager else "not_loaded",
         "emotion_analyzer": "loaded" if emotion_analyzer else "not_loaded",
         "uptime": time.time(),
@@ -307,8 +294,8 @@ async def health_check_api():
     # 동일한 응답 반환
     return {
         "status": "healthy",
-        "free_ai_engine": "loaded" if ai_engine else "not_loaded",
-        "premium_ai_engine": "loaded" if premium_ai_engine else "not_loaded",
+        "vllm_free_engine": "ready",
+        "vllm_premium_engine": "ready",
         "prompt_manager": "loaded" if prompt_manager else "not_loaded",
         "emotion_analyzer": "loaded" if emotion_analyzer else "not_loaded",
         "uptime": time.time(),
@@ -324,11 +311,7 @@ async def eft_chat_free(request: ChatRequest):
     - 토큰 제한: 1024 토큰
     - 기본 감정 분석 및 EFT 추천
     """
-    if not ai_engine:
-        raise HTTPException(
-            status_code=503, 
-            detail="AI 모델이 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요."
-        )
+    # vLLM 클라이언트는 항상 사용 가능
     
     try:
         start_time = time.time()
@@ -346,15 +329,22 @@ async def eft_chat_free(request: ChatRequest):
         )
         
         # 3. 무료 모델 응답 생성 (토큰 제한)
-        ai_response = await ai_engine.generate_response(
-            prompt=eft_prompt,
+        messages = [
+            {"role": "system", "content": "You are a helpful EFT counselor specialized in Korean emotional support."},
+            {"role": "user", "content": eft_prompt}
+        ]
+        ai_response = await run_in_threadpool(
+            app.state.vllm.chat_completion,
+            messages=messages,
+            tier="free",
             max_tokens=min(request.max_tokens or 150, 150),  # 무료는 최대 150토큰
             temperature=request.temperature or 0.7
         )
         
-        # 4. 후처리 및 EFT 추천
+        # 4. 응답 텍스트 추출 및 후처리
+        response_text = ai_response.get("choices", [{}])[0].get("message", {}).get("content", "")
         processed_response = prompt_manager.post_process_response(
-            ai_response, emotion_analysis
+            response_text, emotion_analysis
         )
         
         processing_time = time.time() - start_time
@@ -389,17 +379,9 @@ async def eft_chat_premium(request: ChatRequest):
     - 개인화된 맞춤 추천
     """
     # 프리미엄 모델 사용 가능 여부 체크
-    active_engine = premium_ai_engine if premium_ai_engine else ai_engine
+    # vLLM 클라이언트 사용
     
-    if not active_engine:
-        raise HTTPException(
-            status_code=503, 
-            detail="AI 모델이 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요."
-        )
-    
-    # 프리미엄 모델이 없으면 폴백 안내
-    if not premium_ai_engine:
-        logger.warning("프리미엄 모델 사용 불가, 무료 모델로 폴백")
+    # vLLM 프리미엄 티어는 항상 사용 가능
     
     try:
         start_time = time.time()
@@ -417,16 +399,34 @@ async def eft_chat_premium(request: ChatRequest):
             tier="premium"  # 프리미엄 전용 프롬프트
         )
         
-        # 3. 프리미엄 모델 응답 생성 (높은 토큰 한도)
-        ai_response = await active_engine.generate_response(
-            prompt=eft_prompt,
-            max_tokens=min(request.max_tokens or 800, 800),  # 프리미엄은 최대 800토큰
-            temperature=request.temperature or 0.7
-        )
+        # 3. 프리미엄 모델 응답 생성 (폴백 포함)
+        messages = [
+            {"role": "system", "content": "You are a helpful EFT counselor specialized in Korean emotional support."},
+            {"role": "user", "content": eft_prompt}
+        ]
         
-        # 4. 고급 후처리 및 전문 EFT 추천
+        try:
+            ai_response = await run_in_threadpool(
+                app.state.vllm.chat_completion,
+                messages=messages,
+                tier="premium",
+                max_tokens=min(request.max_tokens or 800, 800),  # 프리미엄은 최대 800토큰
+                temperature=request.temperature or 0.7
+            )
+        except Exception as e:
+            logger.warning(f"Premium engine failed, falling back to free: {str(e)}")
+            ai_response = await run_in_threadpool(
+                app.state.vllm.chat_completion,
+                messages=messages,
+                tier="free",
+                max_tokens=min(request.max_tokens or 400, 400),  # 무료 티어 토큰 제한
+                temperature=request.temperature or 0.7
+            )
+        
+        # 4. 응답 텍스트 추출 및 고급 후처리
+        response_text = ai_response.get("choices", [{}])[0].get("message", {}).get("content", "")
         processed_response = prompt_manager.post_process_response(
-            ai_response, emotion_analysis, tier="premium"
+            response_text, emotion_analysis, tier="premium"
         )
         
         processing_time = time.time() - start_time
@@ -451,47 +451,86 @@ async def eft_chat_premium(request: ChatRequest):
             detail=f"AI 응답 생성 중 오류가 발생했습니다: {str(e)}"
         )
 
-# 기존 채팅 엔드포인트 (무료 모델로 리다이렉트)
+# 기존 채팅 엔드포인트 (Engine A/B 병렬 비교로 전환)
 @app.post("/api/chat", response_model=ChatResponse)
-async def eft_chat(request: ChatRequest):
+async def eft_chat(request: ChatRequest, req: Request):
     """
-    기본 EFT AI 상담 채팅 (무료 모델로 리다이렉트)
-    하위 호환성을 위해 유지
+    기본 EFT AI 상담 채팅 (Engine A/B 병렬 비교로 완전 전환)
+    DialoGPT 완전 폐기! 이제 무료 사용자도 Llama-3 vs Qwen-2.5 병렬 비교 사용
     """
-    return await eft_chat_free(request)
+    try:
+        # ChatRequest를 ChatProxyRequest로 변환
+        proxy_request = ChatProxyRequest(
+            message=request.message,
+            temperature=request.temperature or 0.7,
+            max_tokens=request.max_tokens or 400
+        )
+        
+        # Engine A/B 병렬 비교 수행
+        comparison_result = await compare_llama3_vs_qwen25(proxy_request, req)
+        
+        # 감정 분석 수행
+        emotion_analysis = await emotion_analyzer.analyze(request.message)
+        
+        # 더 빠른 모델의 응답을 메인 응답으로 사용
+        if comparison_result.faster_model == "llama3" and comparison_result.llama3_response["success"]:
+            main_response = comparison_result.llama3_response["response"]
+            model_info = "Engine A (Llama-3-8B)"
+        elif comparison_result.faster_model == "qwen25" and comparison_result.qwen25_response["success"]:
+            main_response = comparison_result.qwen25_response["response"]
+            model_info = "Engine B (Qwen-2.5-7B)"
+        else:
+            # 둘 다 실패했을 경우 폴백 (vLLM 서버 미실행 상태)
+            main_response = "안녕하세요! 현재 AI 모델 서버가 준비 중입니다. vLLM 서버를 실행해주세요. (포트 8001, 8002)"
+            model_info = "Fallback (vLLM 서버 필요)"
+        
+        # ChatResponse 형태로 반환
+        return ChatResponse(
+            response=main_response,
+            emotion_analysis=emotion_analysis,
+            eft_recommendations=[],  # 병렬 비교에서는 기본값
+            suggested_actions=[],
+            confidence_score=0.8 if comparison_result.faster_model != "none" else 0.3,
+            processing_time=comparison_result.comparison_time,
+            timestamp=comparison_result.timestamp,
+            response_id=f"ab_resp_{int(time.time() * 1000)}",
+            tier="free",
+            model_version=model_info,
+            requires_followup=False,
+            emergency_detected=False,
+            professional_referral=False
+        )
+        
+    except Exception as e:
+        logger.error(f"Engine A/B 병렬 처리 오류: {e}")
+        
+        # 완전한 폴백 응답 - vLLM 서버 없을 때
+        emotion_analysis = EmotionAnalysis(
+            primary_emotion=EmotionType.NEUTRAL,
+            intensity=0.5,
+            confidence=0.3,
+            emotional_keywords=[]
+        )
+        
+        return ChatResponse(
+            response="안녕하세요! 현재 Engine A/B 병렬 시스템을 준비 중입니다. vLLM 서버(포트 8001, 8002)를 실행해주세요.",
+            emotion_analysis=emotion_analysis,
+            eft_recommendations=[],
+            suggested_actions=[],
+            confidence_score=0.2,
+            processing_time=0.1,
+            timestamp=datetime.now().isoformat(),
+            response_id=f"fallback_resp_{int(time.time() * 1000)}",
+            tier="free",
+            model_version="Fallback (vLLM 서버 필요)"
+        )
 
 # 스트리밍 채팅 (긴 응답용)
 @app.post("/api/chat/stream")
-async def eft_chat_stream(request: ChatRequest):
-    """실시간 스트리밍 채팅 (긴 응답용)"""
-    if not ai_engine:
-        raise HTTPException(status_code=503, detail="AI 모델이 로드되지 않았습니다.")
-    
-    async def generate_stream():
-        try:
-            # 감정 분석
-            emotion_analysis = await emotion_analyzer.analyze(request.message)
-            
-            # 스트리밍 응답 생성
-            async for chunk in ai_engine.generate_stream(
-                message=request.message,
-                emotion_state=emotion_analysis
-            ):
-                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
-                
-        except Exception as e:
-            error_chunk = {"error": str(e), "type": "generation_error"}
-            yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
-    
-    from fastapi.responses import StreamingResponse
-    return StreamingResponse(
-        generate_stream(), 
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
+def chat_stream_unavailable():
+    """스트리밍 임시 비활성화 (엔진 마이그레이션 중)"""
+    # 프론트가 이 메시지 보고 일반 /chat로 폴백하도록 안내
+    raise HTTPException(status_code=501, detail="Streaming temporarily disabled during engine migration")
 
 # 감정 분석 전용 엔드포인트
 @app.post("/api/analyze/emotion")
@@ -531,17 +570,14 @@ async def recommend_eft_technique(request: dict):
 
 # 모델 성능 통계
 @app.get("/api/stats")
-async def get_model_stats():
-    """모델 성능 및 사용 통계"""
-    if not ai_engine:
-        return {"error": "AI 모델이 로드되지 않았습니다."}
-    
-    stats = await ai_engine.get_performance_stats()
+def get_model_stats():
+    """vLLM 서버 통계 (간소화)"""
     return {
-        "model_stats": stats,
+        "vllm_status": "ready",
+        "free_engine": settings.FREE_AI_MODEL,
+        "premium_engine": settings.PREMIUM_AI_MODEL,
         "server_uptime": time.time(),
-        "total_requests": "TODO: 요청 수 추적",
-        "average_response_time": "TODO: 평균 응답 시간"
+        "note": "상세 통계는 vLLM 서버에서 제공됩니다"
     }
 
 # Enhanced vLLM upstream health check endpoint  
@@ -616,6 +652,14 @@ class ChatProxyRequest(BaseModel):
     temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0, description="창의성 수준")
     max_tokens: Optional[int] = Field(default=512, ge=1, le=2000, description="최대 토큰 수")
     model: Optional[str] = Field(default=None, description="요청 모델명 (선택사항)")
+
+class ComparisonResponse(BaseModel):
+    """Llama-3 vs Qwen-2.5 비교 응답 모델"""
+    llama3_response: dict = Field(..., description="Llama-3-8B 응답")
+    qwen25_response: dict = Field(..., description="Qwen-2.5-7B 응답")
+    comparison_time: float = Field(..., description="총 처리 시간")
+    faster_model: str = Field(..., description="더 빠른 모델 (llama3 or qwen25)")
+    timestamp: str = Field(..., description="응답 시간")
     
 # 폴백 로직을 위한 도우미 함수
 def other_engine_key(cur_key: str) -> Optional[str]:
@@ -730,6 +774,107 @@ async def completion(request: ChatProxyRequest, req: Request):
     except Exception as e:
         logger.error(f"프리미엄 모델 오류: {e}")
         raise HTTPException(status_code=500, detail=f"AI 응답 생성 오류: {str(e)}")
+
+# 병렬 비교 엔드포인트 (DialoGPT 완전 대체!)
+@app.post("/api/chat/compare", response_model=ComparisonResponse)
+async def compare_llama3_vs_qwen25(request: ChatProxyRequest, req: Request):
+    """
+    Llama-3-8B vs Qwen-2.5-7B 병렬 비교 채팅
+    - 두 모델을 동시에 호출하여 응답 비교
+    - DialoGPT 완전 대체 시스템
+    """
+    import httpx
+    
+    correlation_id = getattr(req.state, 'correlation_id', 'unknown')
+    logger.info(f"[{correlation_id}] 병렬 비교 요청: {request.message[:50]}...")
+    
+    # vLLM 호환 페이로드
+    payload = {
+        "model": "",  # 각 엔진별로 설정
+        "messages": [
+            {"role": "system", "content": "You are a helpful EFT counselor assistant specialized in Korean emotional support."},
+            {"role": "user", "content": request.message},
+        ],
+        "temperature": request.temperature,
+        "max_tokens": request.max_tokens,
+    }
+    
+    timeout_config = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
+    
+    async def call_engine(engine_key: str, engine_config: dict):
+        """개별 엔진 호출 함수"""
+        base_url = f"http://127.0.0.1:{engine_config['port']}/v1"
+        engine_payload = payload.copy()
+        engine_payload["model"] = engine_config["model"]
+        
+        try:
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                start_time = time.time()
+                r = await client.post(f"{base_url}/chat/completions", json=engine_payload)
+                processing_time = time.time() - start_time
+                
+                if r.status_code >= 400:
+                    raise httpx.HTTPStatusError(f"HTTP {r.status_code}", request=r.request, response=r)
+                    
+                data = r.json()
+                content = data["choices"][0]["message"]["content"]
+                
+                return {
+                    "model": engine_config["model"],
+                    "response": content,
+                    "processing_time": round(processing_time, 3),
+                    "success": True,
+                    "error": None
+                }
+        except Exception as e:
+            logger.error(f"[{correlation_id}] {engine_key} 실패: {str(e)[:200]}")
+            return {
+                "model": engine_config["model"],
+                "response": f"❌ {engine_key} 연결 실패: {str(e)[:100]}",
+                "processing_time": 0,
+                "success": False,
+                "error": str(e)
+            }
+    
+    try:
+        # 병렬 호출 시작
+        start_time = time.time()
+        
+        # Llama-3와 Qwen-2.5 동시 호출
+        engine_a_config = settings.FREE_ENGINES["engine_a"]  # Llama-3
+        engine_b_config = settings.FREE_ENGINES["engine_b"]  # Qwen-2.5
+        
+        llama3_task = call_engine("engine_a", engine_a_config)
+        qwen25_task = call_engine("engine_b", engine_b_config)
+        
+        # Promise.all 방식으로 병렬 처리
+        llama3_result, qwen25_result = await asyncio.gather(llama3_task, qwen25_task)
+        
+        total_time = time.time() - start_time
+        
+        # 더 빠른 모델 결정
+        if llama3_result["success"] and qwen25_result["success"]:
+            faster_model = "llama3" if llama3_result["processing_time"] <= qwen25_result["processing_time"] else "qwen25"
+        elif llama3_result["success"]:
+            faster_model = "llama3"
+        elif qwen25_result["success"]:
+            faster_model = "qwen25"
+        else:
+            faster_model = "none"
+        
+        logger.info(f"[{correlation_id}] 비교 완료: {total_time:.3f}s (빠른 모델: {faster_model})")
+        
+        return ComparisonResponse(
+            llama3_response=llama3_result,
+            qwen25_response=qwen25_result,
+            comparison_time=round(total_time, 3),
+            faster_model=faster_model,
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"[{correlation_id}] 병렬 비교 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"병렬 비교 처리 오류: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

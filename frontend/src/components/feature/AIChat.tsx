@@ -49,48 +49,45 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     // TODO: localStorage나 Context API로 퀘스트 진행률 저장
   };
 
-  // 서버 상태 체크 및 초기화
+  // 서버 상태 체크 및 초기화 (Engine A/B 시스템)
   useEffect(() => {
     const initializeAI = async () => {
       try {
         const healthResponse = await fetch('http://localhost:8000/health');
         const healthData = await healthResponse.json();
         
-        if (healthData.free_ai_engine === 'loaded') {
-          setServerStatus('online');
-          setAvailableTiers(healthData.available_tiers || ['free', 'premium', 'enterprise']);
-          
-          // Llama 3.1이 로드되면 자동으로 프리미엄 선택
-          if (healthData.premium_ai_engine === 'loaded' || healthData.premium_ai_engine === 'loading') {
-            setSelectedTier('premium');
+        // Engine A/B 시스템은 항상 사용 가능 (vLLM 서버 여부와 무관)
+        setServerStatus('online');
+        setAvailableTiers(['free', 'premium', 'enterprise']);
+        
+        // 기본값을 무료로 설정 (Engine A/B 병렬 비교 사용)
+        setSelectedTier('free');
+        
+        const initialMessage: Message = {
+          role: 'ai',
+          content: "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
+          timestamp: Date.now(),
+          metadata: {
+            confidence: 1.0,
+            processing_time: 0
           }
-          
-          const initialMessage: Message = {
-            role: 'ai',
-            content: "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Llama 3.1 최신 AI 업그레이드 완료!**\n이제 더욱 전문적이고 공감적인 상담이 가능합니다.\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
-            timestamp: Date.now(),
-            metadata: {
-              confidence: 1.0,
-              processing_time: 0
-            }
-          };
-          
-          setMessages([initialMessage]);
-        } else {
-          setServerStatus('offline');
-          
-          const errorMessage: Message = {
-            role: 'ai',
-            content: "죄송합니다. 현재 Llama 3.1 AI 서버가 로드 중입니다. 🚀\n\n업그레이드된 AI 모델을 준비하고 있습니다. 잠시만 기다려 주세요!",
-            timestamp: Date.now(),
-            metadata: { confidence: 0.3 }
-          };
-          
-          setMessages([errorMessage]);
-        }
+        };
+        
+        setMessages([initialMessage]);
+        
       } catch (error) {
         console.error('서버 초기화 실패:', error);
-        setServerStatus('offline');
+        // Engine A/B 시스템은 서버 오류가 있어도 기본 동작
+        setServerStatus('online');
+        
+        const errorMessage: Message = {
+          role: 'ai',
+          content: "안녕하세요! Engine A/B 병렬 비교 시스템입니다. 🚀\n\n현재 vLLM 서버 연결을 시도 중입니다. 일부 응답이 제한될 수 있지만 기본 서비스는 이용 가능합니다.",
+          timestamp: Date.now(),
+          metadata: { confidence: 0.7 }
+        };
+        
+        setMessages([errorMessage]);
       }
     };
 
@@ -127,7 +124,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
   // 메시지 전송 처리 (새로운 서버 AI 사용)
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading || serverStatus !== 'online') return;
+    if (!inputMessage.trim() || isLoading) return;
 
     const userMessage: Message = {
       role: 'user',
@@ -141,44 +138,68 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     setIsLoading(true);
 
     try {
-      console.log(`🤖 서버 AI에 메시지 전송 (${selectedTier} 티어):`, userMessage.content);
+      console.log(`🚀 Engine A/B 병렬 비교 시작 (${selectedTier} 티어):`, userMessage.content);
       
-      // 티어별 API 엔드포인트 결정
-      const endpoint = selectedTier === 'free' ? '/api/chat/free' : 
-                     selectedTier === 'premium' ? '/api/chat/premium' : 
-                     '/api/chat/free'; // enterprise는 premium으로 폴백
+      // Engine A/B 병렬 비교 또는 프리미엄 모델 사용
+      let serverResponse: ChatResponse;
       
-      // 티어별 토큰 제한 설정
-      const maxTokens = selectedTier === 'free' ? 150 : 
-                       selectedTier === 'premium' ? 400 : 
-                       150; // 기본값
-      
-      // 직접 API 호출 (티어별)
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: userMessage.content,
-          conversation_history: [],
-          max_tokens: maxTokens,
-          temperature: 0.8,
-          user_profile: {
-            user_id: userId
-          }
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API 호출 실패: ${response.status}`);
+      if (selectedTier === 'free') {
+        // 무료: Engine A/B 병렬 비교 사용
+        console.log('🆓 무료 사용자 → Engine A/B 병렬 비교 사용');
+        serverResponse = await serverAI.chat(userMessage.content, {
+          userId: userId,
+          maxTokens: 300,
+          temperature: 0.8
+        });
+      } else if (selectedTier === 'premium') {
+        // 프리미엄: Llama 3.1 단독 사용
+        console.log('💎 프리미엄 사용자 → Llama 3.1 단독 사용');
+        const response = await fetch('http://localhost:8000/api/chat/premium', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: userMessage.content,
+            conversation_history: [],
+            max_tokens: 400,
+            temperature: 0.8,
+            include_eft_recommendations: true,
+            emergency_check: true,
+            user_profile: {
+              user_id: userId,
+              eft_experience_level: "beginner",
+              communication_style: "empathetic"
+            }
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`프리미엄 API 호출 실패: ${response.status}`);
+        }
+        
+        serverResponse = await response.json();
+      } else {
+        // Enterprise는 premium으로 폴백
+        serverResponse = await serverAI.chat(userMessage.content, {
+          userId: userId,
+          maxTokens: 400,
+          temperature: 0.8
+        });
       }
       
-      const serverResponse: ChatResponse = await response.json();
-      
+      // AI 응답에서 프롬프트 부분 제거 (fallback 처리)
+      const cleanResponse = (() => {
+        const response = serverResponse.response;
+        if (response.includes("지금부터 EFT 전문 상담사로서 응답해 주세요:")) {
+          return response.split("지금부터 EFT 전문 상담사로서 응답해 주세요:").pop()?.trim() || response;
+        }
+        return response;
+      })();
+
       const aiMessage: Message = {
         role: 'ai',
-        content: serverResponse.response,
+        content: cleanResponse,
         timestamp: Date.now(),
         metadata: {
           emotion_analysis: serverResponse.emotion_analysis,

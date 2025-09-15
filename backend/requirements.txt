@@ -6,15 +6,16 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 pydantic==2.5.0
 
-# AI/ML 관련
-transformers==4.36.0
-torch>=2.1.0
-accelerate==0.25.0
-bitsandbytes==0.41.3
-sentencepiece==0.1.99
+# AI/ML 관련 (OpenAI SDK 방식으로 변경)
+openai>=1.0.0
+# transformers==4.36.0  # vLLM 사용으로 불필요
+# torch>=2.6.0  # vLLM 사용으로 불필요
+# accelerate==0.25.0  # vLLM 사용으로 불필요
+# bitsandbytes==0.41.3  # vLLM 사용으로 불필요
+# sentencepiece==0.1.99  # vLLM 사용으로 불필요
 
-# GPU 모니터링
-GPUtil==1.4.0
+# GPU 모니터링 (vLLM이 처리)
+# GPUtil==1.4.0  # vLLM 사용으로 불필요
 
 # 추론 최적화 (선택사항)
 # vllm==0.2.6  # GPU 추론 가속 (Windows 호환성 이슈로 주석)

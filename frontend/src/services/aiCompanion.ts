@@ -313,6 +313,195 @@ class AICompanion {
     return 'improving'; // 또는 'worsening', 'stable'
   }
 
+  // === 핵심 응답 생성 함수 ===
+  private generateContextualResponse(
+    userInput: string,
+    situationAnalysis: any,
+    emotionAnalysis: any,
+    conversationContext: any
+  ): string {
+    const { category, subcategory, keywords, intensity } = situationAnalysis;
+    const { primary: emotion, secondary, mixed } = emotionAnalysis;
+    const { stage, isFirstTime, messageCount } = conversationContext;
+
+    // 1. 첫 방문자 특별 처리
+    if (isFirstTime || messageCount <= 1) {
+      return this.generateWelcomeResponse(emotion, category);
+    }
+
+    // 2. 상황별 맞춤 응답
+    if (category === 'work') {
+      return this.generateWorkResponse(subcategory, emotion, intensity, keywords);
+    }
+    
+    if (category === 'relationship') {
+      return this.generateRelationshipResponse(subcategory, emotion, intensity, keywords);
+    }
+    
+    if (category === 'health') {
+      return this.generateHealthResponse(subcategory, emotion, intensity, keywords);
+    }
+    
+    if (category === 'study') {
+      return this.generateStudyResponse(subcategory, emotion, intensity, keywords);
+    }
+
+    // 3. 감정 중심 응답 (일반적인 경우)
+    return this.generateEmotionBasedResponse(emotion, secondary, mixed, intensity);
+  }
+
+  // 환영 응답 (첫 방문자)
+  private generateWelcomeResponse(emotion: string, category: string): string {
+    const baseWelcome = "안녕하세요! 마음이 편하지 않으신가요? 💙\n\n";
+    
+    if (emotion === 'anger') {
+      return baseWelcome + "화가 많이 나셨군요. 그런 기분이 드는 게 당연해요.\n어떤 일이 있으셨는지 천천히 이야기해 주세요.";
+    }
+    
+    if (emotion === 'sadness') {
+      return baseWelcome + "마음이 많이 아프시는 것 같아요. 😢\n혼자 힘드셨을 텐데, 이제 함께 이야기해 보아요.";
+    }
+    
+    if (emotion === 'anxiety') {
+      return baseWelcome + "불안하고 걱정이 많으신가요?\n마음이 편하지 않으시겠어요. 차근차근 들어볼게요.";
+    }
+    
+    return baseWelcome + "지금 어떤 마음이신지 편안하게 이야기해 주세요.\n혼자가 아니에요.";
+  }
+
+  // 직장 관련 응답
+  private generateWorkResponse(subcategory: string, emotion: string, intensity: string, keywords: string[]): string {
+    const intensityPrefix = intensity === 'high' ? '정말 많이 ' : intensity === 'low' ? '조금 ' : '';
+    
+    if (subcategory === 'overtime') {
+      return `${intensityPrefix}야근이 힘드시겠어요. 😔 몸과 마음이 모두 지치셨을 것 같아요.\n\n` +
+             "이런 상황이 계속되면 번아웃이 올 수 있어요.\n" +
+             "잠깐 숨을 고르고, 스스로를 돌보는 시간이 필요해 보여요.";
+    }
+    
+    if (subcategory === 'boss') {
+      return `상사와의 관계가 ${intensityPrefix}스트레스가 되시는군요. 😤\n\n` +
+             "직장에서의 인간관계는 정말 어려워요.\n" +
+             "이런 감정이 드는 게 당연하고, 혼자만의 문제가 아니에요.";
+    }
+    
+    if (subcategory === 'workload') {
+      return `업무량이 ${intensityPrefix}부담되시는군요. 💼\n\n` +
+             "할 일이 너무 많으면 압도당하는 기분이 들죠.\n" +
+             "우선순위를 정하고, 완벽하지 않아도 괜찮다는 마음을 가져보세요.";
+    }
+    
+    return `직장 생활이 ${intensityPrefix}힘드시군요. 많은 분들이 비슷한 어려움을 겪고 계세요.\n` +
+           "어떤 부분이 가장 스트레스인지 좀 더 이야기해 주실래요?`;
+  }
+
+  // 인간관계 응답
+  private generateRelationshipResponse(subcategory: string, emotion: string, intensity: string, keywords: string[]): string {
+    if (subcategory === 'breakup') {
+      return "이별은 정말 아픈 경험이에요. 😢 마음이 많이 아프시겠어요.\n\n" +
+             "지금 느끼시는 모든 감정들이 자연스러운 거예요.\n" +
+             "시간이 필요하고, 스스로를 충분히 돌봐주세요.";
+    }
+    
+    if (subcategory === 'fight') {
+      return "다툼이 있으셨군요. 마음이 상하고 복잡하시겠어요. 💔\n\n" +
+             "관계에서 갈등은 자연스러운 일이에요.\n" +
+             "서로의 마음을 이해하려는 노력이 중요해요.";
+    }
+    
+    if (subcategory === 'family') {
+      return "가족 관계가 어려우시군요. 가장 가까운 사람들과의 관계가 힘들 때가 있어요. 😔\n\n" +
+             "가족이라서 더 어려운 부분들이 있죠.\n" +
+             "서로 다른 것을 인정하는 것부터 시작해보세요.";
+    }
+    
+    return "인간관계가 복잡하고 어려우시군요. 💙\n" +
+           "사람과의 관계는 정말 쉽지 않아요. 어떤 상황인지 더 들어볼게요.";
+  }
+
+  // 건강 관련 응답
+  private generateHealthResponse(subcategory: string, emotion: string, intensity: string, keywords: string[]): string {
+    if (subcategory === 'physical') {
+      return "몸이 아프시군요. 😷 건강이 좋지 않으면 마음도 힘들어져요.\n\n" +
+             "몸의 신호를 무시하지 마시고, 충분한 휴식을 취하세요.\n" +
+             "필요하다면 전문의와 상담받는 것도 좋아요.";
+    }
+    
+    if (subcategory === 'mental') {
+      return "마음의 건강이 좋지 않으시군요. 정신적으로 많이 힘드시겠어요. 😔\n\n" +
+             "마음의 아픔도 몸의 아픔만큼 중요해요.\n" +
+             "혼자 견디려 하지 마시고, 도움을 요청하는 것도 용기예요.";
+    }
+    
+    return "건강이 걱정되시는군요. 몸과 마음 모두 소중해요. 💚\n" +
+           "어떤 부분이 가장 걱정되시는지 이야기해 주세요.";
+  }
+
+  // 학업 관련 응답
+  private generateStudyResponse(subcategory: string, emotion: string, intensity: string, keywords: string[]): string {
+    if (subcategory === 'exam') {
+      return "시험이 부담되시는군요. 📚 학업 스트레스가 많으시겠어요.\n\n" +
+             "완벽하지 않아도 괜찮아요. 최선을 다하는 것만으로도 충분해요.\n" +
+             "결과보다는 과정에서 배우는 것에 집중해보세요.";
+    }
+    
+    if (subcategory === 'grades') {
+      return "성적 때문에 스트레스가 많으시군요. 😰\n\n" +
+             "성적이 당신의 전부를 말해주지는 않아요.\n" +
+             "지금까지 노력한 자신을 인정해주세요.";
+    }
+    
+    return "학업이 힘드시군요. 공부하느라 정말 수고 많으세요. 📖\n" +
+           "어떤 부분이 가장 어려우신지 들어볼게요.";
+  }
+
+  // 감정 기반 응답 (일반적인 경우)
+  private generateEmotionBasedResponse(emotion: string, secondary: string, mixed: boolean, intensity: string): string {
+    const intensityText = intensity === 'high' ? '매우 ' : intensity === 'low' ? '약간 ' : '';
+    
+    if (emotion === 'anger') {
+      return `${intensityText}화가 나시는군요. 😤 그런 기분이 드는 게 당연해요.\n\n` +
+             "화가 날 때는 깊게 숨을 쉬어보세요.\n" +
+             "감정을 억누르지 말고, 건강한 방법으로 표현해보아요.";
+    }
+    
+    if (emotion === 'sadness') {
+      return `마음이 ${intensityText}슬프시군요. 😢 혼자 힘드셨을 거예요.\n\n` +
+             "슬픈 마음을 혼자 간직하지 마세요.\n" +
+             "눈물이 나도 괜찮아요. 감정을 느끼는 것도 치유의 과정이에요.";
+    }
+    
+    if (emotion === 'anxiety') {
+      return `${intensityText}불안하시군요. 걱정이 많으실 거예요. 😰\n\n` +
+             "불안할 때는 현재에 집중해보세요.\n" +
+             "지금 이 순간, 안전한 곳에 있다는 것을 느껴보세요.";
+    }
+    
+    if (emotion === 'stress') {
+      return `${intensityText}스트레스가 많으시군요. 😔 많은 것들이 부담되시겠어요.\n\n` +
+             "스트레스는 자연스러운 반응이에요.\n" +
+             "잠깐 멈춰서 숨을 고르고, 지금 할 수 있는 것부터 하나씩 해보세요.";
+    }
+    
+    if (emotion === 'frustration') {
+      return `${intensityText}답답하시군요. 막막한 기분이 드시나요? 😑\n\n` +
+             "좌절감이 들 때는 작은 것부터 시작해보세요.\n" +
+             "모든 것을 한 번에 해결하려 하지 마세요.";
+    }
+    
+    // 복합 감정 처리
+    if (mixed && secondary) {
+      return `복잡한 감정이 섞여있는 것 같아요. ${emotion}도 느끼시고 ${secondary}도 느끼시는군요. 💭\n\n` +
+             "여러 감정이 동시에 드는 건 자연스러운 일이에요.\n" +
+             "각각의 감정을 인정하고 받아들여보세요.";
+    }
+    
+    // 기본 응답
+    return "지금 마음이 편하지 않으시군요. 💙\n\n" +
+           "어떤 감정이든 느끼는 것이 자연스러워요.\n" +
+           "좀 더 자세히 이야기해 주시면 함께 풀어보아요.";
+  }
+
   // === Transformers.js 실제 구현 (비활성화됨) ===
   private async useTransformersJS(userInput: string): Promise<string | null> {
     try {

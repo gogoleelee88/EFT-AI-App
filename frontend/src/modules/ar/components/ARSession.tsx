@@ -193,6 +193,7 @@ export default function ARSession({
           ref={videoRef}
           className="w-full h-auto block"
           muted
+          autoPlay
           playsInline
           style={{ transform: 'scaleX(-1)' }} // 미러 반전
         />
