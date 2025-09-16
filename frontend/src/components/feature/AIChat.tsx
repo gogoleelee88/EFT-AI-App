@@ -3,6 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button';
 import { getServerAI } from '../../services/serverAI';
 import type { ChatResponse, ConversationMessage, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
+import {
+  createSession,
+  onUserMessage,
+  enforceTwoTurnRule,
+  sanitizeAssistantText,
+  applySafetyCheck,
+  dampenRepetition,
+  enforceLength,
+  extractSlotsFrom,
+  ensureTwoParagraphs,
+  type ConversationSession
+} from '../../types/conversationState';
 
 interface Message {
   role: 'user' | 'ai';
@@ -26,17 +38,21 @@ type AITier = 'free' | 'premium' | 'enterprise';
 
 const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const navigate = useNavigate();
+
+  // ConversationState 시스템 통합
+  const [session, setSession] = useState<ConversationSession>(() => createSession());
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [serverAI] = useState(() => getServerAI());
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
-  const [selectedTier, setSelectedTier] = useState<AITier>('premium'); // Llama 3.1 사용!
+  const [selectedTier, setSelectedTier] = useState<AITier>('premium');
   const [availableTiers, setAvailableTiers] = useState<AITier[]>(['free', 'premium', 'enterprise']);
   const [showTierSelector, setShowTierSelector] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const tierSelectorRef = useRef<HTMLDivElement>(null);
+  const [interventionTimer, setInterventionTimer] = useState<NodeJS.Timeout | null>(null);
 
   // 뒤로가기 핸들러
   const handleGoBack = () => {
@@ -99,10 +115,6 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }, 1000);
   }, [serverAI]);
 
-  // 메시지 목록 자동 스크롤
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
 
   // 티어 선택 외부 클릭 감지
   useEffect(() => {
@@ -118,88 +130,137 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     };
   }, []);
 
+  // 타이머 메모리 누수 방지 cleanup
+  useEffect(() => {
+    return () => {
+      if (interventionTimer) clearTimeout(interventionTimer);
+    };
+  }, [interventionTimer]);
+
+  // 메시지 자동 스크롤
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // 메시지 전송 처리 (새로운 서버 AI 사용)
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+  // EFT 전문 시스템 프롬프트
+  const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 상담사 AI입니다. 다음 가이드라인을 따라 응답하세요:
 
-    const userMessage: Message = {
-      role: 'user',
-      content: inputMessage.trim(),
-      timestamp: Date.now()
-    };
+1. 경청과 공감을 최우선으로 하세요
+2. 2턴 규칙: 2번째 대화 이전에는 기법을 제안하지 마세요
+3. 응답은 400-800자 범위로 작성하고 2단락으로 구성하세요
+4. 위험 신호 감지 시 안전 안내를 포함하세요
+5. 선택권을 제공하세요 ("원하지 않으면 지나가도 됩니다")
+6. 한국 문화적 맥락을 고려하세요 (수고, 책임감, 경계 등)`;
 
-    // 사용자 메시지 추가
-    setMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
-    setIsLoading(true);
+  // 개입 토글용 옵션들
+  const interventionOptions = [
+    { id: 'breathing', label: '호흡 60초', duration: 60 },
+    { id: 'tapping', label: '탭핑 3포인트', duration: 75 },
+    { id: 'grounding', label: '5감 그라운딩', duration: 90 }
+  ];
+
+  // Qwen 호출 파이프라인 (상태머신 순서 준수)
+  const onSend = async (userText: string) => {
+    if (!userText.trim() || loading) return;
+    setLoading(true);
 
     try {
-      console.log(`🚀 Engine A/B 병렬 비교 시작 (${selectedTier} 티어):`, userMessage.content);
-      
-      // Engine A/B 병렬 비교 또는 프리미엄 모델 사용
+      // 1) 사용자 입력 도착 - 핵심명사 추출 및 상태 전이
+      onUserMessage(session, userText);
+
+      // UI 메시지 추가
+      const userMessage: Message = {
+        role: 'user',
+        content: userText.trim(),
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setInputMessage('');
+
+      // 2) 엔진 응답 생성 후(확정 직전) 상태 정책 적용
+      enforceTwoTurnRule(session);
+
+      // 슬롯 추출 (보조)
+      const slots = extractSlotsFrom(userText);
+
+      // 시스템 프롬프트 구성 (+ 슬롯 JSON)
+      const systemWithSlots = SYSTEM_PROMPT + `\n[슬롯]\n${JSON.stringify(slots)}`;
+
+      // Qwen 호출 (기존 서버 래퍼 사용)
+      console.log(`🚀 Qwen 호출 시작 (${selectedTier} 티어, 상태: ${session.state}, 턴: ${session.turn}):`, userText);
+
       let serverResponse: ChatResponse;
-      
+
       if (selectedTier === 'free') {
-        // 무료: Engine A/B 병렬 비교 사용
-        console.log('🆓 무료 사용자 → Engine A/B 병렬 비교 사용');
-        serverResponse = await serverAI.chat(userMessage.content, {
+        // 무료: 기존 Engine A/B 사용
+        serverResponse = await serverAI.chat(userText, {
           userId: userId,
           maxTokens: 300,
-          temperature: 0.8
+          temperature: 0.4
         });
-      } else if (selectedTier === 'premium') {
-        // 프리미엄: Llama 3.1 단독 사용
-        console.log('💎 프리미엄 사용자 → Llama 3.1 단독 사용');
-        const response = await fetch('http://localhost:8000/api/chat/premium', {
+      } else {
+        // 프리미엄: vLLM Qwen 직접 호출
+        const response = await fetch('http://localhost:8002/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': 'Bearer EMPTY'
           },
           body: JSON.stringify({
-            message: userMessage.content,
-            conversation_history: [],
-            max_tokens: 400,
-            temperature: 0.8,
-            include_eft_recommendations: true,
-            emergency_check: true,
-            user_profile: {
-              user_id: userId,
-              eft_experience_level: "beginner",
-              communication_style: "empathetic"
-            }
+            model: 'engine-b',
+            temperature: 0.4,
+            max_tokens: 700,
+            messages: [
+              { role: 'system', content: systemWithSlots },
+              { role: 'user', content: userText }
+            ]
           })
         });
-        
+
         if (!response.ok) {
-          throw new Error(`프리미엄 API 호출 실패: ${response.status}`);
+          throw new Error(`vLLM API 호출 실패: ${response.status}`);
         }
-        
-        serverResponse = await response.json();
-      } else {
-        // Enterprise는 premium으로 폴백
-        serverResponse = await serverAI.chat(userMessage.content, {
-          userId: userId,
-          maxTokens: 400,
-          temperature: 0.8
-        });
+
+        const vllmResponse = await response.json();
+
+        // ChatResponse 형태로 변환
+        serverResponse = {
+          response: vllmResponse.choices?.[0]?.message?.content ?? '',
+          emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, triggers: [] },
+          eft_recommendations: [],
+          confidence_score: 0.8,
+          processing_time: 0,
+          emergency_detected: false,
+          professional_referral: false
+        };
       }
       
-      // AI 응답에서 프롬프트 부분 제거 (fallback 처리)
-      const cleanResponse = (() => {
-        const response = serverResponse.response;
-        if (response.includes("지금부터 EFT 전문 상담사로서 응답해 주세요:")) {
-          return response.split("지금부터 EFT 전문 상담사로서 응답해 주세요:").pop()?.trim() || response;
-        }
-        return response;
-      })();
+      // 3) 응답 텍스트 후처리 (통합 파이프라인 순서)
+      let reply = serverResponse.response || '';
+
+      // 3-1. 문맥 복원 ("로 힘드시겠어요" → "잠으로 힘드시겠어요")
+      reply = sanitizeAssistantText(session, reply);
+
+      // 3-2. 안전성 검사 (위험 키워드 감지 + 안전 안내)
+      reply = applySafetyCheck(session, userText, reply);
+
+      // 3-3. 반복 방지 적용 (24시간 캐시)
+      reply = dampenRepetition(session, reply);
+
+      // 3-4. 길이 제한 강제 (400-800자)
+      reply = enforceLength(reply);
+
+      // UI 반영 (2단락 보장)
+      const paragraphs = ensureTwoParagraphs(reply);
+      const finalContent = paragraphs.join('\n\n');
 
       const aiMessage: Message = {
         role: 'ai',
-        content: cleanResponse,
+        content: finalContent,
         timestamp: Date.now(),
         metadata: {
           emotion_analysis: serverResponse.emotion_analysis,
@@ -207,11 +268,19 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           confidence: serverResponse.confidence_score,
           processing_time: serverResponse.processing_time,
           emergency_detected: serverResponse.emergency_detected,
-          professional_referral: serverResponse.professional_referral
+          professional_referral: serverResponse.professional_referral,
+          conversationState: session.state,
+          turnCount: session.turn
         }
       };
 
       setMessages(prev => [...prev, aiMessage]);
+
+      // 4) 메시지 렌더링 & turn 카운트 증가 (응답 확정 후)
+      session.turn += 1;
+      setSession({ ...session }); // 세션 상태 저장
+
+      console.log(`✅ 파이프라인 완료 - 상태: ${session.state}, 턴: ${session.turn}`);
 
       // 응급상황 감지 시 특별 처리
       if (serverResponse.emergency_detected) {
@@ -243,23 +312,46 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
     } catch (error) {
       console.error('❌ 서버 AI 응답 실패:', error);
-      
+
       const errorMessage: Message = {
         role: 'ai',
-        content: serverStatus === 'offline' 
-          ? "현재 AI 서버와 연결할 수 없습니다. 서버 상태를 확인해 주세요. 🔧" 
+        content: serverStatus === 'offline'
+          ? "현재 AI 서버와 연결할 수 없습니다. 서버 상태를 확인해 주세요. 🔧"
           : "죄송합니다. 응답 생성 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요. 🤔",
         timestamp: Date.now(),
-        metadata: { 
+        metadata: {
           confidence: 0.3,
           processing_time: 0
         }
       };
-      
+
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
+  };
+
+  // 기존 handleSendMessage를 onSend로 대체
+  const handleSendMessage = () => onSend(inputMessage);
+
+  // 개입 토글 시작 함수
+  const startIntervention = (option: typeof interventionOptions[0]) => {
+    console.log(`🧘 ${option.label} 시작 (${option.duration}초)`);
+
+    // 기존 타이머 정리
+    if (interventionTimer) clearTimeout(interventionTimer);
+
+    // 새 타이머 설정 (60-90초 후 효과 확인)
+    const timer = setTimeout(() => {
+      onSend('조금 가벼워졌는지, 몸이 어떻게 느껴지는지 알려줄래요?');
+    }, option.duration * 1000);
+
+    setInterventionTimer(timer);
+  };
+
+  // 개입 건너뛰기
+  const skipIntervention = () => {
+    onSend('괜찮아요. 원하지 않으면 지금은 건너뛰어도 됩니다.');
   };
 
   // Enter 키 처리
@@ -268,6 +360,25 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  // 체크리스트 배지 생성 (새로운 세션 구조)
+  const generateChecklistBadges = () => {
+    const lastAI = messages.filter(m => m.role === 'ai').pop()?.content || '';
+    const hasChoice = /(괜찮다면|원하지 않으면|지금은 듣기만)/.test(lastAI);
+    const safetyQ = /(어려웠던 순간|경고 신호|해치고 싶은 충동)/.test(lastAI);
+    const culture = /(수고|책임감|경계|합의|역할 기대)/.test(lastAI);
+    const len = [...lastAI].length;
+    const inRange = (len >= 350 && len <= 900);
+    const twoTurnOk = session.state !== 'S3' || session.turn >= 2;
+
+    return {
+      twoTurn: twoTurnOk,
+      oneInterventionWithChoice: hasChoice,
+      safetyScreened: safetyQ,
+      lengthAndCulture: inRange && culture,
+      repetitionDamped: true // 새로운 시스템에서는 항상 활성화
+    };
   };
 
   // 제안 메시지 클릭 처리
@@ -456,8 +567,55 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
             </div>
           ))}
 
+          {/* 개입 토글 (S3 상태이며 긴급상황이 아닐 때만 표시) */}
+          {(() => {
+            const emergency = session.safety?.escalated && (session.safety?.selfHarm || session.safety?.otherHarm);
+            const showIntervention = session.state === 'S3' && !emergency;
+
+            if (!showIntervention) return null;
+
+            return (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 my-4">
+                <div className="text-green-800 font-medium mb-3">
+                  🌿 잠시 함께 해볼까요?
+                </div>
+                <div className="space-y-2">
+                  {interventionOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => startIntervention(option)}
+                      className="w-full text-left px-3 py-2 bg-white border border-green-300 rounded-md hover:bg-green-50 transition-colors"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={skipIntervention}
+                    className="w-full text-center px-3 py-2 text-green-600 hover:text-green-800 transition-colors text-sm"
+                  >
+                    지금은 건너뛰기
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 체크리스트 배지 (옵션) */}
+          {(() => {
+            const flags = generateChecklistBadges();
+            return (
+              <div className="flex flex-wrap gap-1 my-2">
+                {flags.twoTurn && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">2턴규칙✓</span>}
+                {flags.oneInterventionWithChoice && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">선택권✓</span>}
+                {flags.safetyScreened && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">안전점검✓</span>}
+                {flags.lengthAndCulture && <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">문화배려✓</span>}
+                {flags.repetitionDamped && <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">반복방지✓</span>}
+              </div>
+            );
+          })()}
+
           {/* 로딩 인디케이터 */}
-          {isLoading && (
+          {loading && (
             <div className="flex justify-start">
               <div className="bg-white text-gray-800 border border-gray-200 px-4 py-3 rounded-2xl">
                 <div className="flex items-center space-x-2">
@@ -512,12 +670,12 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="메시지를 입력하세요..."
-              disabled={isLoading}
+              disabled={loading}
               className="flex-1 px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             <Button
               onClick={handleSendMessage}
-              disabled={!inputMessage.trim() || isLoading}
+              disabled={!inputMessage.trim() || loading}
               className="px-6 py-3 bg-indigo-500 text-white rounded-2xl hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
             >
               전송
