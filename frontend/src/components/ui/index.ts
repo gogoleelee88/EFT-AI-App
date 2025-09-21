@@ -4,3 +4,4 @@ export { default as Card } from './Card';
 export { default as Input } from './Input';
 export { default as EmotionButton } from './EmotionButton';
 export { default as IntensitySlider } from './IntensitySlider';
+export { default as SUDSInlineCard } from './SUDSInlineCard';

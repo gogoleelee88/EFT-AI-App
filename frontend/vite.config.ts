@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -64,13 +69,18 @@ export default defineConfig({
           }
         ]
       },
-      // ✅ 개발 환경에서는 PWA 비활성화
+      // ✅ 개발 환경에서도 PWA 테스트 가능하도록 활성화
       devOptions: {
-        enabled: false,
+        enabled: true,
         type: 'module'
       }
     })
   ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
+  },
   build: {
     rollupOptions: {
       output: {
@@ -84,6 +94,9 @@ export default defineConfig({
   },
   server: {
     host: 'localhost',      // HMR 안정성을 위해 명시적 설정
-    hmr: true               // 동적 포트 할당 허용
+    hmr: true,              // 동적 포트 할당 허용
+    headers: {
+      'X-Content-Type-Options': 'nosniff',
+    },
   }
 })

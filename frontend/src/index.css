@@ -2,4 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 토스트 애니메이션 키프레임 */
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* 모션 최소화 선호 대응 (접근성) */
+@media (prefers-reduced-motion: reduce) {
+  [role="alert"][data-toast="true"] {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Safari backdrop-filter 벤더 프리픽스 지원 */
+.backdrop-filter {
+  -webkit-backdrop-filter: blur(8px); /* Safari 9+ */
+  backdrop-filter: blur(8px);
+}
+
+/* 투명/반투명 배경과 같이 써야 blur가 보인다 */
+.backdrop-surface {
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+/* 강한 블러 버전 */
+.backdrop-filter-xl {
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
 /* EFT 앱 전용 스타일 (피그마 디자인 완성 후 추가) */

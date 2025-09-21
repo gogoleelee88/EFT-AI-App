@@ -141,6 +141,12 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
   // 개선된 카메라 훅 사용
   const camera = useCamera();
 
+  // 좌우 반전 좌표 변환: logicalX -> canvas pixel X
+  const canvasX = (x: number, canvas?: HTMLCanvasElement | null) => {
+    const w = canvas?.width ?? 640; // DPR 반영된 내부 픽셀폭 사용
+    return w - x;
+  };
+
   const [isLoading, setIsLoading] = useState(true);
   const [calibrationReady, setCalibrationReady] = useState(false);
   const calibrationLockedRef = useRef(false); // 🔒 캘리브레이션 잠금
@@ -525,11 +531,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
     // 캔버스 클리어
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 캔버스 그리기 좌표계 보정: 비디오는 거울이지만 캔버스는 정상 → X만 뒤집어서 그린다
-    const canvasX = (x: number) => {
-      const w = canvas.width;
-      return w - x; // 거울 보정
-    };
+    // 캔버스 좌표계 보정 (상위 스코프의 canvasX 함수 사용)
 
     // 안전 프레임(패딩 가이드) — 프레임의 10% 안쪽으로 박스 표시
     const padX = canvas.width * 0.10;
@@ -678,14 +680,14 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
     // 배경 원 (적절한 크기로)
     ctx.globalAlpha = 0.8;
     ctx.beginPath();
-    ctx.arc(canvasX(point.x), point.y, radius + 5, 0, 2 * Math.PI); // 10→5로 축소
+    ctx.arc(canvasX(point.x, canvas), point.y, radius + 5, 0, 2 * Math.PI); // 10→5로 축소
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fill();
     
     // 메인 원 (적절한 크기로)
     ctx.globalAlpha = alpha;
     ctx.beginPath();
-    ctx.arc(canvasX(point.x), point.y, radius, 0, 2 * Math.PI);
+    ctx.arc(canvasX(point.x, canvas), point.y, radius, 0, 2 * Math.PI);
     ctx.fillStyle = isCurrentTarget ? '#ffff00' : point.color; // 활성 시 노란색
     ctx.fill();
     
@@ -698,7 +700,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
       // 펄싱 효과 (적절한 크기로)
       const pulseRadius = radius + Math.sin(Date.now() / 120) * 12; // 25→12로 축소
       ctx.beginPath();
-      ctx.arc(canvasX(point.x), point.y, pulseRadius, 0, 2 * Math.PI);
+      ctx.arc(canvasX(point.x, canvas), point.y, pulseRadius, 0, 2 * Math.PI);
       ctx.strokeStyle = '#ff0000'; // 빨간색으로 강조
       ctx.lineWidth = 4; // 8→4로 축소
       ctx.globalAlpha = 0.8;
@@ -707,7 +709,7 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
       // 두 번째 펄싱 링
       const pulse2 = radius + Math.sin(Date.now() / 100) * 18; // 35→18로 축소
       ctx.beginPath();
-      ctx.arc(canvasX(point.x), point.y, pulse2, 0, 2 * Math.PI);
+      ctx.arc(canvasX(point.x, canvas), point.y, pulse2, 0, 2 * Math.PI);
       ctx.strokeStyle = '#ffff00';
       ctx.lineWidth = 2; // 4→2로 축소
       ctx.globalAlpha = 0.5;
@@ -725,26 +727,33 @@ export const EFTGuideAR: React.FC<EFTGuideARProps> = ({
     ctx.textAlign = 'center';
     
     const labelY = point.y - radius - 15; // 25→15로 축소
-    ctx.strokeText(point.name, canvasX(point.x), labelY);
-    ctx.fillText(point.name, canvasX(point.x), labelY);
+    ctx.strokeText(point.name, canvasX(point.x, canvas), labelY);
+    ctx.fillText(point.name, canvasX(point.x, canvas), labelY);
     
     ctx.restore();
   };
 
   // 손 위치 표시
-  const drawHandIndicator = (ctx: CanvasRenderingContext2D, position: { x: number; y: number }) => {
-    const canvasX = (x: number) => {
-      const w = canvasRef.current?.width ?? 640;
-      return w - x;
-    };
+  const drawHandIndicator = (
+    ctx: CanvasRenderingContext2D,
+    position: { x: number; y: number }
+  ) => {
+    const canvasEl = canvasRef.current ?? (ctx.canvas as HTMLCanvasElement | null);
+
+    ctx.save();
+
+    // 본체 채우기
     ctx.beginPath();
-    ctx.arc(canvasX(position.x), position.y, 10, 0, 2 * Math.PI);
+    ctx.arc(canvasX(position.x, canvasEl), position.y, 10, 0, 2 * Math.PI);
     ctx.fillStyle = '#00b894';
     ctx.fill();
-    
-    ctx.strokeStyle = '#ffffff';
+
+    // 외곽선(흰색 링)
     ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
     ctx.stroke();
+
+    ctx.restore();
   };
 
   // 탭핑 상호작용 감지

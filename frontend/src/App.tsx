@@ -6,8 +6,12 @@ import Dashboard from './pages/Dashboard';
 import AIChat from './components/feature/AIChat';
 import EFTSessionSelector from './components/feature/EFTSessionSelector';
 import ARDemo from './pages/ARDemo';
+import ARTest from './pages/ARTest';
+import ARHolisticTest from './pages/ARHolisticTest';
 import ArCalibrationPage from './pages/ArCalibrationPage';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
+import AppHeader from './components/layout/AppHeader';
+import PWAInstallHintIOS from './components/PWAInstallHintIOS';
 
 const App: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth();
@@ -45,6 +49,8 @@ const App: React.FC = () => {
   return (
     <Router>
       <ResponsiveContainer>
+        <AppHeader />
+        <PWAInstallHintIOS />
         <Routes>
           <Route path="/dashboard" element={<Dashboard user={user} />} />
           <Route path="/" element={<Dashboard user={user} />} />
@@ -56,13 +62,21 @@ const App: React.FC = () => {
             path="/eft-guide" 
             element={<EFTSessionSelector onClose={() => window.history.back()} />} 
           />
-          <Route 
-            path="/ar-demo" 
-            element={<ARDemo />} 
+          <Route
+            path="/ar-demo"
+            element={<ARDemo />}
           />
-          <Route 
-            path="/ar/calibration" 
-            element={<ArCalibrationPage />} 
+          <Route
+            path="/ar-test"
+            element={<ARTest />}
+          />
+          <Route
+            path="/ar-holistic"
+            element={<ARHolisticTest />}
+          />
+          <Route
+            path="/ar/calibration"
+            element={<ArCalibrationPage />}
           />
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />

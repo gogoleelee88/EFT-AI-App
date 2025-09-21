@@ -8,8 +8,16 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Sphere, Box } from '@react-three/drei';
 import * as THREE from 'three';
 
+// EFT 탭핑 포인트 타입 정의
+type TappingPoint = {
+  id: string;
+  name: string;
+  position: [number, number, number];
+  color: string;
+};
+
 // EFT 탭핑 포인트 정의
-const EFT_TAPPING_POINTS = [
+const EFT_TAPPING_POINTS: TappingPoint[] = [
   { id: 'crown', name: '정수리', position: [0, 2.2, 0], color: '#ff6b6b' },
   { id: 'eyebrow', name: '눈썹', position: [0.3, 1.8, 0.4], color: '#4ecdc4' },
   { id: 'side_eye', name: '눈가', position: [0.5, 1.7, 0.3], color: '#45b7d1' },
@@ -19,7 +27,7 @@ const EFT_TAPPING_POINTS = [
   { id: 'collarbone', name: '쇄골', position: [0.4, 0.3, 0.3], color: '#6c5ce7' },
   { id: 'under_arm', name: '겨드랑이', position: [0.8, 0.0, 0], color: '#a29bfe' },
   { id: 'karate_chop', name: '손날', position: [0.6, -0.5, 0.8], color: '#fd79a8' }
-] as const;
+];
 
 // 3D 아바타 몸체 (간소화된 형태)
 const Avatar3D: React.FC<{ currentPoint: number; isAnimating: boolean }> = ({ 
@@ -69,7 +77,7 @@ const Avatar3D: React.FC<{ currentPoint: number; isAnimating: boolean }> = ({
 
 // 탭핑 포인트 마커
 const TappingPoint: React.FC<{
-  point: typeof EFT_TAPPING_POINTS[0];
+  point: TappingPoint;
   index: number;
   isActive: boolean;
   isCompleted: boolean;

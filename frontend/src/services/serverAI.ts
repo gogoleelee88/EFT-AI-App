@@ -5,6 +5,53 @@
 
 import type { ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
 
+// API 키 가져오기 유틸리티
+const getApiKey = () => import.meta.env.VITE_API_KEY || '';
+
+// API 요청 헤더 생성 유틸리티
+const createApiHeaders = (additionalHeaders: Record<string, string> = {}) => {
+  const apiKey = getApiKey();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...additionalHeaders
+  };
+
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+
+  return headers;
+};
+
+// Provider 타입 및 설정
+export type Provider = 'local_vllm' | 'openai' | 'anthropic' | 'qwen';
+const provider: Provider = (import.meta.env.VITE_PROVIDER as Provider) ?? 'local_vllm';
+
+// EFT 전문 시스템 프롬프트
+const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사입니다.
+
+역할:
+- 공감적이고 따뜻한 상담사
+- EFT 기법을 활용한 감정 치유 전문가
+- 한국 문화에 맞는 상담 제공
+
+금지사항:
+- 의학적 진단이나 처방 제공
+- 약물 복용 권유
+- 즉각적인 해결책 강요
+
+목표:
+- 내담자의 감정을 이해하고 공감
+- EFT 기법으로 감정 완화 도움
+- 안전하고 지지적인 환경 조성
+- 점진적인 치유 과정 안내
+
+상담 접근:
+1. 경청과 공감 우선
+2. 감정 상태 파악
+3. 적절한 EFT 기법 제안
+4. 지속적인 격려와 지지`;
+
 // 환경변수에서 서버 URL 가져오기 (Vite 환경변수 사용)
 const SERVER_URL = import.meta.env.VITE_AI_SERVER_URL || 'http://localhost:8000';
 
@@ -469,6 +516,152 @@ class ServerAI {
       return false;
     }
   }
+}
+
+// === local_vllm Provider 전용 함수들 ===
+
+// Firestore 헬퍼 함수 import (있다고 가정)
+// import { fsUpdateTurn } from './fs';
+
+/**
+ * A/B 요청 + 텔레메트리 수집
+ * - 기본 반환: 백엔드 /ab/chat 결과(JSON)
+ * - logCtx(sessionId, turnId)를 넘기면 Firestore의 해당 턴 문서에 텔레메트리를 저장
+ */
+export async function generateReplyAB(
+  message: string,
+  logCtx?: { sessionId: string; turnId: string }
+) {
+  if (provider !== "local_vllm") throw new Error("Not local_vllm provider");
+
+  const payload = {
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: message },
+    ],
+    temperature: 0.6,
+    max_tokens: 512,
+  };
+
+  const base = import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://localhost:8000';
+
+  // 총 소요 시간
+  const T0 = performance.now();
+  const res = await fetch(`${base}/ab/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const T1 = performance.now();
+  const totalLatencyMs = Math.round(T1 - T0);
+
+  if (!res.ok) {
+    const errText = await (async () => {
+      try {
+        const j = await res.json();
+        return j?.detail || j?.error || JSON.stringify(j);
+      }
+      catch {
+        return await res.text();
+      }
+    })();
+
+    // 실패도 텔레메트리 남길 수 있게
+    if (logCtx) {
+      // Firestore 업데이트 함수가 있다면 사용
+      // await fsUpdateTurn(logCtx.sessionId, logCtx.turnId, {
+      //   ab: {
+      //     overallOk: false,
+      //     httpStatus: res.status,
+      //     totalLatencyMs,
+      //     error: errText,
+      //   },
+      // });
+      console.log('텔레메트리 저장 (실패):', { logCtx, error: errText, totalLatencyMs });
+    }
+    throw new Error(`AB chat failed: ${res.status} ${errText}`);
+  }
+
+  const json = await res.json();
+  // 백엔드 반환: { llama3_response, qwen25_response, faster_model, comparison_time ... }
+  const a = json.llama3_response ?? {};
+  const b = json.qwen25_response ?? {};
+
+  // vLLM 표준 응답에서 본문/usage 꺼내기
+  const contentA = a?.choices?.[0]?.message?.content ?? a?.response ?? "";
+  const usageA = a?.usage ?? null;
+
+  const contentB = b?.choices?.[0]?.message?.content ?? b?.response ?? "";
+  const usageB = b?.usage ?? null;
+
+  // 빠른 모델(백엔드가 정해줬으면 그 값, 없으면 단순 길이/OK로 추정)
+  const fasterModel = json.faster_model ??
+    (contentA && !contentB ? "llama3" : !contentA && contentB ? "qwen25" : "unknown");
+
+  // 텔레메트리 페이로드 (UI/대시보드에서 쓰기 좋게 정규화)
+  const telemetry = {
+    totalLatencyMs,
+    fasterModel,
+    a: {
+      ok: !!contentA,
+      model: "engine-a",
+      tokens: usageA ? {
+        prompt: usageA.prompt_tokens ?? null,
+        completion: usageA.completion_tokens ?? null,
+        total: usageA.total_tokens ?? null,
+      } : null,
+      preview: contentA.slice(0, 200),
+    },
+    b: {
+      ok: !!contentB,
+      model: "engine-b",
+      tokens: usageB ? {
+        prompt: usageB.prompt_tokens ?? null,
+        completion: usageB.completion_tokens ?? null,
+        total: usageB.total_tokens ?? null,
+      } : null,
+      preview: contentB.slice(0, 200),
+    },
+  };
+
+  // Firestore에 저장 (세션/턴을 알고 있을 때만)
+  if (logCtx) {
+    // Firestore 업데이트 함수가 있다면 사용
+    // await fsUpdateTurn(logCtx.sessionId, logCtx.turnId, {
+    //   textAI_A: contentA,
+    //   textAI_B: contentB,
+    //   ab: telemetry,
+    // });
+    console.log('텔레메트리 저장 (성공):', { logCtx, telemetry });
+  }
+
+  return json;
+}
+
+/**
+ * 간단한 A/B 응답 호출 (텔레메트리 없음)
+ */
+export async function generateReplyAB_simple(message: string) {
+  if (provider !== "local_vllm") throw new Error("Not local_vllm provider");
+
+  const payload = {
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: message }
+    ],
+    temperature: 0.6,
+    max_tokens: 512
+  };
+
+  const base = import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://localhost:8000';
+  const res = await fetch(`${base}/ab/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) throw new Error(`AB chat failed: ${res.status}`);
+  return res.json(); // { llama3_response, qwen25_response, faster_model, ... }
 }
 
 // 싱글톤 인스턴스

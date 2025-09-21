@@ -1,6 +1,8 @@
 // frontend/src/types/conversationState.ts
 // 대화 상태/전이 + 안전검사 + 금지어 감쇠 + 문장 복원 유틸
 
+import { getOrCreateSessionId } from '../lib/session';
+
 export type ConversationState = 'S1' | 'S2' | 'S3' | 'S4';
 
 export interface SafetyFlags {
@@ -10,17 +12,35 @@ export interface SafetyFlags {
 }
 
 export interface ConversationSession {
+  sessionId: string;             // ✅ 세션 고유 식별자
   state: ConversationState;
   turn: number;                  // 응답 확정 후 +1 (아래 enforceTwoTurnRule 주석 참고)
   lastUserCoreNoun?: string;     // 잘림 복원용
   safety: SafetyFlags;
 }
 
+/** 최초 메모리 상의 기본 세션 값 생성 */
 export const initialSession = (): ConversationSession => ({
+  sessionId: (globalThis as any)?.crypto?.randomUUID?.() ??
+    Math.random().toString(36).slice(2) + Date.now().toString(36),
   state: 'S1',
   turn: 0,
   safety: { selfHarm: false, otherHarm: false, escalated: false },
 });
+
+/**
+ * 세션 생성:
+ * - 기본 값은 initialSession()을 사용
+ * - persist=true면 로컬스토리지의 고정 세션ID를 우선 적용
+ *   (재방문/새 탭에서도 동일 ID 유지)
+ */
+export const createSession = (persist = true): ConversationSession => {
+  const base = initialSession();
+  if (!persist) return base;
+
+  const stableId = getOrCreateSessionId(base.sessionId);
+  return { ...base, sessionId: stableId };
+};
 
 /* ---------------------------
  *  핵심 명사 추출 (간단 버전)
@@ -316,5 +336,4 @@ export function extractSlotsFrom(message: string): Record<string, any> {
  * -------------------------------- */
 
 // 기존 호출 호환용 별칭들만 유지
-export const createSession = initialSession;
-export const restoreContext = sanitizeAssistantText;
+export { sanitizeAssistantText as restoreContext };

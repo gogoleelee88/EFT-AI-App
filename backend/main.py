@@ -5,14 +5,15 @@ EFT AI 서버 - FastAPI 메인 애플리케이션
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -20,19 +21,34 @@ import itertools
 import random
 import logging
 import uuid
+from uuid import uuid4
 from collections import defaultdict, deque
 
 # 로컬 모듈 임포트
 from services.vllm_client import VLLMClient
+from services.vllm_proxy import get_vllm_proxy
 from services.prompt_manager import EFTPromptManager
 from services.emotion_analyzer import EmotionAnalyzer
+from services.memory_system import build_context, update_running_summary, save_turn, get_memory_system, get_memory_stats
 from models.chat_models import ChatRequest, ChatResponse, StreamResponse
+from models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
 from config.settings import get_settings
 from utils.logger import get_logger
 
 # 설정 및 로거
 settings = get_settings()
 logger = get_logger(__name__)
+
+# --- 데이터 파일 경로 준비 ---
+DATA_DIR = Path(__file__).resolve().parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+SUDS_FILE = DATA_DIR / "suds_events.jsonl"
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+# SUDS 타입 정의
+SUDSType = Literal["pre", "post"]
 
 # VLLMClient는 app.state로 관리
 
@@ -128,52 +144,223 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
             raise HTTPException(status_code=413, detail="Payload too large")
         return await call_next(request)
 
-# 2. 상관관계 ID 추적 (디버깅 용이)
-class CorrelationIdMiddleware(BaseHTTPMiddleware):
+# 2. Trace ID 발급/전파 시스템 (운영 관측성)
+class TraceIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        cid = request.headers.get("x-request-id") or uuid.uuid4().hex
-        request.state.correlation_id = cid
+        # 요청에서 trace_id 추출 또는 생성
+        trace_id = (
+            request.headers.get("x-trace-id") or
+            request.headers.get("x-request-id") or
+            request.headers.get("traceparent", "").split("-")[1] if request.headers.get("traceparent") else None or
+            uuid.uuid4().hex
+        )
+
+        # request.state에 저장
+        request.state.trace_id = trace_id
+        request.state.correlation_id = trace_id  # 기존 호환성
+
+        start_time = time.time()
         response = await call_next(request)
-        response.headers["x-request-id"] = cid
+        processing_time = (time.time() - start_time) * 1000
+
+        # 응답 헤더에 trace_id 추가
+        response.headers["x-trace-id"] = trace_id
+        response.headers["x-request-id"] = trace_id  # 기존 호환성
+        response.headers["x-processing-time"] = f"{processing_time:.2f}ms"
+
         return response
 
-# 3. 간단한 레이트 리밋 (메모리 기반)
-class SimpleRateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: ASGIApp, requests_per_minute: int = 60):
+# 3. 강화된 레이트 리밋 (운영급)
+class EnhancedRateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: ASGIApp,
+                 requests_per_minute: int = 60,
+                 chat_requests_per_minute: int = 10,
+                 burst_requests_per_second: int = 10):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        self.request_times = defaultdict(deque)  # IP -> deque of timestamps
-        
+        self.chat_requests_per_minute = chat_requests_per_minute
+        self.burst_requests_per_second = burst_requests_per_second
+
+        # IP별 요청 기록 (분단위/초단위)
+        self.request_times_minute = defaultdict(deque)
+        self.request_times_second = defaultdict(deque)
+        self.chat_request_times = defaultdict(deque)
+
+        # 차단된 IP 목록 (자동 해제)
+        self.blocked_ips = {}
+
+    def _is_blocked(self, ip: str) -> bool:
+        """IP 차단 상태 확인 및 자동 해제"""
+        if ip in self.blocked_ips:
+            if time.time() < self.blocked_ips[ip]:
+                return True
+            else:
+                del self.blocked_ips[ip]
+                logger.info(f"IP {ip} 차단 해제")
+        return False
+
+    def _block_ip(self, ip: str, duration: int = 300):
+        """IP 차단 (기본 5분)"""
+        self.blocked_ips[ip] = time.time() + duration
+        logger.warning(f"IP {ip} {duration}초 차단")
+
     async def dispatch(self, request: Request, call_next):
-        # 무료 티어 API 경로에만 적용
-        if not request.url.path.startswith("/api/chat"):
-            return await call_next(request)
-            
         client_ip = request.client.host if request.client else "unknown"
         current_time = time.time()
-        
-        # 1분 이전 요청들 제거
-        client_requests = self.request_times[client_ip]
-        while client_requests and current_time - client_requests[0] > 60:
-            client_requests.popleft()
-            
-        # 레이트 리밋 체크
-        if len(client_requests) >= self.requests_per_minute:
-            logger.warning(f"레이트 리밋 초과: {client_ip} ({len(client_requests)} requests/min)")
-            raise HTTPException(
-                status_code=429, 
-                detail=f"Rate limit exceeded. Maximum {self.requests_per_minute} requests per minute.",
+        path = request.url.path
+
+        # 차단된 IP 체크
+        if self._is_blocked(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "IP가 일시적으로 차단되었습니다.",
+                    "trace_id": getattr(request.state, "trace_id", None)
+                },
+                headers={"Retry-After": "300"}
+            )
+
+        # 1. 초당 버스트 제한 (DDoS 방지)
+        second_requests = self.request_times_second[client_ip]
+        while second_requests and current_time - second_requests[0] > 1:
+            second_requests.popleft()
+
+        if len(second_requests) >= self.burst_requests_per_second:
+            self._block_ip(client_ip, 60)  # 1분 차단
+            logger.warning(f"초당 버스트 제한 초과: {client_ip} ({len(second_requests)} req/s)")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": f"Too many requests per second (max {self.burst_requests_per_second})",
+                    "trace_id": getattr(request.state, "trace_id", None)
+                },
                 headers={"Retry-After": "60"}
             )
-            
-        # 현재 요청 기록
-        client_requests.append(current_time)
+
+        # 2. 분당 일반 제한
+        minute_requests = self.request_times_minute[client_ip]
+        while minute_requests and current_time - minute_requests[0] > 60:
+            minute_requests.popleft()
+
+        if len(minute_requests) >= self.requests_per_minute:
+            logger.warning(f"분당 제한 초과: {client_ip} ({len(minute_requests)} req/min)")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": f"Rate limit exceeded. Maximum {self.requests_per_minute} requests per minute",
+                    "trace_id": getattr(request.state, "trace_id", None)
+                },
+                headers={"Retry-After": "60"}
+            )
+
+        # 3. 채팅 API 특별 제한
+        if "/chat" in path or "/ab/chat" in path:
+            chat_requests = self.chat_request_times[client_ip]
+            while chat_requests and current_time - chat_requests[0] > 60:
+                chat_requests.popleft()
+
+            if len(chat_requests) >= self.chat_requests_per_minute:
+                logger.warning(f"채팅 API 제한 초과: {client_ip} ({len(chat_requests)} chat/min)")
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "detail": f"Chat API rate limit: maximum {self.chat_requests_per_minute} requests per minute",
+                        "trace_id": getattr(request.state, "trace_id", None)
+                    },
+                    headers={"Retry-After": "60"}
+                )
+            chat_requests.append(current_time)
+
+        # 요청 기록
+        second_requests.append(current_time)
+        minute_requests.append(current_time)
+
+        # 정상 처리
+        response = await call_next(request)
+
+        # 응답 헤더에 Rate Limit 정보 추가
+        remaining = max(0, self.requests_per_minute - len(minute_requests))
+        response.headers["X-RateLimit-Limit"] = str(self.requests_per_minute)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(int(current_time + 60))
+
+        return response
+
+# 4. API 키 인증 미들웨어 (MVP 리뷰어 보호)
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app: ASGIApp):
+        super().__init__(app)
+        # 환경변수에서 API 키 읽기
+        self.api_key = getattr(settings, 'API_KEY', None) or os.getenv("API_KEY")
+
+        # 공개 엔드포인트 (API 키 불필요)
+        self.public_paths = {
+            "/",
+            "/health",
+            "/v1/health",
+            "/api/health",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/v1/health/engines"  # 엔진 헬스체크도 공개
+        }
+
+        logger.info(f"🔐 API 키 인증 미들웨어 초기화 (API 키: {'설정됨' if self.api_key else '미설정'})")
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+
+        # 공개 엔드포인트는 인증 생략
+        if path in self.public_paths:
+            return await call_next(request)
+
+        # API 키가 설정되지 않은 경우 모든 요청 허용 (개발 모드)
+        if not self.api_key:
+            logger.warning("⚠️ API_KEY가 설정되지 않음 - 모든 요청 허용 (개발 모드)")
+            return await call_next(request)
+
+        # API 키 검증
+        client_api_key = request.headers.get("x-api-key") or request.headers.get("authorization")
+        if client_api_key and client_api_key.startswith("Bearer "):
+            client_api_key = client_api_key.replace("Bearer ", "")
+
+        if not client_api_key:
+            logger.warning(f"🚫 API 키 누락: {request.client.host if request.client else 'unknown'} -> {path}")
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "API key required",
+                    "message": "리뷰어 접근을 위해 API 키가 필요합니다",
+                    "required_header": "x-api-key 또는 Authorization: Bearer <key>",
+                    "trace_id": getattr(request.state, "trace_id", None)
+                }
+            )
+
+        if client_api_key != self.api_key:
+            logger.warning(f"🚫 잘못된 API 키: {request.client.host if request.client else 'unknown'} -> {path}")
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "Invalid API key",
+                    "message": "올바른 API 키를 제공해주세요",
+                    "trace_id": getattr(request.state, "trace_id", None)
+                }
+            )
+
+        # 인증 성공
+        request.state.authenticated = True
+        logger.info(f"✅ API 키 인증 성공: {request.client.host if request.client else 'unknown'} -> {path}")
+
         return await call_next(request)
 
 # 미들웨어 등록 (순서 중요!)
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=256 * 1024)  # 256KB로 여유 있게
-app.add_middleware(CorrelationIdMiddleware)
-app.add_middleware(SimpleRateLimitMiddleware, requests_per_minute=120)  # 분당 120회
+app.add_middleware(TraceIdMiddleware)
+app.add_middleware(APIKeyAuthMiddleware)  # API 키 인증 추가
+app.add_middleware(EnhancedRateLimitMiddleware,
+                   requests_per_minute=120,      # 일반 API 분당 120회
+                   chat_requests_per_minute=20,  # 채팅 API 분당 20회
+                   burst_requests_per_second=15) # 초당 최대 15회 (DDoS 방지)
 app.add_middleware(ABRouteMiddleware)
 
 # CORS 설정 (PWA 클라이언트 연결용)
@@ -252,6 +439,41 @@ async def shutdown_event():
         
     logger.info("✅ 서버 종료 완료")
 
+# 글로벌 예외 핸들러 (trace_id 포함)
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    trace_id = getattr(request.state, "trace_id", None)
+    logger.error(f"[{trace_id}] 처리되지 않은 예외: {exc}", exc_info=True)
+
+    payload = {
+        "detail": "Internal Server Error",
+        "error_type": type(exc).__name__
+    }
+    if trace_id:
+        payload["trace_id"] = trace_id
+
+    return JSONResponse(
+        status_code=500,
+        content=payload
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    trace_id = getattr(request.state, "trace_id", None)
+    logger.warning(f"[{trace_id}] HTTP 예외: {exc.status_code} - {exc.detail}")
+
+    payload = {
+        "detail": exc.detail,
+        "status_code": exc.status_code
+    }
+    if trace_id:
+        payload["trace_id"] = trace_id
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=payload
+    )
+
 # 기본 엔드포인트
 @app.get("/")
 async def root():
@@ -288,19 +510,189 @@ async def health_check():
         "memory_usage": "TODO: 메모리 사용량"
     }
 
+# === v1 API 네임스페이스 (운영화) ===
+proxy = get_vllm_proxy()
+
+@app.get("/v1/health/engines")
+async def health_engines_v1(request: Request):
+    """Engine A/B 헬스체크 - v1"""
+    result = await proxy.health_check_engines(request=request)
+    return {
+        "api_version": "v1",
+        "engines": result,
+        "schema_version": "1.0"
+    }
+
+@app.post("/suds", response_model=SUDSResponse, tags=["suds"])
+async def save_suds(req: SUDSRequest):
+    """SUDS 저장 엔드포인트"""
+    trace_id = str(uuid4())
+    now = _now_iso()
+
+    entry = SUDSEntry(
+        trace_id=trace_id,
+        type=req.type,
+        score=req.score,
+        session_id=req.session_id,
+        user_id=req.user_id,
+        saved_at=now,
+        timestamp=now,
+    )
+    try:
+        append_suds(entry)
+    except Exception as e:
+        logger.exception(f"SUDS save failed: {trace_id}")
+        raise HTTPException(status_code=500, detail="SUDS 저장 실패")
+
+    # 구조적 로깅
+    logger.info("SUDS saved", extra={
+        "event": "suds_saved",
+        "trace_id": trace_id,
+        "session_id": req.session_id,
+        "user_id": req.user_id,
+        "score": req.score,
+        "type": req.type,
+        "saved_at": now,
+    })
+
+    return SUDSResponse(
+        ok=True,
+        trace_id=trace_id,
+        saved_at=now,
+    )
+
+@app.get("/suds/by-session/{session_id}", response_model=List[SUDSEntry], tags=["suds"])
+async def list_suds_by_session(session_id: str):
+    """세션별 SUDS 조회 엔드포인트"""
+    items = read_suds_by_session(session_id)
+    return items
+
+@app.post("/api/memory/{session_id}/suds", tags=["memory"])
+async def record_suds_memory(session_id: str, payload: dict):
+    """
+    메모리 시스템에 SUDS 측정값 기록
+    payload: { "turn_id": str, "measurement_type": "pre"|"post"|"check", "suds_value": int }
+    """
+    try:
+        ms = get_memory_system()
+        ms.record_suds_measurement(
+            session_id=session_id,
+            turn_id=payload.get("turn_id") or f"ui_{int(time.time() * 1000)}",
+            suds_value=int(payload["suds_value"]),
+            measurement_type=payload.get("measurement_type", "check"),
+        )
+
+        # 러닝 서머리 갱신 (SUDS 변화 반영)
+        updated_summary = update_running_summary(session_id)
+
+        logger.info(f"SUDS 기록 완료: {session_id} - {payload.get('measurement_type')}={payload['suds_value']}")
+
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "turn_id": payload.get("turn_id"),
+            "measurement_type": payload.get("measurement_type"),
+            "suds_value": payload["suds_value"],
+            "updated_summary": updated_summary
+        }
+
+    except Exception as e:
+        logger.exception(f"SUDS 기록 오류: {session_id}")
+        return JSONResponse(
+            {"ok": False, "error": str(e), "session_id": session_id},
+            status_code=400
+        )
+
+@app.get("/api/memory/{session_id}/stats")
+async def get_session_memory_stats(session_id: str):
+    """메모리 통계 조회 (디버깅/분석용)"""
+    try:
+        stats = get_memory_stats(session_id)
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "stats": stats
+        }
+    except Exception as e:
+        logger.exception(f"메모리 통계 조회 오류: {session_id}")
+        return JSONResponse(
+            {"ok": False, "error": str(e), "session_id": session_id},
+            status_code=500
+        )
+
+@app.post("/v1/ab/chat")
+async def chat_ab_v1(payload: dict, request: Request):
+    """Engine A/B 병렬 채팅 - v1"""
+    result = await proxy.chat_ab_parallel(payload, request=request)
+    # v1 스키마 래핑
+    return {
+        "api_version": "v1",
+        "data": result,
+        "schema_version": "1.0"
+    }
+
+@app.post("/v1/chat/{engine}")
+async def chat_single_v1(engine: str, payload: dict, request: Request):
+    """단일 엔진 채팅 - v1"""
+    result = await proxy.chat_single_engine(engine, payload, request=request)
+    return {
+        "api_version": "v1",
+        "engine": engine,
+        "data": result,
+        "schema_version": "1.0"
+    }
+
+# 레거시 지원 (임시)
+@app.get("/health/engines")
+async def health_engines_legacy(request: Request):
+    """레거시 지원 - 곧 제거 예정"""
+    return await proxy.health_check_engines(request=request)
+
+@app.post("/ab/chat")
+async def chat_ab_legacy(payload: dict, request: Request):
+    """레거시 지원 - 곧 제거 예정"""
+    return await proxy.chat_ab_parallel(payload, request=request)
+
+@app.post("/chat/{engine}")
+async def chat_single_legacy(engine: str, payload: dict, request: Request):
+    """레거시 지원 - 곧 제거 예정"""
+    return await proxy.chat_single_engine(engine, payload, request=request)
+
+@app.get("/v1/health")
+async def health_check_v1():
+    """v1 헬스 체크 엔드포인트 (표준화된 응답)"""
+    return {
+        "api_version": "v1",
+        "status": "healthy",
+        "version": "1.0.0",
+        "services": {
+            "vllm_free_engine": "ready",
+            "vllm_premium_engine": "ready",
+            "prompt_manager": "loaded" if prompt_manager else "not_loaded",
+            "emotion_analyzer": "loaded" if emotion_analyzer else "not_loaded"
+        },
+        "metadata": {
+            "uptime": time.time(),
+            "available_tiers": ["free", "premium"],
+            "memory_usage": "TODO: 메모리 사용량"
+        },
+        "schema_version": "1.0",
+        "deprecated_endpoints": ["/api/health", "/health"]
+    }
+
 @app.get("/api/health")
 async def health_check_api():
-    """헬스 체크 엔드포인트 (API 경로)"""
-    # 동일한 응답 반환
+    """레거시 API 헬스 체크 (v1으로 리다이렉션 안내)"""
     return {
         "status": "healthy",
+        "deprecation_notice": "이 엔드포인트는 곧 폐기됩니다. /v1/health를 사용해주세요.",
+        "redirect_to": "/v1/health",
         "vllm_free_engine": "ready",
         "vllm_premium_engine": "ready",
         "prompt_manager": "loaded" if prompt_manager else "not_loaded",
         "emotion_analyzer": "loaded" if emotion_analyzer else "not_loaded",
         "uptime": time.time(),
-        "available_tiers": ["free", "premium"],  # 프리미엄은 항상 사용 가능 (폴백 지원)
-        "memory_usage": "TODO: 메모리 사용량"
+        "available_tiers": ["free", "premium"]
     }
 
 # 무료 모델 AI 채팅 엔드포인트 (DialoGPT)
@@ -455,41 +847,80 @@ async def eft_chat_premium(request: ChatRequest):
 @app.post("/api/chat", response_model=ChatResponse)
 async def eft_chat(request: ChatRequest, req: Request):
     """
-    기본 EFT AI 상담 채팅 (Engine A/B 병렬 비교로 완전 전환)
+    기본 EFT AI 상담 채팅 (Engine A/B 병렬 비교 + 메모리 시스템 v1)
     DialoGPT 완전 폐기! 이제 무료 사용자도 Llama-3 vs Qwen-2.5 병렬 비교 사용
     """
     try:
+        # 🧠 메모리 시스템: 컨텍스트 구축
+        session_id = request.session_id or f"session_{int(time.time() * 1000)}"
+        user_id = getattr(request.user_profile, 'user_id', None) if request.user_profile else None
+        context = build_context(session_id=session_id, user_id=user_id, k=5)
+
+        logger.info(f"대화 컨텍스트: {session_id} ({context['context_stats']['total_turns']}턴)")
+
         # ChatRequest를 ChatProxyRequest로 변환
         proxy_request = ChatProxyRequest(
             message=request.message,
             temperature=request.temperature or 0.7,
             max_tokens=request.max_tokens or 400
         )
-        
+
         # Engine A/B 병렬 비교 수행
         comparison_result = await compare_llama3_vs_qwen25(proxy_request, req)
-        
+
         # 감정 분석 수행
         emotion_analysis = await emotion_analyzer.analyze(request.message)
         
         # 더 빠른 모델의 응답을 메인 응답으로 사용
         if comparison_result.faster_model == "llama3" and comparison_result.llama3_response["success"]:
-            main_response = comparison_result.llama3_response["response"]
+            raw_response = comparison_result.llama3_response["response"]
             model_info = "Engine A (Llama-3-8B)"
         elif comparison_result.faster_model == "qwen25" and comparison_result.qwen25_response["success"]:
-            main_response = comparison_result.qwen25_response["response"]
+            raw_response = comparison_result.qwen25_response["response"]
             model_info = "Engine B (Qwen-2.5-7B)"
         else:
             # 둘 다 실패했을 경우 폴백 (vLLM 서버 미실행 상태)
-            main_response = "안녕하세요! 현재 AI 모델 서버가 준비 중입니다. vLLM 서버를 실행해주세요. (포트 8001, 8002)"
+            raw_response = "안녕하세요! 현재 AI 모델 서버가 준비 중입니다. vLLM 서버를 실행해주세요. (포트 8001, 8002)"
             model_info = "Fallback (vLLM 서버 필요)"
-        
-        # ChatResponse 형태로 반환
+
+        # 🔥 토큰 파이프라인 처리
+        tokens = TokenParser.extract_tokens(raw_response)
+        clean_response = TokenParser.remove_tokens(raw_response)
+
+        # 토큰 실행 (컨텍스트 전달)
+        token_context = {
+            "session_id": request.session_id,
+            "user_id": getattr(request.user_profile, 'user_id', None) if request.user_profile else None,
+            "message": request.message,
+            "emotion_analysis": emotion_analysis
+        }
+        action_results = await TokenProcessor().process_tokens(tokens, context=token_context)
+
+        # 로깅 (운영 관측성)
+        logger.info(f"토큰 처리 완료: {len(tokens)}개 토큰, {len(action_results.get('executed_actions', []))}개 액션 실행")
+
+        # 🧠 메모리 시스템: 대화 턴 저장
+        turn_id = f"turn_{int(time.time() * 1000)}"
+        save_turn(
+            session_id=session_id,
+            turn_id=turn_id,
+            user_message=request.message,
+            ai_response=clean_response,
+            emotion_analysis=emotion_analysis.__dict__ if hasattr(emotion_analysis, '__dict__') else emotion_analysis,
+            actions=action_results.get("executed_actions", [])
+        )
+
+        # 🧠 메모리 시스템: running_summary 업데이트
+        updated_summary = update_running_summary(session_id)
+        logger.info(f"대화 기록 저장 완료: {session_id}/{turn_id}")
+
+        # ChatResponse 형태로 반환 (토큰 처리 결과 포함)
         return ChatResponse(
-            response=main_response,
+            response=clean_response,  # 🔥 토큰 제거된 깔끔한 텍스트
             emotion_analysis=emotion_analysis,
             eft_recommendations=[],  # 병렬 비교에서는 기본값
             suggested_actions=[],
+            actions=action_results.get("executed_actions", []),  # 🔥 토큰 실행 결과
             confidence_score=0.8 if comparison_result.faster_model != "none" else 0.3,
             processing_time=comparison_result.comparison_time,
             timestamp=comparison_result.timestamp,
@@ -517,6 +948,7 @@ async def eft_chat(request: ChatRequest, req: Request):
             emotion_analysis=emotion_analysis,
             eft_recommendations=[],
             suggested_actions=[],
+            actions=[],  # 폴백 시에는 액션 없음
             confidence_score=0.2,
             processing_time=0.1,
             timestamp=datetime.now().isoformat(),
@@ -660,7 +1092,52 @@ class ComparisonResponse(BaseModel):
     comparison_time: float = Field(..., description="총 처리 시간")
     faster_model: str = Field(..., description="더 빠른 모델 (llama3 or qwen25)")
     timestamp: str = Field(..., description="응답 시간")
-    
+
+class SUDSRequest(BaseModel):
+    """SUDS 저장 요청"""
+    type: SUDSType = Field(..., description="pre 또는 post")
+    score: int = Field(..., ge=0, le=10, description="스트레스 수준 (0-10)")
+    session_id: Optional[str] = Field(None, description="세션 ID")
+    user_id: Optional[str] = Field(None, description="사용자 ID")
+
+class SUDSResponse(BaseModel):
+    """SUDS 저장 응답"""
+    ok: bool = True
+    trace_id: Optional[str] = None
+    saved_at: str
+
+class SUDSEntry(BaseModel):
+    trace_id: str
+    type: SUDSType
+    score: int
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
+    saved_at: str  # ISO8601 (UTC)
+    timestamp: str # 서버 응답 시간(= saved_at과 같게 유지해도 됨)
+
+def append_suds(entry: SUDSEntry) -> None:
+    # JSON Lines로 한 줄씩 누적 저장
+    with SUDS_FILE.open("a", encoding="utf-8") as f:
+        f.write(entry.json(ensure_ascii=False) + "\n")
+
+def read_suds_by_session(session_id: str) -> List[SUDSEntry]:
+    results: List[SUDSEntry] = []
+    if not SUDS_FILE.exists():
+        return results
+    with SUDS_FILE.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+                if obj.get("session_id") == session_id:
+                    results.append(SUDSEntry(**obj))
+            except Exception:
+                # 손상된 라인은 무시(로그만)
+                logger.warning(f"Malformed SUDS line: {line[:120]}")
+                pass
+    return results
+
 # 폴백 로직을 위한 도우미 함수
 def other_engine_key(cur_key: str) -> Optional[str]:
     """현재 엔진을 제외한 다른 엔진 반환"""

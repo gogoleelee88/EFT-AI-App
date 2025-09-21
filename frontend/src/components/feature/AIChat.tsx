@@ -1,8 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../ui/Button';
+import SUDSModal from '../modals/SUDSModal';
+import SUDSInlineCard from '../ui/SUDSInlineCard';
+import useEFTSessionHook from '../../hooks/useEFTSessionHook';
 import { getServerAI } from '../../services/serverAI';
 import type { ChatResponse, ConversationMessage, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
+import type {
+  ActionObject,
+  ActionType,
+  SudsActionPayload,
+  BreathGuidePayload,
+  GroundingPayload,
+  EftRecommendationPayload,
+  MoodCheckPayload,
+  ResourceOfferPayload,
+  ActionHandler,
+} from '../../types/actionTypes';
+import { recToARParams } from '../../lib/eftAdapter';
+import { EftRecButton } from '../eft';
 import {
   createSession,
   onUserMessage,
@@ -15,6 +31,12 @@ import {
   ensureTwoParagraphs,
   type ConversationSession
 } from '../../types/conversationState';
+import {
+  fsCreateTurn,
+  fsAppendABTelemetry,
+  fsSetTurnSUDS,
+  fsSetSessionSUDS,
+} from '../../services/fs';
 
 interface Message {
   role: 'user' | 'ai';
@@ -36,8 +58,56 @@ interface AIChatProps {
 
 type AITier = 'free' | 'premium' | 'enterprise';
 
+// 🔥 기존 인라인 타입 정의 제거 (actionTypes.ts에서 import)
+
+// turnId 유틸 - zero-pad로 정렬 안정성 확보
+const turnIdOf = (n: number) => String(n).padStart(4, '0');
+
+// 사용자 알림 유틸 - 접근성 고려한 비블로킹 피드백
+const notify = (message: string) => {
+  // SSR 가드
+  if (typeof document === 'undefined') return;
+
+  // 중복 토스트 방지
+  const existing = document.querySelector('[data-toast="true"]');
+  if (existing) existing.remove();
+
+  // 임시 토스트 div 생성
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
+  toast.setAttribute('data-toast', 'true');
+  toast.className = `
+    fixed top-4 right-4 z-[9999]
+    bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg
+    animate-[slideIn_0.3s_ease-out] max-w-sm pointer-events-none
+    will-change-transform
+  `;
+
+  document.body.appendChild(toast);
+
+  // 3초 후 자동 제거
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease-in forwards';
+    setTimeout(() => {
+      if (toast.parentNode) document.body.removeChild(toast);
+    }, 300);
+  }, 3000);
+};
+
 const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const navigate = useNavigate();
+
+  // 🌍 API 베이스 URL (환경변수 기반)
+  const API_BASE_URL = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000';
+  const VLLM_ENGINE_B_URL = import.meta.env.VITE_VLLM_ENGINE_B_URL || 'http://localhost:8002/v1';
+
+  // EFT 세션 시작 핸들러
+  const goAR = (rec: EFTRecommendation) => {
+    const params = recToARParams(rec);
+    navigate(`/ar-holistic?${params.toString()}`);
+  };
 
   // ConversationState 시스템 통합
   const [session, setSession] = useState<ConversationSession>(() => createSession());
@@ -53,6 +123,70 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const tierSelectorRef = useRef<HTMLDivElement>(null);
   const [interventionTimer, setInterventionTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // 🎯 액션 핸들러 맵 (확장 용이)
+  const handleSuds: ActionHandler<SudsActionPayload> = (p) => setPendingSuds(p);
+  const handleBreath: ActionHandler<BreathGuidePayload> = (p) => {
+    setPendingBreathGuide(p);
+    console.log('호흡 가이드 액션:', p); // TODO: 호흡 가이드 모달 구현
+  };
+  const handleGrounding: ActionHandler<GroundingPayload> = (p) => {
+    setPendingGrounding(p);
+    console.log('그라운딩 기법 액션:', p); // TODO: 그라운딩 시트 구현
+  };
+  const handleEft: ActionHandler<EftRecommendationPayload> = (p) => {
+    setPendingEftRecommendation(p);
+    console.log('EFT 추천 액션:', p); // TODO: EFT 추천 카드 구현
+  };
+  const handleMood: ActionHandler<MoodCheckPayload> = (p) => {
+    setPendingMoodCheck(p);
+    console.log('기분 체크 액션:', p); // TODO: 기분 체크 플로우 구현
+  };
+  const handleResource: ActionHandler<ResourceOfferPayload> = (p) => {
+    setPendingResource(p);
+    console.log('리소스 제공 액션:', p); // TODO: 리소스 드로어 구현
+  };
+
+  const actionHandlers: Partial<Record<ActionType, ActionHandler<any>>> = {
+    SUDS_MEASURE: handleSuds,
+    BREATH_GUIDE: handleBreath,
+    GROUNDING_54321: handleGrounding,
+    EFT_RECOMMENDATION: handleEft,
+    MOOD_CHECK: handleMood,
+    RESOURCE_OFFER: handleResource,
+  };
+
+  // SUDS 모달 상태
+  const [showPreSUDS, setShowPreSUDS] = useState(false);
+  const [showPostSUDS, setShowPostSUDS] = useState(false);
+  const [suds, setSuds] = useState<{ pre?: number; post?: number; preNotes?: string; postNotes?: string }>({});
+
+  // 🔥 액션 상태 관리 (확장 가능)
+  const [pendingSuds, setPendingSuds] = useState<SudsActionPayload | null>(null);
+  const [pendingBreathGuide, setPendingBreathGuide] = useState<BreathGuidePayload | null>(null);
+  const [pendingGrounding, setPendingGrounding] = useState<GroundingPayload | null>(null);
+  const [pendingEftRecommendation, setPendingEftRecommendation] = useState<EftRecommendationPayload | null>(null);
+  const [pendingMoodCheck, setPendingMoodCheck] = useState<MoodCheckPayload | null>(null);
+  const [pendingResource, setPendingResource] = useState<ResourceOfferPayload | null>(null);
+
+  // 🔥 EFT 세션 훅 통합
+  const eftSessionHook = useEFTSessionHook({
+    onEFTComplete: (sessionData) => {
+      console.log('EFT 세션 완료:', sessionData);
+      // 세션 완료 시 Post-SUDS가 자동으로 트리거됨 (onAutoSUDS 콜백)
+    },
+    onAutoSUDS: (measurementType, context) => {
+      console.log('자동 SUDS 측정 트리거:', { measurementType, context });
+      // EFT 완료 후 자동 Post-SUDS 표시
+      setPendingSuds({
+        measurementType,
+        prompt: 'EFT 세션을 완료하셨습니다! 이제 세션 후 스트레스 수준을 측정해주세요.',
+        context,
+        sessionId: session.sessionId,
+        turnId: turnIdOf(session.turn)
+      });
+    }
+  });
 
   // 뒤로가기 핸들러
   const handleGoBack = () => {
@@ -142,6 +276,13 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // S3 진입 시 사전 SUDS 모달 띄우기
+  useEffect(() => {
+    if (session.state === 'S3' && suds.pre == null) {
+      setShowPreSUDS(true);
+    }
+  }, [session.state, suds.pre]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -230,7 +371,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         // ChatResponse 형태로 변환
         serverResponse = {
           response: vllmResponse.choices?.[0]?.message?.content ?? '',
-          emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, triggers: [] },
+          emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, confidence: 0.5, triggers: [] },
           eft_recommendations: [],
           confidence_score: 0.8,
           processing_time: 0,
@@ -239,8 +380,23 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         };
       }
       
-      // 3) 응답 텍스트 후처리 (통합 파이프라인 순서)
-      let reply = serverResponse.response || '';
+      // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌
+      const actionResults = serverResponse.actions ?? [];
+      let reply = serverResponse.response ?? '';
+
+      // 🎯 액션 타입별 라우팅 시스템 (핸들러 맵 기반 - 확장 용이)
+      actionResults.forEach((action: any) => {
+        const handler = actionHandlers[action?.type as ActionType];
+        if (handler && action?.payload) {
+          try {
+            handler(action.payload);
+          } catch (error) {
+            console.error(`액션 처리 오류 (${action.type}):`, error);
+          }
+        } else {
+          console.log('알 수 없는 액션 타입 또는 빈 페이로드:', action.type);
+        }
+      });
 
       // 3-1. 문맥 복원 ("로 힘드시겠어요" → "잠으로 힘드시겠어요")
       reply = sanitizeAssistantText(session, reply);
@@ -270,7 +426,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           emergency_detected: serverResponse.emergency_detected,
           professional_referral: serverResponse.professional_referral,
           conversationState: session.state,
-          turnCount: session.turn
+          turnCount: session.turn,
+          actionResults // 🔥 AI 액션 토큰 처리 결과 포함
         }
       };
 
@@ -281,6 +438,11 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       setSession({ ...session }); // 세션 상태 저장
 
       console.log(`✅ 파이프라인 완료 - 상태: ${session.state}, 턴: ${session.turn}`);
+
+      // S3 상태에서 메시지 전송 시 사후 SUDS 모달 띄우기
+      if (session.state === 'S3' && suds.pre != null && suds.post == null) {
+        setShowPostSUDS(true);
+      }
 
       // 응급상황 감지 시 특별 처리
       if (serverResponse.emergency_detected) {
@@ -385,6 +547,68 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const handleSuggestionClick = (suggestion: string) => {
     setInputMessage(suggestion);
     inputRef.current?.focus();
+  };
+
+  // 🔥 SUDS 인라인 카드 제출 핸들러
+  const handleSudsSubmit = async (score: number) => {
+    if (!pendingSuds) return;
+
+    try {
+      // 백엔드 SUDS 기록 API 호출
+      const response = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/suds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          measurement_type: pendingSuds.measurementType,
+          suds_value: score,
+          turn_id: pendingSuds.turnId ?? `ui_${Date.now()}`
+        })
+      });
+
+      if (response.ok) {
+        console.log('SUDS 점수 기록 완료:', {
+          sessionId: session.sessionId,
+          measurementType: pendingSuds.measurementType,
+          score,
+          context: pendingSuds.context
+        });
+
+        // 인라인 카드 제거
+        setPendingSuds(null);
+
+        // EFT 세션 중이었다면 완료 처리
+        if (pendingSuds.context?.includes('eft_complete')) {
+          eftSessionHook.completeEFTSession();
+        }
+
+        // 피드백 메시지 추가
+        const feedbackMessage: Message = {
+          role: 'ai',
+          content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
+          timestamp: Date.now(),
+          metadata: { confidence: 1.0 }
+        };
+        setMessages(prev => [...prev, feedbackMessage]);
+
+        // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
+        if (import.meta.env.VITE_DEBUG_MODE === 'true') {
+          try {
+            const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/stats`);
+            if (statsResponse.ok) {
+              const stats = await statsResponse.json();
+              console.log('메모리 통계:', stats);
+            }
+          } catch (error) {
+            console.log('메모리 통계 조회 실패:', error);
+          }
+        }
+      } else {
+        throw new Error('SUDS 기록 실패');
+      }
+    } catch (error) {
+      console.error('SUDS 제출 오류:', error);
+      notify('SUDS 점수 기록 중 오류가 발생했습니다.');
+    }
   };
 
   // 시간 포맷팅
@@ -546,8 +770,35 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
                         </div>
                       )}
                       {message.metadata.eft_recommendations && message.metadata.eft_recommendations.length > 0 && (
-                        <div className="mt-1 text-xs text-green-600">
-                          EFT 추천: {message.metadata.eft_recommendations.length}개 기법
+                        <div className="mt-2 flex flex-col gap-2">
+                          <div className="text-xs text-green-700">
+                            AI가 EFT 세션을 제안했어요: {message.metadata.eft_recommendations.length}개
+                          </div>
+
+                          {/* 추천 카드/버튼 리스트 */}
+                          <div className="flex flex-wrap gap-2">
+                            {message.metadata.eft_recommendations
+                              .slice(0, 3)
+                              .map((rec: EFTRecommendation, i: number) => (
+                                <EftRecButton key={i} rec={rec} index={i} onStart={goAR} />
+                              ))}
+                          </div>
+
+                          {/* 3개 초과 시 선택 UX (선택사항) */}
+                          {message.metadata.eft_recommendations.length > 3 && (
+                            <div className="text-xs">
+                              <button
+                                type="button"
+                                className="underline underline-offset-2 hover:opacity-80 text-green-600"
+                                onClick={() => {
+                                  // TODO: '모두 보기' 모달 or 별도 페이지로 이동
+                                  console.log('추천 더 보기:', message.metadata?.eft_recommendations);
+                                }}
+                              >
+                                추천 더 보기 ({message.metadata.eft_recommendations.length - 3}개)
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                       {message.metadata.emergency_detected && (
@@ -613,6 +864,20 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               </div>
             );
           })()}
+
+          {/* 🔥 SUDS 인라인 카드 */}
+          {pendingSuds && (
+            <div className="flex justify-center my-4">
+              <div className="w-full max-w-sm">
+                <SUDSInlineCard
+                  measurementType={pendingSuds.measurementType}
+                  prompt={pendingSuds.prompt}
+                  context={pendingSuds.context}
+                  onSudsSubmit={handleSudsSubmit}
+                />
+              </div>
+            </div>
+          )}
 
           {/* 로딩 인디케이터 */}
           {loading && (
@@ -683,6 +948,97 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           </div>
         </div>
       </div>
+
+      {/* SUDS 모달들 */}
+      <SUDSModal
+        open={showPreSUDS}
+        label="pre"
+        onSubmit={async (rating) => {
+          try {
+            setSuds(s => ({ ...s, pre: rating }));
+            setShowPreSUDS(false);
+
+            // Firestore에 사전 SUDS 점수 저장
+            const { sessionId, turn } = session;
+            const turnId = turnIdOf(turn);
+
+            await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+
+            // 세션 요약에도 pre 값 즉시 반영 (집계/리포트 편의)
+            await fsSetSessionSUDS(sessionId, { pre: rating });
+
+            console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
+
+            // EFT 개입 시작 메시지 자동 전송
+            setTimeout(() => {
+              onSend('이제 함께 EFT 세션을 진행해보겠습니다. 준비되셨나요?');
+            }, 1000);
+          } catch (error) {
+            console.error('사전 SUDS 저장 실패:', error);
+            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
+            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+            setShowPreSUDS(true);
+          }
+        }}
+        onClose={() => setShowPreSUDS(false)}
+        currentValue={suds.pre}
+      />
+
+      <SUDSModal
+        open={showPostSUDS}
+        label="post"
+        onSubmit={async (rating) => {
+          try {
+            const preSafe = suds.pre ?? 5;
+            const delta = preSafe - rating;
+
+            setSuds(s => ({ ...s, post: rating }));
+            setShowPostSUDS(false);
+
+            // Firestore에 사후 SUDS 점수 저장
+            const { sessionId, turn } = session;
+            const turnId = turnIdOf(turn);
+
+            // 병렬 처리로 성능 최적화
+            await Promise.all([
+              fsSetTurnSUDS(sessionId, turnId, { sudsPost: rating }),
+              fsSetSessionSUDS(sessionId, {
+                ...(preSafe !== undefined ? { pre: preSafe } : {}),
+                post: rating
+              })
+            ]);
+
+            console.log('사후 SUDS 저장 완료:', {
+              sessionId,
+              turnId,
+              pre: preSafe,
+              post: rating,
+              sudsDelta: delta
+            });
+
+            // S4로 전환
+            setSession(prev => ({ ...prev, state: 'S4' }));
+
+            // 개선 결과에 따른 피드백 메시지 자동 전송
+            setTimeout(() => {
+              if (delta > 2) {
+                onSend(`정말 좋아졌네요! ${delta}점이나 개선되었습니다. 어떤 부분이 가장 도움이 되었나요?`);
+              } else if (delta > 0) {
+                onSend(`조금이나마 나아지셨군요. ${delta}점 개선되었습니다. 계속 이어서 해볼까요?`);
+              } else {
+                onSend('아직 큰 변화는 느끼지 못하시는군요. 괜찮습니다. 다른 방법을 함께 시도해보죠.');
+              }
+            }, 1500);
+          } catch (error) {
+            console.error('사후 SUDS 저장 실패:', error);
+            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
+            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+            setShowPostSUDS(true);
+          }
+        }}
+        onClose={() => setShowPostSUDS(false)}
+        currentValue={suds.post}
+      />
     </div>
   );
 };

@@ -4,9 +4,9 @@
  */
 
 // 감정 타입 열거형
-export type EmotionType = 
+export type EmotionType =
   | 'joy' | '기쁨'
-  | 'sadness' | '슬픔' 
+  | 'sadness' | '슬픔'
   | 'anger' | '분노'
   | 'fear' | '두려움'
   | 'surprise' | '놀람'
@@ -16,10 +16,41 @@ export type EmotionType =
   | 'love' | '사랑'
   | 'loneliness' | '외로움'
   | 'frustration' | '좌절'
-  | 'neutral' | '중립';
+  | 'neutral' | '중립'
+  | 'unknown' | '알 수 없음';
+
+// 감정 라벨 매핑 (다국어 지원)
+export const EmotionLabelMap: Record<EmotionType, { ko: string; en: string }> = {
+  joy: { ko: '기쁨', en: 'Joy' },
+  기쁨: { ko: '기쁨', en: 'Joy' },
+  sadness: { ko: '슬픔', en: 'Sadness' },
+  슬픔: { ko: '슬픔', en: 'Sadness' },
+  anger: { ko: '분노', en: 'Anger' },
+  분노: { ko: '분노', en: 'Anger' },
+  fear: { ko: '두려움', en: 'Fear' },
+  두려움: { ko: '두려움', en: 'Fear' },
+  surprise: { ko: '놀람', en: 'Surprise' },
+  놀람: { ko: '놀람', en: 'Surprise' },
+  disgust: { ko: '혐오', en: 'Disgust' },
+  혐오: { ko: '혐오', en: 'Disgust' },
+  stress: { ko: '스트레스', en: 'Stress' },
+  스트레스: { ko: '스트레스', en: 'Stress' },
+  anxiety: { ko: '불안', en: 'Anxiety' },
+  불안: { ko: '불안', en: 'Anxiety' },
+  love: { ko: '사랑', en: 'Love' },
+  사랑: { ko: '사랑', en: 'Love' },
+  loneliness: { ko: '외로움', en: 'Loneliness' },
+  외로움: { ko: '외로움', en: 'Loneliness' },
+  frustration: { ko: '좌절', en: 'Frustration' },
+  좌절: { ko: '좌절', en: 'Frustration' },
+  neutral: { ko: '중립', en: 'Neutral' },
+  중립: { ko: '중립', en: 'Neutral' },
+  unknown: { ko: '알 수 없음', en: 'Unknown' },
+  '알 수 없음': { ko: '알 수 없음', en: 'Unknown' },
+};
 
 // EFT 탭핑 포인트
-export type EFTPoint = 
+export type EFTPoint =
   | 'crown' | '정수리'
   | 'eyebrow' | '눈썹'
   | 'side_of_eye' | '눈 옆'
@@ -28,7 +59,9 @@ export type EFTPoint =
   | 'chin' | '턱'
   | 'collarbone' | '쇄골'
   | 'under_arm' | '겨드랑이'
-  | 'wrist' | '손목';
+  | 'wrist' | '손목'
+  // ARHolisticTest.tsx 호환용 추가 포인트
+  | 'TH' | 'EB' | 'SE' | 'SE-L' | 'SE-R' | 'UE' | 'UN' | 'CH' | 'CB';
 
 // 대화 메시지
 export interface ConversationMessage {
@@ -36,6 +69,14 @@ export interface ConversationMessage {
   content: string;
   timestamp?: string;
   metadata?: {
+    emotion_analysis?: EmotionAnalysis;
+    eft_recommendations?: EFTRecommendation[];
+    confidence?: number;
+    processing_time?: number;
+    emergency_detected?: boolean;
+    professional_referral?: boolean;
+    conversationState?: string;
+    turnCount?: number;
     [key: string]: any;
   };
 }
@@ -57,6 +98,7 @@ export interface EmotionAnalysis {
   secondary_emotion?: EmotionType | null;
   intensity: number; // 0.0 ~ 1.0
   confidence: number; // 0.0 ~ 1.0
+  triggers?: string[]; // 감정 유발 요인들
   emotional_keywords?: string[];
   context_analysis?: {
     [key: string]: any;
@@ -73,6 +115,10 @@ export interface EFTRecommendation {
   difficulty_level: 'beginner' | 'intermediate' | 'advanced';
   effectiveness_score: number; // 0.0 ~ 1.0
   additional_notes?: string;
+
+  // 🔥 AI 연동용 확장 필드 (선택적) - 기존 코드 영향 없음
+  emotion?: string;     // AI가 분석한 감정 (e.g., 'anxiety', 'stress')
+  intensity?: number;   // 감정 강도 (0-100)
 }
 
 // 제안 액션

@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     # 성능 최적화 설정
     BATCH_SIZE: int = 1
     MAX_CONCURRENT_REQUESTS: int = 10
+
+    # 메모리 시스템 설정
+    MEMORY_STATS_RECENT_K: int = Field(10, description="메모리 통계에서 조회할 최근 턴 수")
+    MEMORY_MAX_TURNS: int = Field(100, description="세션당 최대 저장 턴 수")
+    MEMORY_FILE_PATH: str = Field("./data/memory/conversations.jsonl", description="메모리 파일 경로")
+    MEMORY_SUMMARY_PATH: str = Field("./data/memory/summaries.json", description="요약 파일 경로")
     REQUEST_TIMEOUT: int = 120  # 초
     
     # vLLM 프록시 설정
