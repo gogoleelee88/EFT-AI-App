@@ -44,6 +44,7 @@ from backend.services.suds_logger import append_suds
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
 from backend.routers import premium as premium_router
+from backend.routers import notices as notices_router
 
 # 설정 및 로거
 settings = get_settings()
@@ -455,6 +456,7 @@ logger.info("🔧 IdempotentBodyMiddleware: 최우선 배치 완료 (body 캐싱
 
 # 🎛️ 프리미엄 라우터 등록
 app.include_router(premium_router.router)
+app.include_router(notices_router.router)
 
 # AI 지원 서비스 전역 변수 (서버 시작시 로드)  
 # AI 엔진은 app.state.vllm으로 대체됨
