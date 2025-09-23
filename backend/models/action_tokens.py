@@ -39,7 +39,7 @@ class AskSUDSToken(ActionToken):
     context: Optional[str] = Field(None, description="측정 컨텍스트")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "type": "ask_suds",
                 "measurement_type": "pre",
@@ -58,7 +58,7 @@ class RecommendEFTToken(ActionToken):
     estimated_duration: int = Field(5, ge=1, le=60, description="예상 소요 시간 (분)")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "type": "recommend_eft",
                 "technique": "basic_tapping",

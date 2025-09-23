@@ -13,12 +13,12 @@ from pathlib import Path
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent))
 
-from services.ai_engine import EFTAIEngine
-from services.prompt_manager import EFTPromptManager
-from services.emotion_analyzer import EmotionAnalyzer
-from models.chat_models import EmotionType
-from config.settings import get_development_settings
-from utils.logger import get_logger
+from backend.services.ai_engine import EFTAIEngine
+from backend.services.prompt_manager import EFTPromptManager
+from backend.services.emotion_analyzer import EmotionAnalyzer
+from backend.models.chat_models import EmotionType
+from backend.config.settings import get_development_settings
+from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -99,7 +99,7 @@ def test_model_configuration():
     """모델 설정 테스트"""
     print("\n 모델 설정 테스트 시작...")
     
-    from config.settings import MODEL_PRESETS, apply_model_preset
+    from backend.config.settings import MODEL_PRESETS, apply_model_preset
     
     print("사용 가능한 모델 프리셋:")
     for name, config in MODEL_PRESETS.items():

@@ -4,10 +4,13 @@ EFT AI 서버 설정 관리
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import List, Optional, Dict
 import os
 from pathlib import Path
+
+ALLOWED_PREMIUM_MODE = {"proxy", "direct"}
+ALLOWED_ENGINE = {"A", "B", "AB"}
 
 class Settings(BaseSettings):
     """서버 설정 클래스"""
@@ -87,6 +90,12 @@ class Settings(BaseSettings):
     # API 키 (필요한 경우)
     HUGGINGFACE_TOKEN: str | None = None
     OPENAI_API_KEY: str | None = None  # 폴백용
+
+    # 간단 API Key 검증 (프론트 X-API-Key)
+    API_KEY: str = Field("eft-ai-moodtalk-2025!", env="API_KEY")
+
+    # 프리미엄 전용 API Key
+    PREMIUM_API_KEY: str = Field("premium-eft-ai-moodtalk-2025!", env="PREMIUM_API_KEY")
     
     # vLLM 서버 URL/모델 (기본값은 로컬, .env로 덮어쓰기)
     FREE_AI_BASE_URL: str = Field("http://localhost:8001/v1", env="FREE_AI_BASE_URL")
@@ -98,9 +107,43 @@ class Settings(BaseSettings):
     BATCH_SIZE: int = 1
     MAX_CONCURRENT_REQUESTS: int = 10
 
+    # 🎛️ 프리미엄 티어 라우팅 설정
+    PREMIUM_MODE: str = Field("proxy", env="PREMIUM_MODE")  # "proxy" | "direct"
+    VLLM_PREMIUM_ENGINE: str = Field("B", env="VLLM_PREMIUM_ENGINE")  # "A" | "B" | "AB"
+
+    # vLLM 엔진 URL 설정
+    VLLM_ENGINE_A_URL: str = Field("http://127.0.0.1:8001", env="VLLM_ENGINE_A_URL")
+    VLLM_ENGINE_B_URL: str = Field("http://127.0.0.1:8002", env="VLLM_ENGINE_B_URL")
+
+    # 프리미엄 요청 타임아웃 및 재시도
+    PREMIUM_REQUEST_TIMEOUT: int = Field(30, env="PREMIUM_REQUEST_TIMEOUT")  # 30초
+    PREMIUM_MAX_RETRIES: int = Field(1, env="PREMIUM_MAX_RETRIES")  # 1회 재시도
+
     # 메모리 시스템 설정
     MEMORY_STATS_RECENT_K: int = Field(10, description="메모리 통계에서 조회할 최근 턴 수")
     MEMORY_MAX_TURNS: int = Field(100, description="세션당 최대 저장 턴 수")
+
+    # 🛡️ 밸리데이터 (오타 방지)
+    @field_validator("PREMIUM_MODE")
+    @classmethod
+    def _check_premium_mode(cls, v: str) -> str:
+        v2 = (v or "").lower()
+        if v2 not in ALLOWED_PREMIUM_MODE:
+            raise ValueError(f"PREMIUM_MODE must be one of {ALLOWED_PREMIUM_MODE}, got: {v}")
+        return v2
+
+    @field_validator("VLLM_PREMIUM_ENGINE")
+    @classmethod
+    def _check_engine(cls, v: str) -> str:
+        v2 = (v or "").upper()
+        if v2 not in ALLOWED_ENGINE:
+            raise ValueError(f"VLLM_PREMIUM_ENGINE must be one of {ALLOWED_ENGINE}, got: {v}")
+        return v2
+
+    @field_validator("VLLM_ENGINE_A_URL", "VLLM_ENGINE_B_URL")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str) -> str:
+        return (v or "").rstrip("/")
     MEMORY_FILE_PATH: str = Field("./data/memory/conversations.jsonl", description="메모리 파일 경로")
     MEMORY_SUMMARY_PATH: str = Field("./data/memory/summaries.json", description="요약 파일 경로")
     REQUEST_TIMEOUT: int = 120  # 초

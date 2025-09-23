@@ -63,6 +63,65 @@ type AITier = 'free' | 'premium' | 'enterprise';
 // turnId 유틸 - zero-pad로 정렬 안정성 확보
 const turnIdOf = (n: number) => String(n).padStart(4, '0');
 
+// 🔍 안전 파서: 여러 응답 스키마에서 텍스트를 추출
+const extractText = (res: any): string => {
+  if (!res) return '';
+
+  // OpenAI 호환(vLLM)
+  const c = res?.choices?.[0];
+  if (c?.message?.content) return String(c.message.content);
+  if (c?.text) return String(c.text);
+
+  // 백엔드 커스텀
+  if (res?.text) return String(res.text);
+  if (res?.response) return String(res.response);
+
+  // 마지막 수단: 평문 변환 (짧게)
+  try {
+    const s = JSON.stringify(res);
+    return s.length > 1000 ? s.slice(0, 1000) + '…' : s;
+  } catch {
+    return String(res);
+  }
+};
+
+// 간단 Jaccard 유사도(토큰 단위) - 대략적 내용 유사도 파악
+const jaccard = (a: string, b: string): number => {
+  const A = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
+  const B = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
+  if (A.size === 0 && B.size === 0) return 1;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  const union = A.size + B.size - inter;
+  return union ? inter / union : 0;
+};
+
+// 길이/유사도/플래그 요약 (예외 안전)
+const diffSummary = (legacy: any, shadow: any) => {
+  try {
+    const legacyText = extractText(legacy);
+    const shadowText = extractText(shadow);
+
+    const sim = jaccard(legacyText, shadowText);
+
+    return {
+      legacy_length: legacyText.length,
+      shadow_length: shadowText.length,
+      length_diff: shadowText.length - legacyText.length,
+      similarity_jaccard: Number(sim.toFixed(3)),
+      shadow_has_actions: Array.isArray(shadow?.actions) && shadow.actions.length > 0,
+      // 원시 타입은 값이 아니라 타입 문자열만 주므로 혼동 방지용으로 키명 변경
+      legacy_type: typeof legacy,
+      shadow_type: typeof shadow,
+      // 트러블슈팅을 위해 앞부분만 샘플(로그에서 빠르게 비교)
+      legacy_head: legacyText.slice(0, 120),
+      shadow_head: shadowText.slice(0, 120),
+    };
+  } catch (e: any) {
+    return { error: e?.message ?? 'diffSummary failed' };
+  }
+};
+
 // 사용자 알림 유틸 - 접근성 고려한 비블로킹 피드백
 const notify = (message: string) => {
   // SSR 가드
@@ -100,8 +159,43 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const navigate = useNavigate();
 
   // 🌍 API 베이스 URL (환경변수 기반)
-  const API_BASE_URL = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000';
+  const API_BASE_URL = (import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000').replace(/\/+$/, '');
   const VLLM_ENGINE_B_URL = import.meta.env.VITE_VLLM_ENGINE_B_URL || 'http://localhost:8002/v1';
+
+  // 🎛️ 프리미엄 라우팅 토글 (즉시 롤백 가능)
+  const PREMIUM_VIA_BACKEND = String(import.meta.env.VITE_PREMIUM_VIA_BACKEND ?? 'false').toLowerCase() === 'true';
+
+  // 🔍 그림자 테스트 설정 (운영 관측용)
+  const SHADOW_TEST = String(import.meta.env.VITE_SHADOW_TEST ?? 'false').toLowerCase() === 'true';
+  const VLLM_ENGINE_B_MODEL = import.meta.env.VITE_VLLM_ENGINE_B_MODEL || 'llama-3.1-8b-instruct';
+
+  // 🛡️ 안전 조력자 함수들
+  const joinUrl = (base: string, path: string) => {
+    const b = (base || '').replace(/\/+$/, '');
+    const p = (path || '').replace(/^\/+/, '');
+    return `${b}/${p}`;
+  };
+
+  const parseRate = (v: any, fallback = 0.2) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(1, Math.max(0, n));
+  };
+
+  const shouldShadowSample = () =>
+    SHADOW_TEST && Math.random() < parseRate(import.meta.env.VITE_SHADOW_SAMPLE_RATE ?? 0.2, 0.2);
+
+  // 섀도 타임아웃 (네트워크 지연 방지)
+  async function fetchWithTimeout(input: RequestInfo, init: RequestInit = {}, ms = 6000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+      const res = await fetch(input, { ...init, signal: controller.signal });
+      return res;
+    } finally {
+      clearTimeout(id);
+    }
+  }
 
   // EFT 세션 시작 핸들러
   const goAR = (rec: EFTRecommendation) => {
@@ -191,6 +285,95 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   // 뒤로가기 핸들러
   const handleGoBack = () => {
     navigate('/');
+  };
+
+  // 🔍 그림자 테스트: fire-and-forget 비교 (UI 영향 없음)
+  const shadowFireAndForget = (message: string, sessionData: any) => {
+    if (!shouldShadowSample()) return;
+
+    // 사용자 UX 영향 없도록 비동기 즉시 반환
+    (async () => {
+      try {
+        let legacyRes: any = null;
+        let shadowRes: any = null;
+
+        if (PREMIUM_VIA_BACKEND) {
+          // 본선: 백엔드 → 그림자: vLLM 직접
+          legacyRes = sessionData;
+
+          const url = joinUrl(VLLM_ENGINE_B_URL, '/chat/completions');
+          const body = {
+            // ⚠️ 모사 정확도: 본선과 동일한 톤/파라미터로 비교
+            model: VLLM_ENGINE_B_MODEL,
+            temperature: 0.7,
+            max_tokens: 400,
+            messages: [
+              { role: 'system', content: 'EFT 전문 상담사로서 일관된 톤으로 답변하세요.' },
+              { role: 'user', content: message },
+            ],
+            stream: false,
+          };
+
+          const shadowResponse = await fetchWithTimeout(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }, 6000);
+
+          shadowRes = await shadowResponse.json().catch(() => null);
+
+        } else {
+          // 본선: vLLM 직접 → 그림자: 백엔드
+          legacyRes = sessionData;
+
+          const url = joinUrl(API_BASE_URL, '/api/chat/premium');
+
+          // 백엔드 스펙과 동일하게 구성
+          const payload = {
+            message,
+            temperature: 0.7,
+            max_tokens: 400,
+            // 필요한 경우만 세션 메타 전달 (undefined 접근 방지)
+            ...(typeof session?.sessionId === 'string' ? { sessionId: session.sessionId } : {}),
+            ...(userId ? { userId } : {}),
+            tier: 'premium',
+          };
+
+          const shadowResponse = await fetchWithTimeout(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': import.meta.env.VITE_API_KEY ?? '',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          }, 6000);
+
+          shadowRes = await shadowResponse.json().catch(() => null);
+        }
+
+        const summary = diffSummary(legacyRes, shadowRes);
+        // eslint-disable-next-line no-console
+        console.debug('[SHADOW-COMPARE]', {
+          ts: new Date().toISOString(),
+          premium_via_backend: PREMIUM_VIA_BACKEND,
+          message_length: Array.from(message).length, // 한글 안전 길이
+          ...summary,
+        });
+
+        // 서버 수집 (선택)
+        // await fetch(joinUrl(API_BASE_URL, '/api/metrics/shadow'), {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ summary, message_len: Array.from(message).length }),
+        // }).catch(() => {});
+
+      } catch (e) {
+        // 조용히 실패 무시
+        // eslint-disable-next-line no-console
+        console.debug('[SHADOW-COMPARE] skipped', e);
+      }
+    })();
   };
 
   // 퀘스트 진행률 업데이트 (로컬 처리)
@@ -344,40 +527,73 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           temperature: 0.4
         });
       } else {
-        // 프리미엄: vLLM Qwen 직접 호출
-        const response = await fetch('http://localhost:8002/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer EMPTY'
-          },
-          body: JSON.stringify({
-            model: 'engine-b',
-            temperature: 0.4,
+        // 🎛️ 프리미엄: 토글 기반 라우팅 (즉시 롤백 가능)
+        if (PREMIUM_VIA_BACKEND) {
+          // 경로 1: 백엔드 경유 (/api/chat/premium)
+          const payload = {
+            message: userText,
+            temperature: 0.7,
             max_tokens: 700,
-            messages: [
-              { role: 'system', content: systemWithSlots },
-              { role: 'user', content: userText }
-            ]
-          })
-        });
+            ...(session?.sessionId ? { sessionId: session.sessionId } : {}),
+            ...(userId ? { userId } : {}),
+            tier: 'premium',
+          };
 
-        if (!response.ok) {
-          throw new Error(`vLLM API 호출 실패: ${response.status}`);
+          const response = await fetch(joinUrl(API_BASE_URL, '/api/chat/premium'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': import.meta.env.VITE_API_KEY ?? '',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(`백엔드 프리미엄 API 호출 실패: ${response.status}`);
+          }
+
+          serverResponse = await response.json();
+
+        } else {
+          // 경로 2: vLLM 직접 호출 (기존 경로)
+          const response = await fetch(joinUrl(VLLM_ENGINE_B_URL, '/chat/completions'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer EMPTY'
+            },
+            body: JSON.stringify({
+              model: VLLM_ENGINE_B_MODEL,
+              temperature: 0.4,
+              max_tokens: 700,
+              messages: [
+                { role: 'system', content: systemWithSlots },
+                { role: 'user', content: userText }
+              ]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`vLLM API 호출 실패: ${response.status}`);
+          }
+
+          const vllmResponse = await response.json();
+
+          // ChatResponse 형태로 변환
+          serverResponse = {
+            response: vllmResponse.choices?.[0]?.message?.content ?? '',
+            emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, confidence: 0.5, triggers: [] },
+            eft_recommendations: [],
+            confidence_score: 0.8,
+            processing_time: 0,
+            emergency_detected: false,
+            professional_referral: false
+          };
         }
 
-        const vllmResponse = await response.json();
-
-        // ChatResponse 형태로 변환
-        serverResponse = {
-          response: vllmResponse.choices?.[0]?.message?.content ?? '',
-          emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, confidence: 0.5, triggers: [] },
-          eft_recommendations: [],
-          confidence_score: 0.8,
-          processing_time: 0,
-          emergency_detected: false,
-          professional_referral: false
-        };
+        // 🔍 그림자 테스트 (비동기, UI 영향 없음)
+        shadowFireAndForget(userText, serverResponse);
       }
       
       // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌

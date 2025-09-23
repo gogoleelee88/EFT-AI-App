@@ -6,7 +6,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
-from services.memory_system import get_memory_stats
+from backend.services.memory_system import get_memory_stats
 
 
 class FakeTurn:

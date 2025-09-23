@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EFT AI E2E Test</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>🧪 EFT AI 프리미엄 E2E 테스트</h1>
+    <div id="results"></div>
+
+    <script>
+        const API_CONFIG = {
+            BASE_URL: 'http://localhost:8000',
+            HEADERS: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'X-API-Key': 'premium-eft-ai-moodtalk-2025!'
+            }
+        };
+
+        async function testAPI() {
+            const results = document.getElementById('results');
+
+            // 1. API 키 검증 테스트
+            results.innerHTML += '<h3>1️⃣ API 키 검증 테스트</h3>';
+            try {
+                const validateResponse = await fetch(`${API_CONFIG.BASE_URL}/api/validate`, {
+                    headers: API_CONFIG.HEADERS
+                });
+                results.innerHTML += `<p>✅ 검증 성공: ${validateResponse.status}</p>`;
+            } catch (e) {
+                results.innerHTML += `<p>❌ 검증 실패: ${e}</p>`;
+            }
+
+            // 2. 영어 채팅 테스트
+            results.innerHTML += '<h3>2️⃣ 영어 채팅 테스트</h3>';
+            try {
+                const chatResponse = await fetch(`${API_CONFIG.BASE_URL}/api/chat`, {
+                    method: 'POST',
+                    headers: API_CONFIG.HEADERS,
+                    body: JSON.stringify({
+                        message: "Hello, I'm feeling stressed today",
+                        temperature: 0.7,
+                        max_tokens: 300
+                    })
+                });
+                const chatData = await chatResponse.json();
+                results.innerHTML += `<p>✅ 영어 채팅: ${chatResponse.status}</p>`;
+                results.innerHTML += `<p>응답: ${chatData.response.substring(0, 100)}...</p>`;
+            } catch (e) {
+                results.innerHTML += `<p>❌ 영어 채팅 실패: ${e}</p>`;
+            }
+
+            // 3. 한국어 채팅 테스트
+            results.innerHTML += '<h3>3️⃣ 한국어 채팅 테스트</h3>';
+            try {
+                const koreanResponse = await fetch(`${API_CONFIG.BASE_URL}/api/chat`, {
+                    method: 'POST',
+                    headers: API_CONFIG.HEADERS,
+                    body: JSON.stringify({
+                        message: "안녕하세요, 오늘 너무 스트레스받아서 힘들어요",
+                        temperature: 0.7,
+                        max_tokens: 300
+                    })
+                });
+                const koreanData = await koreanResponse.json();
+                results.innerHTML += `<p>✅ 한국어 채팅: ${koreanResponse.status}</p>`;
+                results.innerHTML += `<p>응답: ${koreanData.response.substring(0, 100)}...</p>`;
+            } catch (e) {
+                results.innerHTML += `<p>❌ 한국어 채팅 실패: ${e}</p>`;
+            }
+
+            results.innerHTML += '<h3>🎉 E2E 테스트 완료!</h3>';
+        }
+
+        // 페이지 로드 시 자동 실행
+        window.onload = testAPI;
+    </script>
+</body>
+</html>

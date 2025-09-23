@@ -8,11 +8,11 @@ import json
 from datetime import datetime
 from enum import Enum
 
-from models.chat_models import (
-    EmotionAnalysis, EmotionType, EFTRecommendation, 
+from backend.models.chat_models import (
+    EmotionAnalysis, EmotionType, EFTRecommendation,
     EFTPoint, SuggestedAction, ConversationMessage, UserProfile
 )
-from utils.logger import get_logger
+from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

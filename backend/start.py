@@ -18,8 +18,8 @@ if sys.platform.startswith('win'):
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.append(str(Path(__file__).parent))
 
-from config.settings import get_settings, get_development_settings, get_production_settings, apply_model_preset
-from utils.logger import get_logger
+from backend.config.settings import get_settings, get_development_settings, get_production_settings, apply_model_preset
+from backend.utils.logger import get_logger
 
 def parse_arguments():
     """명령행 인수 파싱"""

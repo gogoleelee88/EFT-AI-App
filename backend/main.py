@@ -7,7 +7,8 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send, Message
+from starlette.requests import Request as StarletteRequest
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
@@ -24,16 +25,25 @@ import uuid
 from uuid import uuid4
 from collections import defaultdict, deque
 
-# 로컬 모듈 임포트
-from services.vllm_client import VLLMClient
-from services.vllm_proxy import get_vllm_proxy
-from services.prompt_manager import EFTPromptManager
-from services.emotion_analyzer import EmotionAnalyzer
-from services.memory_system import build_context, update_running_summary, save_turn, get_memory_system, get_memory_stats
-from models.chat_models import ChatRequest, ChatResponse, StreamResponse
-from models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
-from config.settings import get_settings
-from utils.logger import get_logger
+# 로컬 모듈 임포트 (절대 임포트 유지)
+from backend.services.vllm_client import VLLMClient
+from backend.services.vllm_proxy import get_vllm_proxy
+from backend.services.prompt_manager import EFTPromptManager
+from backend.services.emotion_analyzer import EmotionAnalyzer
+from backend.services.memory_system import (
+    build_context,
+    update_running_summary,
+    save_turn,
+    get_memory_system,
+    get_memory_stats,
+)
+from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse
+from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
+from backend.models.suds import SUDSType, SUDSEntry, SUDSRequest, SUDSResponse
+from backend.services.suds_logger import append_suds
+from backend.config.settings import get_settings
+from backend.utils.logger import get_logger
+from backend.routers import premium as premium_router
 
 # 설정 및 로거
 settings = get_settings()
@@ -43,12 +53,12 @@ logger = get_logger(__name__)
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 SUDS_FILE = DATA_DIR / "suds_events.jsonl"
+NOTICES_FILE = DATA_DIR / "notices.json"
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-# SUDS 타입 정의
-SUDSType = Literal["pre", "post"]
+# SUDS 타입은 models.suds에서 임포트
 
 # VLLMClient는 app.state로 관리
 
@@ -86,6 +96,28 @@ def pick_engine(strategy: str, user_id: Optional[str] = None):
     # default: round_robin (간단한 랜덤으로 대체)
     return random.choice(_engine_keys)
 
+# 0. 바디 재주입 미들웨어 (최우선 배치)
+class IdempotentBodyMiddleware(BaseHTTPMiddleware):
+    """
+    Downstream 미들웨어/핸들러가 request body를 여러 번 읽어도 안전하도록
+    body를 캐싱하고 receive 이벤트를 replay해 준다.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        # 원본 receive를 잡아두고, body를 한 번 읽어 캐싱
+        body = await request.body()
+
+        async def receive() -> Message:
+            # 캐싱된 body를 한 번만 내려보내고, 이후엔 빈 바디를 반환
+            nonlocal body
+            message: Message = {"type": "http.request", "body": body, "more_body": False}
+            body = b""  # 다음 호출부터는 빈 바디
+            return message
+
+        # 새 Request로 교체 (replay 가능한 receive 주입)
+        request = StarletteRequest(request.scope, receive)
+        return await call_next(request)
+
 class ABRouteMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 1) 사용자 티어 결정: 헤더로 강제 가능 (x-user-tier), 기본은 settings.USER_TIER
@@ -122,6 +154,19 @@ app = FastAPI(
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None
 )
+
+# 🔍 미들웨어 스택 진단 로그 추가
+def _dump_middleware(tag: str):
+    """미들웨어 스택 진단 로그"""
+    # 사용자 등록 목록
+    logger.info("MIDDLEWARE-USER[%s]: %s", tag, [mw.cls.__name__ for mw in app.user_middleware])
+    # 빌드된 스택 추적
+    node = app.middleware_stack
+    names = []
+    while getattr(node, "app", None) is not None:
+        names.append(type(node).__name__)
+        node = node.app
+    logger.info("MIDDLEWARE-BUILT[%s]: %s", tag, " -> ".join(names))
 
 # CORS 도메인 환경변수 병합
 extra = (settings.EXTRA_ALLOWED_ORIGINS or "").strip()
@@ -253,18 +298,26 @@ class EnhancedRateLimitMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": "60"}
             )
 
-        # 3. 채팅 API 특별 제한
+        # 3. 채팅 API 특별 제한 (프리미엄 사용자 별도 한도)
         if "/chat" in path or "/ab/chat" in path:
+            # 프리미엄 API 키 확인
+            api_key = request.headers.get("x-api-key")
+            is_premium = (api_key == settings.PREMIUM_API_KEY) if api_key else False
+
+            # 프리미엄 사용자는 더 높은 한도 적용
+            chat_limit = self.chat_requests_per_minute * 3 if is_premium else self.chat_requests_per_minute
+
             chat_requests = self.chat_request_times[client_ip]
             while chat_requests and current_time - chat_requests[0] > 60:
                 chat_requests.popleft()
 
-            if len(chat_requests) >= self.chat_requests_per_minute:
-                logger.warning(f"채팅 API 제한 초과: {client_ip} ({len(chat_requests)} chat/min)")
+            if len(chat_requests) >= chat_limit:
+                tier = "premium" if is_premium else "free"
+                logger.warning(f"채팅 API 제한 초과 ({tier}): {client_ip} ({len(chat_requests)} chat/min, 한도: {chat_limit})")
                 return JSONResponse(
                     status_code=429,
                     content={
-                        "detail": f"Chat API rate limit: maximum {self.chat_requests_per_minute} requests per minute",
+                        "detail": f"Chat API rate limit ({tier}): maximum {chat_limit} requests per minute",
                         "trace_id": getattr(request.state, "trace_id", None)
                     },
                     headers={"Retry-After": "60"}
@@ -288,60 +341,54 @@ class EnhancedRateLimitMiddleware(BaseHTTPMiddleware):
 
 # 4. API 키 인증 미들웨어 (MVP 리뷰어 보호)
 class APIKeyAuthMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: ASGIApp):
+    """
+    전역 API 키 미들웨어.
+    - public_paths: 전역 인증 제외 경로
+    - 일반 + 프리미엄 키 모두 허용 (헤더: X-API-Key)
+    - 프리미엄 엔드포인트(/api/chat/premium...)는 전역 미들웨어 제외 (엔드포인트 내부에서 PremiumAuth로 재검증)
+    """
+    def __init__(self, app: ASGIApp, settings, public_paths: set[str]):
         super().__init__(app)
-        # 환경변수에서 API 키 읽기
-        self.api_key = getattr(settings, 'API_KEY', None) or os.getenv("API_KEY")
+        self.settings = settings
+        self.api_key = settings.API_KEY
+        self.premium_key = getattr(settings, "PREMIUM_API_KEY", None)
+        self.public_paths = public_paths
 
-        # 공개 엔드포인트 (API 키 불필요)
-        self.public_paths = {
-            "/",
-            "/health",
-            "/v1/health",
-            "/api/health",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/v1/health/engines"  # 엔진 헬스체크도 공개
-        }
-
-        logger.info(f"🔐 API 키 인증 미들웨어 초기화 (API 키: {'설정됨' if self.api_key else '미설정'})")
+        logger.info(f"🔐 API 키 인증 미들웨어 초기화 (일반 키: {'설정됨' if self.api_key else '미설정'}, 프리미엄 키: {'설정됨' if self.premium_key else '미설정'})")
 
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
+        path = request.scope.get("path", "/")
 
-        # 공개 엔드포인트는 인증 생략
+        # 1) 완전 공개 경로
         if path in self.public_paths:
             return await call_next(request)
 
-        # API 키가 설정되지 않은 경우 모든 요청 허용 (개발 모드)
-        if not self.api_key:
-            logger.warning("⚠️ API_KEY가 설정되지 않음 - 모든 요청 허용 (개발 모드)")
+        # 2) 프리미엄 엔드포인트는 전역 미들웨어 패스(내부 의존성에서 검증)
+        if (path.startswith("/api/chat") or
+            path.startswith("/api/validate") or
+            path.startswith("/api/premium")):
             return await call_next(request)
 
-        # API 키 검증
-        client_api_key = request.headers.get("x-api-key") or request.headers.get("authorization")
-        if client_api_key and client_api_key.startswith("Bearer "):
-            client_api_key = client_api_key.replace("Bearer ", "")
-
-        if not client_api_key:
+        # 3) 그 외는 전역 키 검사
+        #    일반/프리미엄 키 모두 허용 (둘 중 하나 맞으면 통과)
+        header_key = request.headers.get("x-api-key")
+        if not header_key:
             logger.warning(f"🚫 API 키 누락: {request.client.host if request.client else 'unknown'} -> {path}")
             return JSONResponse(
                 status_code=401,
                 content={
-                    "detail": "API key required",
-                    "message": "리뷰어 접근을 위해 API 키가 필요합니다",
-                    "required_header": "x-api-key 또는 Authorization: Bearer <key>",
+                    "detail": "Missing X-API-Key",
+                    "message": "X-API-Key 헤더가 필요합니다",
                     "trace_id": getattr(request.state, "trace_id", None)
                 }
             )
 
-        if client_api_key != self.api_key:
+        if header_key != (self.api_key or "") and header_key != (self.premium_key or ""):
             logger.warning(f"🚫 잘못된 API 키: {request.client.host if request.client else 'unknown'} -> {path}")
             return JSONResponse(
-                status_code=403,
+                status_code=401,
                 content={
-                    "detail": "Invalid API key",
+                    "detail": "Invalid X-API-Key",
                     "message": "올바른 API 키를 제공해주세요",
                     "trace_id": getattr(request.state, "trace_id", None)
                 }
@@ -356,7 +403,27 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 # 미들웨어 등록 (순서 중요!)
 app.add_middleware(MaxBodySizeMiddleware, max_bytes=256 * 1024)  # 256KB로 여유 있게
 app.add_middleware(TraceIdMiddleware)
-app.add_middleware(APIKeyAuthMiddleware)  # API 키 인증 추가
+# 🔐 Global APIKeyAuthMiddleware: FORCE-DISABLED for Premium-Only System
+# 프리미엄 전용 시스템에서는 전역 API 키 인증 완전 비활성화
+# 모든 프리미엄 엔드포인트는 PremiumAuth dependency로 개별 인증
+logger.info("🚫 Global APIKeyAuthMiddleware: FORCE-DISABLED (Premium-only system)")
+
+# app.add_middleware(
+#     APIKeyAuthMiddleware,
+#     settings=settings,
+#     public_paths={
+#         "/",
+#         "/health",
+#         "/v1/health",
+#         "/api/health",
+#         "/docs",
+#         "/redoc",
+#         "/openapi.json",
+#         "/v1/health/engines",
+#         "/api/chat/premium",
+#         "/api/chat/premium/shadow",
+#     },
+# )
 app.add_middleware(EnhancedRateLimitMiddleware,
                    requests_per_minute=120,      # 일반 API 분당 120회
                    chat_requests_per_minute=20,  # 채팅 API 분당 20회
@@ -377,9 +444,17 @@ else:  # 운영 환경
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
         allow_credentials=True,
     )
+
+# 🔧 IdempotentBodyMiddleware 등록 (최우선 실행 - 마지막 등록)
+# FastAPI는 미들웨어를 역순으로 실행하므로, 첫 번째로 실행하려면 마지막에 등록
+app.add_middleware(IdempotentBodyMiddleware)
+logger.info("🔧 IdempotentBodyMiddleware: 최우선 배치 완료 (body 캐싱)")
+
+# 🎛️ 프리미엄 라우터 등록
+app.include_router(premium_router.router)
 
 # AI 지원 서비스 전역 변수 (서버 시작시 로드)  
 # AI 엔진은 app.state.vllm으로 대체됨
@@ -390,9 +465,23 @@ emotion_analyzer: Optional[EmotionAnalyzer] = None
 async def startup_event():
     """서버 시작시 AI 클라이언트 및 서비스 초기화"""
     global prompt_manager, emotion_analyzer
-    
+
     logger.info("🚀 EFT AI 서버 시작 중...")
-    
+
+    # 🔍 미들웨어 스택 진단 로그
+    _dump_middleware("startup")
+
+    # 🎛️ 프리미엄 라우팅 설정 로그
+    logger.info(
+        "premium: mode=%s engine=%s A=%s B=%s timeout=%ss retry=%s",
+        settings.PREMIUM_MODE,
+        settings.VLLM_PREMIUM_ENGINE,
+        settings.VLLM_ENGINE_A_URL,
+        settings.VLLM_ENGINE_B_URL,
+        settings.PREMIUM_REQUEST_TIMEOUT,
+        settings.PREMIUM_MAX_RETRIES,
+    )
+
     try:
         # 1. vLLM 클라이언트 초기화
         logger.info("🤖 vLLM 클라이언트 초기화 중...")
@@ -460,7 +549,22 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     trace_id = getattr(request.state, "trace_id", None)
-    logger.warning(f"[{trace_id}] HTTP 예외: {exc.status_code} - {exc.detail}")
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 구조화된 로깅
+    logger.warning(
+        "[%s] HTTP 예외: %s - %s",
+        trace_id, exc.status_code, exc.detail,
+        extra={
+            "event": "http_exception",
+            "trace_id": trace_id,
+            "client_ip": client_ip,
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+            "path": request.url.path,
+            "method": request.method
+        }
+    )
 
     payload = {
         "detail": exc.detail,
@@ -472,6 +576,84 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content=payload
+    )
+
+# JSON 파싱 실패 전용 예외 핸들러
+from pydantic import ValidationError
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    trace_id = getattr(request.state, "trace_id", None)
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 요청 바디 안전하게 로깅 (최대 200자)
+    try:
+        body = await request.body()
+        safe_body = body.decode("utf-8", "replace")[:200]
+    except:
+        safe_body = "읽기 실패"
+
+    logger.warning(
+        "[%s] JSON 파싱 실패: %s",
+        trace_id, str(exc),
+        extra={
+            "event": "validation_error",
+            "trace_id": trace_id,
+            "client_ip": client_ip,
+            "path": request.url.path,
+            "method": request.method,
+            "content_type": request.headers.get("content-type"),
+            "body_preview": safe_body,
+            "error_count": len(exc.errors())
+        }
+    )
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "errors": exc.errors(),
+            "trace_id": trace_id
+        }
+    )
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    trace_id = getattr(request.state, "trace_id", None)
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 요청 바디 안전하게 로깅 (최대 200자)
+    try:
+        body = await request.body()
+        safe_body = body.decode("utf-8", "replace")[:200]
+    except:
+        safe_body = "읽기 실패"
+
+    logger.warning(
+        "[%s] 요청 검증 실패: %s",
+        trace_id, str(exc),
+        extra={
+            "event": "request_validation_error",
+            "trace_id": trace_id,
+            "client_ip": client_ip,
+            "safe_body": safe_body,
+            "error_count": len(exc.errors())
+        }
+    )
+
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "JSON payload validation failed. Expected format: {\"message\":\"텍스트\",\"temperature\":0.7,\"max_tokens\":300}",
+            "errors": exc.errors(),
+            "trace_id": trace_id,
+            "example_payload": {
+                "message": "안녕하세요",
+                "temperature": 0.7,
+                "max_tokens": 300
+            }
+        }
     )
 
 # 기본 엔드포인트
@@ -1093,27 +1275,7 @@ class ComparisonResponse(BaseModel):
     faster_model: str = Field(..., description="더 빠른 모델 (llama3 or qwen25)")
     timestamp: str = Field(..., description="응답 시간")
 
-class SUDSRequest(BaseModel):
-    """SUDS 저장 요청"""
-    type: SUDSType = Field(..., description="pre 또는 post")
-    score: int = Field(..., ge=0, le=10, description="스트레스 수준 (0-10)")
-    session_id: Optional[str] = Field(None, description="세션 ID")
-    user_id: Optional[str] = Field(None, description="사용자 ID")
-
-class SUDSResponse(BaseModel):
-    """SUDS 저장 응답"""
-    ok: bool = True
-    trace_id: Optional[str] = None
-    saved_at: str
-
-class SUDSEntry(BaseModel):
-    trace_id: str
-    type: SUDSType
-    score: int
-    session_id: Optional[str] = None
-    user_id: Optional[str] = None
-    saved_at: str  # ISO8601 (UTC)
-    timestamp: str # 서버 응답 시간(= saved_at과 같게 유지해도 됨)
+# SUDS 모델들은 models.suds에서 임포트됨
 
 def append_suds(entry: SUDSEntry) -> None:
     # JSON Lines로 한 줄씩 누적 저장

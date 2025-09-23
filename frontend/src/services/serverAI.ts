@@ -4,24 +4,35 @@
  */
 
 import type { ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
+import { createApiHeaders, apiFetch } from './http';
 
-// API 키 가져오기 유틸리티
-const getApiKey = () => import.meta.env.VITE_API_KEY || '';
+// API 키 가져오기 유틸리티 (localStorage 우선순위)
+const getApiKey = () =>
+  (typeof localStorage !== 'undefined' && localStorage.getItem('PREMIUM_API_KEY')) ||
+  (import.meta as any).env?.VITE_API_KEY ||
+  '';
 
-// API 요청 헤더 생성 유틸리티
-const createApiHeaders = (additionalHeaders: Record<string, string> = {}) => {
-  const apiKey = getApiKey();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...additionalHeaders
-  };
+const getPremiumApiKey = () =>
+  (typeof localStorage !== 'undefined' && localStorage.getItem('PREMIUM_API_KEY')) ||
+  (import.meta as any).env?.VITE_PREMIUM_API_KEY ||
+  '';
 
-  if (apiKey) {
-    headers['x-api-key'] = apiKey;
-  }
+// 임시 호환 래퍼: 과거 시그니처 대응
+function headersCompat(
+  isPremium = false,
+  extra: Record<string, string> = {}
+): Headers {
+  // isPremium true면 localStorage 또는 VITE_PREMIUM_API_KEY 우선
+  const premiumKey =
+    (typeof localStorage !== 'undefined' && localStorage.getItem('PREMIUM_API_KEY')) ||
+    (import.meta as any).env?.VITE_PREMIUM_API_KEY ||
+    undefined;
 
-  return headers;
-};
+  const h = createApiHeaders(isPremium ? premiumKey : undefined);
+  for (const [k, v] of Object.entries(extra)) h.set(k, v);
+  return h;
+}
+
 
 // Provider 타입 및 설정
 export type Provider = 'local_vllm' | 'openai' | 'anthropic' | 'qwen';
@@ -53,7 +64,7 @@ const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사�
 4. 지속적인 격려와 지지`;
 
 // 환경변수에서 서버 URL 가져오기 (Vite 환경변수 사용)
-const SERVER_URL = import.meta.env.VITE_AI_SERVER_URL || 'http://localhost:8000';
+const SERVER_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
 
 interface ChatRequest {
   message: string;
@@ -530,7 +541,8 @@ class ServerAI {
  */
 export async function generateReplyAB(
   message: string,
-  logCtx?: { sessionId: string; turnId: string }
+  logCtx?: { sessionId: string; turnId: string },
+  isPremium: boolean = false
 ) {
   if (provider !== "local_vllm") throw new Error("Not local_vllm provider");
 
@@ -543,13 +555,14 @@ export async function generateReplyAB(
     max_tokens: 512,
   };
 
-  const base = import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://localhost:8000';
+  const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
 
   // 총 소요 시간
   const T0 = performance.now();
-  const res = await fetch(`${base}/ab/chat`, {
+  const res = await fetch(`${base}${endpoint}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headersCompat(isPremium),
     body: JSON.stringify(payload),
   });
   const T1 = performance.now();
@@ -641,7 +654,7 @@ export async function generateReplyAB(
 /**
  * 간단한 A/B 응답 호출 (텔레메트리 없음)
  */
-export async function generateReplyAB_simple(message: string) {
+export async function generateReplyAB_simple(message: string, isPremium: boolean = false) {
   if (provider !== "local_vllm") throw new Error("Not local_vllm provider");
 
   const payload = {
@@ -653,10 +666,12 @@ export async function generateReplyAB_simple(message: string) {
     max_tokens: 512
   };
 
-  const base = import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://localhost:8000';
-  const res = await fetch(`${base}/ab/chat`, {
+  const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+
+  const res = await fetch(`${base}${endpoint}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headersCompat(isPremium),
     body: JSON.stringify(payload)
   });
 
@@ -672,6 +687,156 @@ export function getServerAI(): ServerAI {
     serverAIInstance = new ServerAI();
   }
   return serverAIInstance;
+}
+
+// === 유틸리티 함수들 ===
+
+// 새로운 프리미엄 서비스 통합을 위한 임포트 (서비스 통합 후 활성화)
+// import { PremiumAuthManager } from '@/utils/premiumAuth';
+// import { premiumService } from '@/services/premiumService';
+
+/**
+ * 프리미엄 API 키 가져오기 (레거시 호환)
+ * 우선순위: 로컬스토리지 → 환경변수(Vite)
+ */
+function getPremiumKey(): string {
+  // 새로운 PremiumAuthManager로 마이그레이션 예정
+  // return PremiumAuthManager.getPremiumKey() || '';
+
+  const ls = typeof window !== "undefined" ? localStorage.getItem("premiumKey") ?? "" : "";
+  const env = import.meta?.env?.VITE_PREMIUM_API_KEY ?? "";
+  return (ls || env).trim();
+}
+
+
+/**
+ * 프리미엄 서비스 통합 래퍼 (새로운 API)
+ * 기존 ServerAI 클래스와 새로운 PremiumService 연동
+ */
+export class EnhancedServerAI extends ServerAI {
+  /**
+   * 자동 티어 감지 채팅 (프리미엄 키 있으면 프리미엄, 없으면 무료)
+   */
+  async chatWithAutoTier(message: string, options: any = {}): Promise<ChatResponse> {
+    const hasPremium = getPremiumKey().length > 0;
+
+    if (hasPremium) {
+      try {
+        // 프리미엄 시도
+        return await this.chatPremiumDirect(message, options);
+      } catch (error: any) {
+        // 인증 실패 시 무료로 폴백
+        if (error.status === 401 || error.status === 403) {
+          console.warn('Premium auth failed, falling back to free tier');
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('premiumKey');
+          }
+          return await this.chatCompare(message, options);
+        }
+        throw error;
+      }
+    }
+
+    // 무료 티어
+    return await this.chatCompare(message, options);
+  }
+
+  /**
+   * 프리미엄 직접 호출 (에러 핸들링 강화)
+   */
+  async chatPremiumDirect(message: string, options: any = {}): Promise<ChatResponse> {
+    const headers = headersCompat(true);
+
+    if (!headers.get('X-API-Key')) {
+      throw new Error('Premium key required but not found');
+    }
+
+    try {
+      const response = await fetch(`${this.baseURL}/api/chat/premium`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          message,
+          temperature: options.temperature || 0.7,
+          max_tokens: options.maxTokens || 700,
+          system_prompt: options.systemPrompt,
+          sessionId: options.sessionId,
+          userId: options.userId,
+          tier: 'premium'
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw {
+          status: response.status,
+          message: errorData.detail || 'Premium chat failed',
+          data: errorData
+        };
+      }
+
+      const data = await response.json();
+
+      return {
+        response: data.response || 'No response available',
+        emotion_analysis: {
+          primary_emotion: 'neutral' as any,
+          secondary_emotion: null,
+          intensity: 0.7,
+          confidence: 0.8,
+          emotional_keywords: []
+        },
+        eft_recommendations: [],
+        suggested_actions: [],
+        confidence_score: 0.9,
+        processing_time: data.processing_time || 0,
+        model_version: data.model || 'Premium Model',
+        timestamp: data.timestamp || new Date().toISOString(),
+        tier: 'premium',
+        requires_followup: false,
+        emergency_detected: false,
+        professional_referral: false,
+        response_id: `premium_${Date.now()}`
+      };
+
+    } catch (error: any) {
+      console.error('Premium chat error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 프리미엄 키 검증
+   */
+  async validatePremiumKey(): Promise<boolean> {
+    const key = getPremiumKey();
+    if (!key) return false;
+
+    try {
+      const response = await fetch(`${this.baseURL}/api/premium/validate`, {
+        method: 'GET',
+        headers: {
+          'X-API-Key': key
+        }
+      });
+
+      return response.status === 200;
+    } catch (error) {
+      console.warn('Premium key validation failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 현재 티어 정보
+   */
+  getTierInfo(): { tier: 'free' | 'premium'; hasKey: boolean } {
+    const hasKey = getPremiumKey().length > 0;
+    return {
+      tier: hasKey ? 'premium' : 'free',
+      hasKey
+    };
+  }
 }
 
 export default ServerAI;

@@ -1,8 +1,8 @@
 # services/vllm_client.py
 from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
-from config.settings import get_settings
-from utils.logger import get_logger
+from backend.config.settings import get_settings
+from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()

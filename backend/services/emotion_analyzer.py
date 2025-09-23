@@ -9,8 +9,8 @@ from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 from collections import Counter
 
-from models.chat_models import EmotionAnalysis, EmotionType
-from utils.logger import get_logger
+from backend.models.chat_models import EmotionAnalysis, EmotionType
+from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -19,9 +19,9 @@ import gc
 import psutil
 import GPUtil
 
-from config.settings import get_settings
-from utils.logger import get_logger
-from models.chat_models import EmotionAnalysis, ModelStats
+from backend.config.settings import get_settings
+from backend.utils.logger import get_logger
+from backend.models.chat_models import EmotionAnalysis, ModelStats
 
 logger = get_logger(__name__)
 settings = get_settings()

@@ -432,7 +432,7 @@ def _safe_summary_preview(text: Optional[str], n: int = 100) -> str:
 
 def get_memory_stats(session_id: str) -> Dict[str, Any]:
     """메모리 시스템 상태 조회 (디버깅용) - 안전성 강화 버전"""
-    from config.settings import get_settings
+    from backend.config.settings import get_settings
     settings = get_settings()
 
     ms = get_memory_system()

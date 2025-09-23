@@ -8,9 +8,9 @@ import asyncio
 import time
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, Request
-from config.settings import get_settings
-from utils.logger import get_logger
-from services.circuit_breaker import get_circuit_breaker, retry_with_exponential_backoff
+from backend.config.settings import get_settings
+from backend.utils.logger import get_logger
+from backend.services.circuit_breaker import get_circuit_breaker, retry_with_exponential_backoff
 
 logger = get_logger(__name__)
 settings = get_settings()

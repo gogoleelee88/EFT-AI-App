@@ -5,17 +5,26 @@ EFT AI 서버용 구조화된 로깅 시스템
 
 import logging
 import sys
+import io
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
 import json
 
-# Windows 유니코드 출력 문제 해결
+# Windows 유니코드 출력 문제 해결 (강화)
 if sys.platform.startswith('win'):
     import os
     os.environ['PYTHONIOENCODING'] = 'utf-8'
+    os.environ.setdefault("PYTHONUTF8", "1")
 
-from config.settings import get_settings
+    # 콘솔 스트림을 UTF-8로 재설정
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+from backend.config.settings import get_settings
 
 settings = get_settings()
 
@@ -86,8 +95,14 @@ def setup_logging():
     # 기존 핸들러 제거 (중복 방지)
     root_logger.handlers.clear()
     
-    # 1. 콘솔 핸들러 (컬러 출력)
-    console_handler = logging.StreamHandler(sys.stdout)
+    # 1. UTF-8 강제 콘솔 핸들러 (cp949 방어)
+    stream = getattr(sys.stdout, "buffer", None)
+    if stream is not None:
+        utf8_stdout = io.TextIOWrapper(stream, encoding="utf-8", errors="replace", line_buffering=True)
+    else:
+        utf8_stdout = sys.stdout
+
+    console_handler = logging.StreamHandler(utf8_stdout)
     console_handler.setLevel(logging.INFO)
     
     console_format = ColoredFormatter(
