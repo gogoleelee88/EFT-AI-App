@@ -1,0 +1,35 @@
+﻿C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:8: import { FaceMesh } from '@mediapipe/face_mesh';
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:68:   // 중앙 턱: 152 (MediaPipe FaceMesh에서 chin tip로 널리 사용)
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:132:   const faceMeshRef = useRef<FaceMesh | null>(null);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:237:       console.log('🎯 FaceMesh 초기화 시작...');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:239:         ? 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619'
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:243:       const faceMesh = new FaceMesh({ 
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:247:       faceMesh.setOptions({
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:264:             faceMesh.setOptions({
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:270:             console.log('🔁 Restored FaceMesh thresholds');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:283:       faceMesh.onResults(onFaceResults);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:314:       faceMeshRef.current = faceMesh;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:400:   // 🎯 FaceMesh 초기화 함수
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:401:   const createFaceMesh = useCallback(async (): Promise<FaceMesh> => {
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:402:     console.log('🎯 createFaceMesh 초기화 시작...');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:403:     const fm = new FaceMesh({
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:405:         const url = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:464:     const fm = faceMeshRef.current;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:825:       // FaceMesh 준비 확인
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:826:       if (!faceMeshRef.current) {
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:827:         console.log('🎯 FaceMesh not ready, initializing...');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:829:           faceMeshRef.current = await createFaceMesh();
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:854:   }, [loop, camera, ensureCameraReady, createFaceMesh]);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:882:         if (faceMeshRef.current) {
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:883:           faceMeshRef.current.setOptions({
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:10:   const stream = await navigator.mediaDevices.getUserMedia({ 
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:21:   const { FilesetResolver, PoseLandmarker } = await import('@mediapipe/tasks-vision');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:23:     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm"
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:425: navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\PermissionGate.tsx:17:       const stream = await navigator.mediaDevices.getUserMedia({ 
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\useCamera.ts:28:     const stream = await navigator.mediaDevices.getUserMedia(constraints);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\usePose.ts:2: import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\usePose.ts:3: import type { PoseLandmarkerResult } from '@mediapipe/tasks-vision';
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\usePose.ts:13:         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm'
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\types\mediapipe.d.ts:19: declare module '@mediapipe/face_mesh' {
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\types\mediapipe.d.ts:20:   export class FaceMesh {

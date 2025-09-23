@@ -1,0 +1,44 @@
+﻿C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuide3D.tsx:140:   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuide3D.tsx:145:     if (!isAutoPlaying || !sessionStarted) return;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuide3D.tsx:152:           setIsAutoPlaying(false);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuide3D.tsx:162:   }, [isAutoPlaying, sessionStarted, onSessionComplete]);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuide3D.tsx:186:       setIsAutoPlaying(false);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuide3D.tsx:191:       setIsAutoPlaying(true);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:1018:       <video
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:1021:         playsInline
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:1022:         muted
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\components\feature\EFTGuideAR.tsx:1023:         autoPlay
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:16:   autoPlay?: boolean;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:24:   autoPlay = true,
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:39:   const player = useStepPlayer(plan, autoPlay, enableTTS);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:61:       video.muted = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:62:       video.setAttribute('playsInline', '');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:191:         <video
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:195:           muted
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSession.tsx:196:           playsInline
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:67:       video.muted = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:68:       video.setAttribute('playsInline', '');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:127:         <video 
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:131:           muted 
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\ARSessionSimple.tsx:132:           playsInline 
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:115:   // ✅ 어떤 경우에도 <video>를 확보 (없으면 생성해서 host에 꽂음)
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:127:       video.muted = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:128:       video.setAttribute('playsInline', '');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:129:       video.setAttribute('autoplay', '');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:199:       video.muted = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:200:       (video as any).playsInline = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:201:       video.setAttribute('autoplay', '');
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:519:         <video
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:523:           muted
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:524:           playsInline
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\Calibration.tsx:525:           autoPlay
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\StepPlayer.tsx:15:   autoPlay: boolean = true,
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\StepPlayer.tsx:22:     isPlaying: autoPlay,
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\StepPlayer.tsx:67:     setState(prev => ({ ...prev, isPlaying: autoPlay }));
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\components\StepPlayer.tsx:68:   }, [goToStep, autoPlay]);
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\useCamera.ts:110:       videoElement.muted = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\modules\ar\useCamera.ts:112:       videoElement.playsInline = true;
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\ARDemo.tsx:9:     autoPlay: true,
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\ARDemo.tsx:36:                 checked={settings.autoPlay}
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\ARDemo.tsx:37:                 onChange={(e) => setSettings(prev => ({ ...prev, autoPlay: e.target.checked }))}
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\ARDemo.tsx:78:           autoPlay={settings.autoPlay}

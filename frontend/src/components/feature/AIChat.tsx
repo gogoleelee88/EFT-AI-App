@@ -1,0 +1,1262 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Button from '../ui/Button';
+import SUDSModal from '../modals/SUDSModal';
+import SUDSInlineCard from '../ui/SUDSInlineCard';
+import useEFTSessionHook from '../../hooks/useEFTSessionHook';
+import { getServerAI } from '../../services/serverAI';
+import type { ChatResponse, ConversationMessage, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
+import type {
+  ActionObject,
+  ActionType,
+  SudsActionPayload,
+  BreathGuidePayload,
+  GroundingPayload,
+  EftRecommendationPayload,
+  MoodCheckPayload,
+  ResourceOfferPayload,
+  ActionHandler,
+} from '../../types/actionTypes';
+import { recToARParams } from '../../lib/eftAdapter';
+import { EftRecButton } from '../eft';
+import {
+  createSession,
+  onUserMessage,
+  enforceTwoTurnRule,
+  sanitizeAssistantText,
+  applySafetyCheck,
+  dampenRepetition,
+  enforceLength,
+  extractSlotsFrom,
+  ensureTwoParagraphs,
+  type ConversationSession
+} from '../../types/conversationState';
+import {
+  fsCreateTurn,
+  fsAppendABTelemetry,
+  fsSetTurnSUDS,
+  fsSetSessionSUDS,
+} from '../../services/fs';
+
+interface Message {
+  role: 'user' | 'ai';
+  content: string;
+  timestamp: number;
+  metadata?: {
+    emotion_analysis?: EmotionAnalysis;
+    eft_recommendations?: EFTRecommendation[];
+    confidence: number;
+    processing_time?: number;
+    emergency_detected?: boolean;
+    professional_referral?: boolean;
+  };
+}
+
+interface AIChatProps {
+  userId: string;
+}
+
+type AITier = 'free' | 'premium' | 'enterprise';
+
+// 🔥 기존 인라인 타입 정의 제거 (actionTypes.ts에서 import)
+
+// turnId 유틸 - zero-pad로 정렬 안정성 확보
+const turnIdOf = (n: number) => String(n).padStart(4, '0');
+
+// 🔍 안전 파서: 여러 응답 스키마에서 텍스트를 추출
+const extractText = (res: any): string => {
+  if (!res) return '';
+
+  // OpenAI 호환(vLLM)
+  const c = res?.choices?.[0];
+  if (c?.message?.content) return String(c.message.content);
+  if (c?.text) return String(c.text);
+
+  // 백엔드 커스텀
+  if (res?.text) return String(res.text);
+  if (res?.response) return String(res.response);
+
+  // 마지막 수단: 평문 변환 (짧게)
+  try {
+    const s = JSON.stringify(res);
+    return s.length > 1000 ? s.slice(0, 1000) + '…' : s;
+  } catch {
+    return String(res);
+  }
+};
+
+// 간단 Jaccard 유사도(토큰 단위) - 대략적 내용 유사도 파악
+const jaccard = (a: string, b: string): number => {
+  const A = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
+  const B = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
+  if (A.size === 0 && B.size === 0) return 1;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  const union = A.size + B.size - inter;
+  return union ? inter / union : 0;
+};
+
+// 길이/유사도/플래그 요약 (예외 안전)
+const diffSummary = (legacy: any, shadow: any) => {
+  try {
+    const legacyText = extractText(legacy);
+    const shadowText = extractText(shadow);
+
+    const sim = jaccard(legacyText, shadowText);
+
+    return {
+      legacy_length: legacyText.length,
+      shadow_length: shadowText.length,
+      length_diff: shadowText.length - legacyText.length,
+      similarity_jaccard: Number(sim.toFixed(3)),
+      shadow_has_actions: Array.isArray(shadow?.actions) && shadow.actions.length > 0,
+      // 원시 타입은 값이 아니라 타입 문자열만 주므로 혼동 방지용으로 키명 변경
+      legacy_type: typeof legacy,
+      shadow_type: typeof shadow,
+      // 트러블슈팅을 위해 앞부분만 샘플(로그에서 빠르게 비교)
+      legacy_head: legacyText.slice(0, 120),
+      shadow_head: shadowText.slice(0, 120),
+    };
+  } catch (e: any) {
+    return { error: e?.message ?? 'diffSummary failed' };
+  }
+};
+
+// 사용자 알림 유틸 - 접근성 고려한 비블로킹 피드백
+const notify = (message: string) => {
+  // SSR 가드
+  if (typeof document === 'undefined') return;
+
+  // 중복 토스트 방지
+  const existing = document.querySelector('[data-toast="true"]');
+  if (existing) existing.remove();
+
+  // 임시 토스트 div 생성
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
+  toast.setAttribute('data-toast', 'true');
+  toast.className = `
+    fixed top-4 right-4 z-[9999]
+    bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg
+    animate-[slideIn_0.3s_ease-out] max-w-sm pointer-events-none
+    will-change-transform
+  `;
+
+  document.body.appendChild(toast);
+
+  // 3초 후 자동 제거
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease-in forwards';
+    setTimeout(() => {
+      if (toast.parentNode) document.body.removeChild(toast);
+    }, 300);
+  }, 3000);
+};
+
+const AIChat: React.FC<AIChatProps> = ({ userId }) => {
+  const navigate = useNavigate();
+
+  // 🌍 API 베이스 URL (환경변수 기반)
+  const API_BASE_URL = (import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000').replace(/\/+$/, '');
+  const VLLM_ENGINE_B_URL = import.meta.env.VITE_VLLM_ENGINE_B_URL || 'http://localhost:8002/v1';
+
+  // 🎛️ 프리미엄 라우팅 토글 (즉시 롤백 가능)
+  const PREMIUM_VIA_BACKEND = String(import.meta.env.VITE_PREMIUM_VIA_BACKEND ?? 'false').toLowerCase() === 'true';
+
+  // 🔍 그림자 테스트 설정 (운영 관측용)
+  const SHADOW_TEST = String(import.meta.env.VITE_SHADOW_TEST ?? 'false').toLowerCase() === 'true';
+  const VLLM_ENGINE_B_MODEL = import.meta.env.VITE_VLLM_ENGINE_B_MODEL || 'llama-3.1-8b-instruct';
+
+  // 🛡️ 안전 조력자 함수들
+  const joinUrl = (base: string, path: string) => {
+    const b = (base || '').replace(/\/+$/, '');
+    const p = (path || '').replace(/^\/+/, '');
+    return `${b}/${p}`;
+  };
+
+  const parseRate = (v: any, fallback = 0.2) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(1, Math.max(0, n));
+  };
+
+  const shouldShadowSample = () =>
+    SHADOW_TEST && Math.random() < parseRate(import.meta.env.VITE_SHADOW_SAMPLE_RATE ?? 0.2, 0.2);
+
+  // 섀도 타임아웃 (네트워크 지연 방지)
+  async function fetchWithTimeout(input: RequestInfo, init: RequestInit = {}, ms = 6000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+      const res = await fetch(input, { ...init, signal: controller.signal });
+      return res;
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
+  // EFT 세션 시작 핸들러
+  const goAR = (rec: EFTRecommendation) => {
+    const params = recToARParams(rec);
+    navigate(`/ar-holistic?${params.toString()}`);
+  };
+
+  // ConversationState 시스템 통합
+  const [session, setSession] = useState<ConversationSession>(() => createSession());
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [serverAI] = useState(() => getServerAI());
+  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [selectedTier, setSelectedTier] = useState<AITier>('premium');
+  const [availableTiers, setAvailableTiers] = useState<AITier[]>(['free', 'premium', 'enterprise']);
+  const [showTierSelector, setShowTierSelector] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const tierSelectorRef = useRef<HTMLDivElement>(null);
+  const [interventionTimer, setInterventionTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // 🎯 액션 핸들러 맵 (확장 용이)
+  const handleSuds: ActionHandler<SudsActionPayload> = (p) => setPendingSuds(p);
+  const handleBreath: ActionHandler<BreathGuidePayload> = (p) => {
+    setPendingBreathGuide(p);
+    console.log('호흡 가이드 액션:', p); // TODO: 호흡 가이드 모달 구현
+  };
+  const handleGrounding: ActionHandler<GroundingPayload> = (p) => {
+    setPendingGrounding(p);
+    console.log('그라운딩 기법 액션:', p); // TODO: 그라운딩 시트 구현
+  };
+  const handleEft: ActionHandler<EftRecommendationPayload> = (p) => {
+    setPendingEftRecommendation(p);
+    console.log('EFT 추천 액션:', p); // TODO: EFT 추천 카드 구현
+  };
+  const handleMood: ActionHandler<MoodCheckPayload> = (p) => {
+    setPendingMoodCheck(p);
+    console.log('기분 체크 액션:', p); // TODO: 기분 체크 플로우 구현
+  };
+  const handleResource: ActionHandler<ResourceOfferPayload> = (p) => {
+    setPendingResource(p);
+    console.log('리소스 제공 액션:', p); // TODO: 리소스 드로어 구현
+  };
+
+  const actionHandlers: Partial<Record<ActionType, ActionHandler<any>>> = {
+    SUDS_MEASURE: handleSuds,
+    BREATH_GUIDE: handleBreath,
+    GROUNDING_54321: handleGrounding,
+    EFT_RECOMMENDATION: handleEft,
+    MOOD_CHECK: handleMood,
+    RESOURCE_OFFER: handleResource,
+  };
+
+  // SUDS 모달 상태
+  const [showPreSUDS, setShowPreSUDS] = useState(false);
+  const [showPostSUDS, setShowPostSUDS] = useState(false);
+  const [suds, setSuds] = useState<{ pre?: number; post?: number; preNotes?: string; postNotes?: string }>({});
+
+  // 🔥 액션 상태 관리 (확장 가능)
+  const [pendingSuds, setPendingSuds] = useState<SudsActionPayload | null>(null);
+  const [pendingBreathGuide, setPendingBreathGuide] = useState<BreathGuidePayload | null>(null);
+  const [pendingGrounding, setPendingGrounding] = useState<GroundingPayload | null>(null);
+  const [pendingEftRecommendation, setPendingEftRecommendation] = useState<EftRecommendationPayload | null>(null);
+  const [pendingMoodCheck, setPendingMoodCheck] = useState<MoodCheckPayload | null>(null);
+  const [pendingResource, setPendingResource] = useState<ResourceOfferPayload | null>(null);
+
+  // 🔥 EFT 세션 훅 통합
+  const eftSessionHook = useEFTSessionHook({
+    onEFTComplete: (sessionData) => {
+      console.log('EFT 세션 완료:', sessionData);
+      // 세션 완료 시 Post-SUDS가 자동으로 트리거됨 (onAutoSUDS 콜백)
+    },
+    onAutoSUDS: (measurementType, context) => {
+      console.log('자동 SUDS 측정 트리거:', { measurementType, context });
+      // EFT 완료 후 자동 Post-SUDS 표시
+      setPendingSuds({
+        measurementType,
+        prompt: 'EFT 세션을 완료하셨습니다! 이제 세션 후 스트레스 수준을 측정해주세요.',
+        context,
+        sessionId: session.sessionId,
+        turnId: turnIdOf(session.turn)
+      });
+    }
+  });
+
+  // 뒤로가기 핸들러
+  const handleGoBack = () => {
+    navigate('/');
+  };
+
+  // 🔍 그림자 테스트: fire-and-forget 비교 (UI 영향 없음)
+  const shadowFireAndForget = (message: string, sessionData: any) => {
+    if (!shouldShadowSample()) return;
+
+    // 사용자 UX 영향 없도록 비동기 즉시 반환
+    (async () => {
+      try {
+        let legacyRes: any = null;
+        let shadowRes: any = null;
+
+        if (PREMIUM_VIA_BACKEND) {
+          // 본선: 백엔드 → 그림자: vLLM 직접
+          legacyRes = sessionData;
+
+          const url = joinUrl(VLLM_ENGINE_B_URL, '/chat/completions');
+          const body = {
+            // ⚠️ 모사 정확도: 본선과 동일한 톤/파라미터로 비교
+            model: VLLM_ENGINE_B_MODEL,
+            temperature: 0.7,
+            max_tokens: 400,
+            messages: [
+              { role: 'system', content: 'EFT 전문 상담사로서 일관된 톤으로 답변하세요.' },
+              { role: 'user', content: message },
+            ],
+            stream: false,
+          };
+
+          const shadowResponse = await fetchWithTimeout(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }, 6000);
+
+          shadowRes = await shadowResponse.json().catch(() => null);
+
+        } else {
+          // 본선: vLLM 직접 → 그림자: 백엔드
+          legacyRes = sessionData;
+
+          const url = joinUrl(API_BASE_URL, '/api/chat/premium');
+
+          // 백엔드 스펙과 동일하게 구성
+          const payload = {
+            message,
+            temperature: 0.7,
+            max_tokens: 400,
+            // 필요한 경우만 세션 메타 전달 (undefined 접근 방지)
+            ...(typeof session?.sessionId === 'string' ? { sessionId: session.sessionId } : {}),
+            ...(userId ? { userId } : {}),
+            tier: 'premium',
+          };
+
+          const shadowResponse = await fetchWithTimeout(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': import.meta.env.VITE_API_KEY ?? '',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          }, 6000);
+
+          shadowRes = await shadowResponse.json().catch(() => null);
+        }
+
+        const summary = diffSummary(legacyRes, shadowRes);
+        // eslint-disable-next-line no-console
+        console.debug('[SHADOW-COMPARE]', {
+          ts: new Date().toISOString(),
+          premium_via_backend: PREMIUM_VIA_BACKEND,
+          message_length: Array.from(message).length, // 한글 안전 길이
+          ...summary,
+        });
+
+        // 서버 수집 (선택)
+        // await fetch(joinUrl(API_BASE_URL, '/api/metrics/shadow'), {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ summary, message_len: Array.from(message).length }),
+        // }).catch(() => {});
+
+      } catch (e) {
+        // 조용히 실패 무시
+        // eslint-disable-next-line no-console
+        console.debug('[SHADOW-COMPARE] skipped', e);
+      }
+    })();
+  };
+
+  // 퀘스트 진행률 업데이트 (로컬 처리)
+  const handleQuestProgress = (questId: string, progress: number) => {
+    console.log(`퀘스트 진행: ${questId} +${progress}%`);
+    // TODO: localStorage나 Context API로 퀘스트 진행률 저장
+  };
+
+  // 서버 상태 체크 및 초기화 (Engine A/B 시스템)
+  useEffect(() => {
+    const initializeAI = async () => {
+      try {
+        const healthResponse = await fetch('http://localhost:8000/health');
+        const healthData = await healthResponse.json();
+        
+        // Engine A/B 시스템은 항상 사용 가능 (vLLM 서버 여부와 무관)
+        setServerStatus('online');
+        setAvailableTiers(['free', 'premium', 'enterprise']);
+        
+        // 기본값을 무료로 설정 (Engine A/B 병렬 비교 사용)
+        setSelectedTier('free');
+        
+        const initialMessage: Message = {
+          role: 'ai',
+          content: "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
+          timestamp: Date.now(),
+          metadata: {
+            confidence: 1.0,
+            processing_time: 0
+          }
+        };
+        
+        setMessages([initialMessage]);
+        
+      } catch (error) {
+        console.error('서버 초기화 실패:', error);
+        // Engine A/B 시스템은 서버 오류가 있어도 기본 동작
+        setServerStatus('online');
+        
+        const errorMessage: Message = {
+          role: 'ai',
+          content: "안녕하세요! Engine A/B 병렬 비교 시스템입니다. 🚀\n\n현재 vLLM 서버 연결을 시도 중입니다. 일부 응답이 제한될 수 있지만 기본 서비스는 이용 가능합니다.",
+          timestamp: Date.now(),
+          metadata: { confidence: 0.7 }
+        };
+        
+        setMessages([errorMessage]);
+      }
+    };
+
+    initializeAI();
+    
+    // 자동 포커스
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 1000);
+  }, [serverAI]);
+
+
+  // 티어 선택 외부 클릭 감지
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tierSelectorRef.current && !tierSelectorRef.current.contains(event.target as Node)) {
+        setShowTierSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // 타이머 메모리 누수 방지 cleanup
+  useEffect(() => {
+    return () => {
+      if (interventionTimer) clearTimeout(interventionTimer);
+    };
+  }, [interventionTimer]);
+
+  // 메시지 자동 스크롤
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // S3 진입 시 사전 SUDS 모달 띄우기
+  useEffect(() => {
+    if (session.state === 'S3' && suds.pre == null) {
+      setShowPreSUDS(true);
+    }
+  }, [session.state, suds.pre]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // EFT 전문 시스템 프롬프트
+  const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 상담사 AI입니다. 다음 가이드라인을 따라 응답하세요:
+
+1. 경청과 공감을 최우선으로 하세요
+2. 2턴 규칙: 2번째 대화 이전에는 기법을 제안하지 마세요
+3. 응답은 400-800자 범위로 작성하고 2단락으로 구성하세요
+4. 위험 신호 감지 시 안전 안내를 포함하세요
+5. 선택권을 제공하세요 ("원하지 않으면 지나가도 됩니다")
+6. 한국 문화적 맥락을 고려하세요 (수고, 책임감, 경계 등)`;
+
+  // 개입 토글용 옵션들
+  const interventionOptions = [
+    { id: 'breathing', label: '호흡 60초', duration: 60 },
+    { id: 'tapping', label: '탭핑 3포인트', duration: 75 },
+    { id: 'grounding', label: '5감 그라운딩', duration: 90 }
+  ];
+
+  // Qwen 호출 파이프라인 (상태머신 순서 준수)
+  const onSend = async (userText: string) => {
+    if (!userText.trim() || loading) return;
+    setLoading(true);
+
+    try {
+      // 1) 사용자 입력 도착 - 핵심명사 추출 및 상태 전이
+      onUserMessage(session, userText);
+
+      // UI 메시지 추가
+      const userMessage: Message = {
+        role: 'user',
+        content: userText.trim(),
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setInputMessage('');
+
+      // 2) 엔진 응답 생성 후(확정 직전) 상태 정책 적용
+      enforceTwoTurnRule(session);
+
+      // 슬롯 추출 (보조)
+      const slots = extractSlotsFrom(userText);
+
+      // 시스템 프롬프트 구성 (+ 슬롯 JSON)
+      const systemWithSlots = SYSTEM_PROMPT + `\n[슬롯]\n${JSON.stringify(slots)}`;
+
+      // Qwen 호출 (기존 서버 래퍼 사용)
+      console.log(`🚀 Qwen 호출 시작 (${selectedTier} 티어, 상태: ${session.state}, 턴: ${session.turn}):`, userText);
+
+      let serverResponse: ChatResponse;
+
+      if (selectedTier === 'free') {
+        // 무료: 기존 Engine A/B 사용
+        serverResponse = await serverAI.chat(userText, {
+          userId: userId,
+          maxTokens: 300,
+          temperature: 0.4
+        });
+      } else {
+        // 🎛️ 프리미엄: 토글 기반 라우팅 (즉시 롤백 가능)
+        if (PREMIUM_VIA_BACKEND) {
+          // 경로 1: 백엔드 경유 (/api/chat/premium)
+          const payload = {
+            message: userText,
+            temperature: 0.7,
+            max_tokens: 700,
+            ...(session?.sessionId ? { sessionId: session.sessionId } : {}),
+            ...(userId ? { userId } : {}),
+            tier: 'premium',
+          };
+
+          const response = await fetch(joinUrl(API_BASE_URL, '/api/chat/premium'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': import.meta.env.VITE_API_KEY ?? '',
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(`백엔드 프리미엄 API 호출 실패: ${response.status}`);
+          }
+
+          serverResponse = await response.json();
+
+        } else {
+          // 경로 2: vLLM 직접 호출 (기존 경로)
+          const response = await fetch(joinUrl(VLLM_ENGINE_B_URL, '/chat/completions'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer EMPTY'
+            },
+            body: JSON.stringify({
+              model: VLLM_ENGINE_B_MODEL,
+              temperature: 0.4,
+              max_tokens: 700,
+              messages: [
+                { role: 'system', content: systemWithSlots },
+                { role: 'user', content: userText }
+              ]
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`vLLM API 호출 실패: ${response.status}`);
+          }
+
+          const vllmResponse = await response.json();
+
+          // ChatResponse 형태로 변환
+          serverResponse = {
+            response: vllmResponse.choices?.[0]?.message?.content ?? '',
+            emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, confidence: 0.5, triggers: [] },
+            eft_recommendations: [],
+            confidence_score: 0.8,
+            processing_time: 0,
+            emergency_detected: false,
+            professional_referral: false
+          };
+        }
+
+        // 🔍 그림자 테스트 (비동기, UI 영향 없음)
+        shadowFireAndForget(userText, serverResponse);
+      }
+      
+      // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌
+      const actionResults = serverResponse.actions ?? [];
+      let reply = serverResponse.response ?? '';
+
+      // 🎯 액션 타입별 라우팅 시스템 (핸들러 맵 기반 - 확장 용이)
+      actionResults.forEach((action: any) => {
+        const handler = actionHandlers[action?.type as ActionType];
+        if (handler && action?.payload) {
+          try {
+            handler(action.payload);
+          } catch (error) {
+            console.error(`액션 처리 오류 (${action.type}):`, error);
+          }
+        } else {
+          console.log('알 수 없는 액션 타입 또는 빈 페이로드:', action.type);
+        }
+      });
+
+      // 3-1. 문맥 복원 ("로 힘드시겠어요" → "잠으로 힘드시겠어요")
+      reply = sanitizeAssistantText(session, reply);
+
+      // 3-2. 안전성 검사 (위험 키워드 감지 + 안전 안내)
+      reply = applySafetyCheck(session, userText, reply);
+
+      // 3-3. 반복 방지 적용 (24시간 캐시)
+      reply = dampenRepetition(session, reply);
+
+      // 3-4. 길이 제한 강제 (400-800자)
+      reply = enforceLength(reply);
+
+      // UI 반영 (2단락 보장)
+      const paragraphs = ensureTwoParagraphs(reply);
+      const finalContent = paragraphs.join('\n\n');
+
+      const aiMessage: Message = {
+        role: 'ai',
+        content: finalContent,
+        timestamp: Date.now(),
+        metadata: {
+          emotion_analysis: serverResponse.emotion_analysis,
+          eft_recommendations: serverResponse.eft_recommendations,
+          confidence: serverResponse.confidence_score,
+          processing_time: serverResponse.processing_time,
+          emergency_detected: serverResponse.emergency_detected,
+          professional_referral: serverResponse.professional_referral,
+          conversationState: session.state,
+          turnCount: session.turn,
+          actionResults // 🔥 AI 액션 토큰 처리 결과 포함
+        }
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+
+      // 4) 메시지 렌더링 & turn 카운트 증가 (응답 확정 후)
+      session.turn += 1;
+      setSession({ ...session }); // 세션 상태 저장
+
+      console.log(`✅ 파이프라인 완료 - 상태: ${session.state}, 턴: ${session.turn}`);
+
+      // S3 상태에서 메시지 전송 시 사후 SUDS 모달 띄우기
+      if (session.state === 'S3' && suds.pre != null && suds.post == null) {
+        setShowPostSUDS(true);
+      }
+
+      // 응급상황 감지 시 특별 처리
+      if (serverResponse.emergency_detected) {
+        console.warn('🚨 응급상황 감지됨');
+        // TODO: 응급상황 처리 로직 추가
+      }
+
+      // 전문가 상담 권유 시 알림
+      if (serverResponse.professional_referral) {
+        console.info('⚠️ 전문가 상담 권유');
+      }
+
+      // 감정 기반 퀘스트 진행률 업데이트
+      const primaryEmotion = serverResponse.emotion_analysis.primary_emotion;
+      if (primaryEmotion === 'stress' || primaryEmotion === '스트레스') {
+        handleQuestProgress('stress_management', 8);
+      } else if (primaryEmotion === 'sadness' || primaryEmotion === '슬픔') {
+        handleQuestProgress('emotional_healing', 6);
+      } else if (primaryEmotion === 'anxiety' || primaryEmotion === '불안') {
+        handleQuestProgress('anxiety_relief', 7);
+      }
+
+      console.log('✅ 서버 AI 응답 완료:', {
+        emotion: primaryEmotion,
+        confidence: serverResponse.confidence_score,
+        processingTime: serverResponse.processing_time + 'ms',
+        eftRecommendations: serverResponse.eft_recommendations.length
+      });
+
+    } catch (error) {
+      console.error('❌ 서버 AI 응답 실패:', error);
+
+      const errorMessage: Message = {
+        role: 'ai',
+        content: serverStatus === 'offline'
+          ? "현재 AI 서버와 연결할 수 없습니다. 서버 상태를 확인해 주세요. 🔧"
+          : "죄송합니다. 응답 생성 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요. 🤔",
+        timestamp: Date.now(),
+        metadata: {
+          confidence: 0.3,
+          processing_time: 0
+        }
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 기존 handleSendMessage를 onSend로 대체
+  const handleSendMessage = () => onSend(inputMessage);
+
+  // 개입 토글 시작 함수
+  const startIntervention = (option: typeof interventionOptions[0]) => {
+    console.log(`🧘 ${option.label} 시작 (${option.duration}초)`);
+
+    // 기존 타이머 정리
+    if (interventionTimer) clearTimeout(interventionTimer);
+
+    // 새 타이머 설정 (60-90초 후 효과 확인)
+    const timer = setTimeout(() => {
+      onSend('조금 가벼워졌는지, 몸이 어떻게 느껴지는지 알려줄래요?');
+    }, option.duration * 1000);
+
+    setInterventionTimer(timer);
+  };
+
+  // 개입 건너뛰기
+  const skipIntervention = () => {
+    onSend('괜찮아요. 원하지 않으면 지금은 건너뛰어도 됩니다.');
+  };
+
+  // Enter 키 처리
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  // 체크리스트 배지 생성 (새로운 세션 구조)
+  const generateChecklistBadges = () => {
+    const lastAI = messages.filter(m => m.role === 'ai').pop()?.content || '';
+    const hasChoice = /(괜찮다면|원하지 않으면|지금은 듣기만)/.test(lastAI);
+    const safetyQ = /(어려웠던 순간|경고 신호|해치고 싶은 충동)/.test(lastAI);
+    const culture = /(수고|책임감|경계|합의|역할 기대)/.test(lastAI);
+    const len = [...lastAI].length;
+    const inRange = (len >= 350 && len <= 900);
+    const twoTurnOk = session.state !== 'S3' || session.turn >= 2;
+
+    return {
+      twoTurn: twoTurnOk,
+      oneInterventionWithChoice: hasChoice,
+      safetyScreened: safetyQ,
+      lengthAndCulture: inRange && culture,
+      repetitionDamped: true // 새로운 시스템에서는 항상 활성화
+    };
+  };
+
+  // 제안 메시지 클릭 처리
+  const handleSuggestionClick = (suggestion: string) => {
+    setInputMessage(suggestion);
+    inputRef.current?.focus();
+  };
+
+  // 🔥 SUDS 인라인 카드 제출 핸들러
+  const handleSudsSubmit = async (score: number) => {
+    if (!pendingSuds) return;
+
+    try {
+      // 백엔드 SUDS 기록 API 호출
+      const response = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/suds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          measurement_type: pendingSuds.measurementType,
+          suds_value: score,
+          turn_id: pendingSuds.turnId ?? `ui_${Date.now()}`
+        })
+      });
+
+      if (response.ok) {
+        console.log('SUDS 점수 기록 완료:', {
+          sessionId: session.sessionId,
+          measurementType: pendingSuds.measurementType,
+          score,
+          context: pendingSuds.context
+        });
+
+        // 인라인 카드 제거
+        setPendingSuds(null);
+
+        // EFT 세션 중이었다면 완료 처리
+        if (pendingSuds.context?.includes('eft_complete')) {
+          eftSessionHook.completeEFTSession();
+        }
+
+        // 피드백 메시지 추가
+        const feedbackMessage: Message = {
+          role: 'ai',
+          content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
+          timestamp: Date.now(),
+          metadata: { confidence: 1.0 }
+        };
+        setMessages(prev => [...prev, feedbackMessage]);
+
+        // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
+        if (import.meta.env.VITE_DEBUG_MODE === 'true') {
+          try {
+            const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/stats`);
+            if (statsResponse.ok) {
+              const stats = await statsResponse.json();
+              console.log('메모리 통계:', stats);
+            }
+          } catch (error) {
+            console.log('메모리 통계 조회 실패:', error);
+          }
+        }
+      } else {
+        throw new Error('SUDS 기록 실패');
+      }
+    } catch (error) {
+      console.error('SUDS 제출 오류:', error);
+      notify('SUDS 점수 기록 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 시간 포맷팅
+  const formatTime = (timestamp: number) => {
+    return new Date(timestamp).toLocaleTimeString('ko-KR', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  return (
+    <div className="flex flex-col h-screen lg:min-h-0 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 lg:bg-transparent">
+      {/* 헤더 */}
+      <div className="bg-white shadow-lg border-b-2 border-indigo-100 sticky top-0 z-40">
+        <div className="max-w-md mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <button 
+                onClick={handleGoBack}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <span className="text-xl">←</span>
+              </button>
+              <div>
+                <div className="font-bold text-gray-800">EFT AI 전문상담</div>
+                <div className="text-sm flex items-center space-x-2">
+                  <span className={`w-2 h-2 rounded-full ${
+                    serverStatus === 'online' ? 'bg-green-500' : 
+                    serverStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'
+                  }`}></span>
+                  <span className="text-gray-600">
+                    {serverStatus === 'online' ? `${selectedTier.toUpperCase()} AI 온라인` : 
+                     serverStatus === 'offline' ? '서버 오프라인' : '연결 확인 중...'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              {/* 티어 선택 버튼 */}
+              <div className="relative" ref={tierSelectorRef}>
+                <button 
+                  onClick={() => setShowTierSelector(!showTierSelector)}
+                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                    selectedTier === 'free' ? 'bg-gray-100 text-gray-700 border-gray-300' :
+                    selectedTier === 'premium' ? 'bg-purple-100 text-purple-700 border-purple-300' :
+                    'bg-gold-100 text-gold-700 border-gold-300'
+                  }`}
+                >
+                  {selectedTier === 'free' ? '🆓 무료' : 
+                   selectedTier === 'premium' ? '💎 프리미엄' : '🏢 기업'}
+                </button>
+                
+                {/* 티어 선택 드롭다운 */}
+                {showTierSelector && (
+                  <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-40">
+                    {availableTiers.includes('free') && (
+                      <button
+                        onClick={() => {
+                          setSelectedTier('free');
+                          setShowTierSelector(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                          selectedTier === 'free' ? 'bg-gray-100' : ''
+                        }`}
+                      >
+                        🆓 무료 티어<br />
+                        <span className="text-xs text-gray-500">기본 대화 (150토큰)</span>
+                      </button>
+                    )}
+                    {availableTiers.includes('premium') && (
+                      <button
+                        onClick={() => {
+                          setSelectedTier('premium');
+                          setShowTierSelector(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 border-t ${
+                          selectedTier === 'premium' ? 'bg-purple-100' : ''
+                        }`}
+                      >
+                        💎 프리미엄 티어 (NEW!)<br />
+                        <span className="text-xs text-purple-500">Llama 3.1 고급 상담 (400토큰)</span>
+                      </button>
+                    )}
+                    {availableTiers.includes('enterprise') && (
+                      <button
+                        onClick={() => {
+                          setSelectedTier('enterprise');
+                          setShowTierSelector(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gold-50 border-t ${
+                          selectedTier === 'enterprise' ? 'bg-gold-100' : ''
+                        }`}
+                      >
+                        🏢 기업 티어 (BETA)<br />
+                        <span className="text-xs text-gold-500">최고급 분석 (무제한)</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <span className="text-lg">⚚</span>
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <span className="text-lg">📤</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 현재 퀘스트 진행률 표시 */}
+      <div className="bg-purple-50 border-b border-purple-100 px-4 py-2">
+        <div className="max-w-md mx-auto">
+          <div className="text-sm text-purple-700">
+            🎯 현재 퀘스트: "연애 패턴 분석" 82%
+          </div>
+          <div className="text-xs text-purple-600">
+            💡 연애 관련 대화 시 추가 진행률!
+          </div>
+        </div>
+      </div>
+
+      {/* 메시지 목록 */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="max-w-md mx-auto space-y-4">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-xs lg:max-w-sm px-4 py-3 rounded-2xl ${
+                  message.role === 'user'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white text-gray-800 border border-gray-200'
+                }`}
+              >
+                <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {message.content}
+                </div>
+                <div className={`text-xs mt-2 ${
+                  message.role === 'user' ? 'text-indigo-100' : 'text-gray-500'
+                }`}>
+                  {formatTime(message.timestamp)}
+                  {message.metadata && (
+                    <>
+                      <span className="ml-1">• {selectedTier.toUpperCase()} AI</span>
+                      {message.metadata.confidence && (
+                        <span className="ml-1">신뢰도 {Math.round(message.metadata.confidence * 100)}%</span>
+                      )}
+                      {message.metadata.processing_time && message.metadata.processing_time > 0 && (
+                        <span className="ml-1">({message.metadata.processing_time.toFixed(1)}초)</span>
+                      )}
+                      {message.metadata.emotion_analysis && (
+                        <div className="mt-1 text-xs text-blue-600">
+                          감정: {message.metadata.emotion_analysis.primary_emotion} 
+                          ({Math.round(message.metadata.emotion_analysis.intensity * 100)}%)
+                        </div>
+                      )}
+                      {message.metadata.eft_recommendations && message.metadata.eft_recommendations.length > 0 && (
+                        <div className="mt-2 flex flex-col gap-2">
+                          <div className="text-xs text-green-700">
+                            AI가 EFT 세션을 제안했어요: {message.metadata.eft_recommendations.length}개
+                          </div>
+
+                          {/* 추천 카드/버튼 리스트 */}
+                          <div className="flex flex-wrap gap-2">
+                            {message.metadata.eft_recommendations
+                              .slice(0, 3)
+                              .map((rec: EFTRecommendation, i: number) => (
+                                <EftRecButton key={i} rec={rec} index={i} onStart={goAR} />
+                              ))}
+                          </div>
+
+                          {/* 3개 초과 시 선택 UX (선택사항) */}
+                          {message.metadata.eft_recommendations.length > 3 && (
+                            <div className="text-xs">
+                              <button
+                                type="button"
+                                className="underline underline-offset-2 hover:opacity-80 text-green-600"
+                                onClick={() => {
+                                  // TODO: '모두 보기' 모달 or 별도 페이지로 이동
+                                  console.log('추천 더 보기:', message.metadata?.eft_recommendations);
+                                }}
+                              >
+                                추천 더 보기 ({message.metadata.eft_recommendations.length - 3}개)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {message.metadata.emergency_detected && (
+                        <div className="mt-1 text-xs text-red-600 font-medium">
+                          🚨 응급상황 감지
+                        </div>
+                      )}
+                      {message.metadata.professional_referral && (
+                        <div className="mt-1 text-xs text-orange-600 font-medium">
+                          ⚠️ 전문가 상담 권유
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* 개입 토글 (S3 상태이며 긴급상황이 아닐 때만 표시) */}
+          {(() => {
+            const emergency = session.safety?.escalated && (session.safety?.selfHarm || session.safety?.otherHarm);
+            const showIntervention = session.state === 'S3' && !emergency;
+
+            if (!showIntervention) return null;
+
+            return (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 my-4">
+                <div className="text-green-800 font-medium mb-3">
+                  🌿 잠시 함께 해볼까요?
+                </div>
+                <div className="space-y-2">
+                  {interventionOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => startIntervention(option)}
+                      className="w-full text-left px-3 py-2 bg-white border border-green-300 rounded-md hover:bg-green-50 transition-colors"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={skipIntervention}
+                    className="w-full text-center px-3 py-2 text-green-600 hover:text-green-800 transition-colors text-sm"
+                  >
+                    지금은 건너뛰기
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 체크리스트 배지 (옵션) */}
+          {(() => {
+            const flags = generateChecklistBadges();
+            return (
+              <div className="flex flex-wrap gap-1 my-2">
+                {flags.twoTurn && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">2턴규칙✓</span>}
+                {flags.oneInterventionWithChoice && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">선택권✓</span>}
+                {flags.safetyScreened && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">안전점검✓</span>}
+                {flags.lengthAndCulture && <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">문화배려✓</span>}
+                {flags.repetitionDamped && <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">반복방지✓</span>}
+              </div>
+            );
+          })()}
+
+          {/* 🔥 SUDS 인라인 카드 */}
+          {pendingSuds && (
+            <div className="flex justify-center my-4">
+              <div className="w-full max-w-sm">
+                <SUDSInlineCard
+                  measurementType={pendingSuds.measurementType}
+                  prompt={pendingSuds.prompt}
+                  context={pendingSuds.context}
+                  onSudsSubmit={handleSudsSubmit}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 로딩 인디케이터 */}
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-white text-gray-800 border border-gray-200 px-4 py-3 rounded-2xl">
+                <div className="flex items-center space-x-2">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                  <span className="text-sm text-gray-600">AI가 생각하고 있어요...</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      {/* 입력 힌트 (첫 대화일 때만) */}
+      {messages.length === 1 && (
+        <div className="px-4 py-2 bg-blue-50 border-t border-blue-100">
+          <div className="max-w-md mx-auto">
+            <div className="text-sm text-blue-700 mb-2">💡 이런 식으로 시작해보세요:</div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "오늘 너무 힘들었어요",
+                "스트레스가 심해서 잠이 안 와요",
+                "마음이 복잡하고 답답해요",
+                "요즘 기분이 이상해요"
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-colors"
+                >
+                  "{suggestion}"
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 메시지 입력 */}
+      <div className="bg-white border-t border-gray-200 px-4 py-4">
+        <div className="max-w-md mx-auto">
+          <div className="flex space-x-3">
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="메시지를 입력하세요..."
+              disabled={loading}
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            />
+            <Button
+              onClick={handleSendMessage}
+              disabled={!inputMessage.trim() || loading}
+              className="px-6 py-3 bg-indigo-500 text-white rounded-2xl hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+            >
+              전송
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* SUDS 모달들 */}
+      <SUDSModal
+        open={showPreSUDS}
+        label="pre"
+        onSubmit={async (rating) => {
+          try {
+            setSuds(s => ({ ...s, pre: rating }));
+            setShowPreSUDS(false);
+
+            // Firestore에 사전 SUDS 점수 저장
+            const { sessionId, turn } = session;
+            const turnId = turnIdOf(turn);
+
+            await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+
+            // 세션 요약에도 pre 값 즉시 반영 (집계/리포트 편의)
+            await fsSetSessionSUDS(sessionId, { pre: rating });
+
+            console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
+
+            // EFT 개입 시작 메시지 자동 전송
+            setTimeout(() => {
+              onSend('이제 함께 EFT 세션을 진행해보겠습니다. 준비되셨나요?');
+            }, 1000);
+          } catch (error) {
+            console.error('사전 SUDS 저장 실패:', error);
+            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
+            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+            setShowPreSUDS(true);
+          }
+        }}
+        onClose={() => setShowPreSUDS(false)}
+        currentValue={suds.pre}
+      />
+
+      <SUDSModal
+        open={showPostSUDS}
+        label="post"
+        onSubmit={async (rating) => {
+          try {
+            const preSafe = suds.pre ?? 5;
+            const delta = preSafe - rating;
+
+            setSuds(s => ({ ...s, post: rating }));
+            setShowPostSUDS(false);
+
+            // Firestore에 사후 SUDS 점수 저장
+            const { sessionId, turn } = session;
+            const turnId = turnIdOf(turn);
+
+            // 병렬 처리로 성능 최적화
+            await Promise.all([
+              fsSetTurnSUDS(sessionId, turnId, { sudsPost: rating }),
+              fsSetSessionSUDS(sessionId, {
+                ...(preSafe !== undefined ? { pre: preSafe } : {}),
+                post: rating
+              })
+            ]);
+
+            console.log('사후 SUDS 저장 완료:', {
+              sessionId,
+              turnId,
+              pre: preSafe,
+              post: rating,
+              sudsDelta: delta
+            });
+
+            // S4로 전환
+            setSession(prev => ({ ...prev, state: 'S4' }));
+
+            // 개선 결과에 따른 피드백 메시지 자동 전송
+            setTimeout(() => {
+              if (delta > 2) {
+                onSend(`정말 좋아졌네요! ${delta}점이나 개선되었습니다. 어떤 부분이 가장 도움이 되었나요?`);
+              } else if (delta > 0) {
+                onSend(`조금이나마 나아지셨군요. ${delta}점 개선되었습니다. 계속 이어서 해볼까요?`);
+              } else {
+                onSend('아직 큰 변화는 느끼지 못하시는군요. 괜찮습니다. 다른 방법을 함께 시도해보죠.');
+              }
+            }, 1500);
+          } catch (error) {
+            console.error('사후 SUDS 저장 실패:', error);
+            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
+            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+            setShowPostSUDS(true);
+          }
+        }}
+        onClose={() => setShowPostSUDS(false)}
+        currentValue={suds.post}
+      />
+    </div>
+  );
+};
+
+export default AIChat;
