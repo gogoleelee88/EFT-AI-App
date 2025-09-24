@@ -1,9 +1,14 @@
+from backend.routers.health import router as health_router
 """
 EFT AI 서버 - FastAPI 메인 애플리케이션
 심리상담 특화 Llama 3 기반 AI 서버
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
+from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -154,7 +159,9 @@ app = FastAPI(
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None
 )
+app.include_router(health_router)  # <- health first
 
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 # 🔍 미들웨어 스택 진단 로그 추가
 def _dump_middleware(tag: str):
     """미들웨어 스택 진단 로그"""
@@ -1526,3 +1533,5 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level="info" if settings.DEBUG else "warning"
     )
+
+app.include_router(health_router)  # health endpoints first-class
