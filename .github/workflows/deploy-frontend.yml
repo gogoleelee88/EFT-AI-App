@@ -88,4 +88,4 @@ jobs:
 
             echo "✅ Deployed successfully to: $STATIC_ROOT"
             echo "📦 Release: $REL"
-            echo "🌐 URL: https://moodtalk.app"
+            echo "🌐 URL: https://moodtalk.app"dummy change to trigger workflow
