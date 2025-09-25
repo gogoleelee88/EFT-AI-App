@@ -54,7 +54,7 @@ jobs:
           VITE_API_KEY: eft-ai-moodtalk-2025!
           VITE_PREMIUM_API_KEY: premium-eft-ai-moodtalk-2025!
           VITE_PREMIUM_VIA_BACKEND: true
-        run: npm run build
+        run: npm run build:ci
 
       - name: Package dist
         working-directory: frontend
