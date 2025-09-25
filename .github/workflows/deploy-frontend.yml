@@ -1,0 +1,91 @@
+name: Deploy Frontend to moodtalk.app
+
+on:
+  push:
+    branches: [ main, feature/notice-system ]  # 현재 브랜치 추가
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:  # 수동 실행 허용
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install & Build (Vite)
+        working-directory: frontend
+        env:
+          # 빌드마다 버전 주입 → SW 캐시 즉시 갱신
+          VITE_APP_VERSION: ${{ github.run_id }}-${{ github.run_number }}
+          # 프로덕션 환경변수
+          VITE_BACKEND_URL: https://moodtalk.app
+          VITE_API_BASE_URL: https://moodtalk.app
+          VITE_API_KEY: eft-ai-moodtalk-2025!
+          VITE_PREMIUM_API_KEY: premium-eft-ai-moodtalk-2025!
+          VITE_PREMIUM_VIA_BACKEND: true
+        run: |
+          npm ci
+          npx vite build --mode production
+
+      - name: Package dist
+        working-directory: frontend
+        run: tar -czf dist.tar.gz dist
+
+      - name: Upload dist to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "frontend/dist.tar.gz"
+          target: "${{ secrets.DEPLOY_UPLOAD_DIR }}/"
+
+      - name: Unpack & Atomic Swap on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -euo pipefail
+            APP_ROOT="${{ secrets.APP_ROOT }}"
+            UPLOAD_DIR="${{ secrets.DEPLOY_UPLOAD_DIR }}"
+            STATIC_ROOT="${{ secrets.STATIC_ROOT }}"
+            REL="release-$(date +%Y%m%d%H%M%S)"
+
+            echo "🚀 Starting deployment: $REL"
+
+            # 릴리스 디렉토리 생성 및 압축 해제
+            mkdir -p "$APP_ROOT/releases/$REL"
+            tar -xzf "$UPLOAD_DIR/frontend/dist.tar.gz" -C "$APP_ROOT/releases/$REL"
+
+            # 원자적 교체: 새 dist → 정적 서빙 디렉터리로 동기화
+            rsync -a --delete "$APP_ROOT/releases/$REL/dist/" "$STATIC_ROOT/"
+
+            # Service Worker 캐시 무효화를 위한 버전 파일 생성
+            echo "${{ github.run_id }}-${{ github.run_number }}" > "$STATIC_ROOT/version.txt"
+
+            # 백엔드 재시작 (정적 파일 갱신 반영)
+            systemctl --user reload eft-api || systemctl --user restart eft-api || true
+
+            # 구버전 정리 (최근 5개만 유지)
+            cd "$APP_ROOT/releases"
+            ls -1t | tail -n +6 | xargs -r rm -rf
+
+            echo "✅ Deployed successfully to: $STATIC_ROOT"
+            echo "📦 Release: $REL"
+            echo "🌐 URL: https://moodtalk.app"
