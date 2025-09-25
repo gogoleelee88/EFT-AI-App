@@ -26,8 +26,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "type-check": "tsc --noEmit",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
