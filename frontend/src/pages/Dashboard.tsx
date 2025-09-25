@@ -128,7 +128,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const handle3DGuide = () => {
     console.log('3D/AR EFT 가이드 시작');
     setShowMenu(false);
-    navigate('/eft-guide'); // EFT 세션 선택기로 이동
+    navigate('/ar-holistic'); // AR Holistic EFT 가이드로 이동
   };
 
   const handleViewInsight = (insightId: string | number) => {
@@ -150,7 +150,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         navigate('/ai-chat');
         break;
       case 'EFT 세션':
-        navigate('/eft-guide'); // EFT 세션 선택기로 이동
+        navigate('/ar-holistic'); // AR Holistic EFT 가이드로 이동
         break;
       case '감정 체크인':
         handleEmotionCheck();

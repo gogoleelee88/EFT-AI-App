@@ -1,7 +1,8 @@
 // EFT AI 앱 Service Worker
-const CACHE_NAME = 'eft-ai-app-v1.0.0';
-const STATIC_CACHE_NAME = 'eft-ai-static-v1';
-const DYNAMIC_CACHE_NAME = 'eft-ai-dynamic-v1';
+const APP_VERSION = self?.VITE_APP_VERSION || '20250925120000';
+const CACHE_NAME = `eft-ai-app-v${APP_VERSION}`;
+const STATIC_CACHE_NAME = `eft-ai-static-v${APP_VERSION}`;
+const DYNAMIC_CACHE_NAME = `eft-ai-dynamic-v${APP_VERSION}`;
 
 // 캐시할 정적 리소스
 const STATIC_ASSETS = [

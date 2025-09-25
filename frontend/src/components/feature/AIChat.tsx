@@ -159,8 +159,9 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const navigate = useNavigate();
 
   // 🌍 API 베이스 URL (환경변수 기반)
-  const API_BASE_URL = (import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000').replace(/\/+$/, '');
-  const VLLM_ENGINE_B_URL = import.meta.env.VITE_VLLM_ENGINE_B_URL || 'http://localhost:8002/v1';
+  const env = (import.meta as any).env ?? {};
+  const API_BASE_URL = (env.VITE_API_BASE_URL || env.VITE_BACKEND_URL || 'http://localhost:8000').replace(/\/+$/, '');
+  const VLLM_ENGINE_B_URL = env.VITE_VLLM_ENGINE_B_URL || `${API_BASE_URL}/api/v1`;
 
   // 🎛️ 프리미엄 라우팅 토글 (즉시 롤백 가능)
   const PREMIUM_VIA_BACKEND = String(import.meta.env.VITE_PREMIUM_VIA_BACKEND ?? 'false').toLowerCase() === 'true';
@@ -386,7 +387,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   useEffect(() => {
     const initializeAI = async () => {
       try {
-        const healthResponse = await fetch('http://localhost:8000/health');
+        const healthResponse = await fetch(`${API_BASE_URL}/health`);
         const healthData = await healthResponse.json();
         
         // Engine A/B 시스템은 항상 사용 가능 (vLLM 서버 여부와 무관)

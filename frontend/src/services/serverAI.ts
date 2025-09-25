@@ -64,7 +64,8 @@ const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사�
 4. 지속적인 격려와 지지`;
 
 // 환경변수에서 서버 URL 가져오기 (Vite 환경변수 사용)
-const SERVER_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+const env = (import.meta as any).env ?? {};
+const SERVER_URL = env.VITE_API_BASE_URL || env.VITE_BACKEND_URL || env.VITE_BACKEND_BASE || env.VITE_AI_SERVER_URL || 'http://localhost:8000';
 
 interface ChatRequest {
   message: string;
@@ -555,7 +556,7 @@ export async function generateReplyAB(
     max_tokens: 512,
   };
 
-  const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+  const base = SERVER_URL;
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
 
   // 총 소요 시간
@@ -666,7 +667,7 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
     max_tokens: 512
   };
 
-  const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+  const base = SERVER_URL;
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
 
   const res = await fetch(`${base}${endpoint}`, {

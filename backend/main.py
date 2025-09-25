@@ -454,9 +454,8 @@ else:  # 운영 환경
 app.add_middleware(IdempotentBodyMiddleware)
 logger.info("🔧 IdempotentBodyMiddleware: 최우선 배치 완료 (body 캐싱)")
 
-# 🎛️ 프리미엄 라우터 등록
-app.include_router(premium_router.router)
-app.include_router(notices_router.router)
+# 🎛️ 프리미엄 라우터 등록은 맨 마지막에 배치 예정
+# (모든 개별 엔드포인트 등록 후)
 
 # AI 지원 서비스 전역 변수 (서버 시작시 로드)  
 # AI 엔진은 app.state.vllm으로 대체됨
@@ -1516,6 +1515,79 @@ async def compare_llama3_vs_qwen25(request: ChatProxyRequest, req: Request):
     except Exception as e:
         logger.error(f"[{correlation_id}] 병렬 비교 오류: {e}")
         raise HTTPException(status_code=500, detail=f"병렬 비교 처리 오류: {str(e)}")
+
+# 🎛️ 라우터 등록 (맨 마지막) - 라우팅 우선순위 보장
+# 모든 개별 엔드포인트 등록 후 라우터 포함하여 경로 충돌 방지
+logger.info("🔗 라우터 등록 중...")
+app.include_router(premium_router.router)
+app.include_router(notices_router.router)
+logger.info("✅ 라우터 등록 완료 (개별 엔드포인트 우선)")
+
+# --- static root (serve index.html, assets, manifest, sw.js) ---
+from starlette.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# 루트 정적 서빙 (html=True 필수)
+try:
+    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="root")
+    logger.info("✅ 정적 파일 서빙 설정 완료: frontend/dist")
+except Exception as e:
+    logger.warning(f"⚠️ 정적 파일 디렉토리 없음: {e}")
+
+# ---- explicit manifest/sw routes ----
+from pathlib import Path
+from fastapi import HTTPException, Response
+from fastapi.responses import FileResponse
+
+BASE_DIR = Path(__file__).resolve().parent
+DIST = (BASE_DIR / "../frontend/dist").resolve()
+
+def _pick_manifest():
+    for name in ("manifest.json", "manifest.webmanifest"):
+        f = DIST / name
+        if f.exists():
+            return f
+    return None
+
+@app.get("/manifest.json", include_in_schema=False)
+def manifest_get():
+    f = _pick_manifest()
+    if not f:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(f, media_type="application/manifest+json",
+                        headers={"Cache-Control": "public, max-age=600, immutable"})
+
+@app.head("/manifest.json", include_in_schema=False)
+def manifest_head():
+    f = _pick_manifest()
+    if not f:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return Response(status_code=200, media_type="application/manifest+json")
+
+@app.get("/sw.js", include_in_schema=False)
+def sw_get():
+    f = DIST / "sw.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return FileResponse(
+        f,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache"
+        }
+    )
+
+@app.head("/sw.js", include_in_schema=False)
+def sw_head():
+    f = DIST / "sw.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
+    return Response(
+        status_code=200,
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"}
+    )
 
 if __name__ == "__main__":
     import uvicorn
