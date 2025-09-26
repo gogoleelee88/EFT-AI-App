@@ -2,7 +2,7 @@ name: Deploy Frontend to moodtalk.app
 
 on:
   push:
-    branches: [ main, feature/notice-system ]  # 현재 브랜치 추가
+    branches: [ main ]   # 👉 main 브랜치에 push될 때만 실행
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-frontend.yml"
