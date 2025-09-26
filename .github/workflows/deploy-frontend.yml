@@ -27,6 +27,6 @@ jobs:
         run: npm ci
 
       - name: Build (frontend)
-        run: npm --prefix frontend run build:ci
+        run: npm --prefix frontend run build
 
       # TODO: 배포 단계(서버/rsync/S3 등) 유지
