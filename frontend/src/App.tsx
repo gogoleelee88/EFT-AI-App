@@ -58,10 +58,6 @@ const App: React.FC = () => {
             path="/ai-chat" 
             element={<AIChat userId={user?.uid || 'demo'} />} 
           />
-          <Route 
-            path="/eft-guide" 
-            element={<EFTSessionSelector onClose={() => window.history.back()} />} 
-          />
           <Route
             path="/ar-demo"
             element={<ARDemo />}
