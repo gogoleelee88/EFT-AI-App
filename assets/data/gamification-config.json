@@ -1,0 +1,242 @@
+{
+  "questConfig": {
+    "totalQuestions": 200,
+    "questionsPerStage": 50,
+    "totalStages": 4,
+    "estimatedTimeMinutes": 35,
+    "timePerStageMinutes": 9
+  },
+  
+  "progressMessages": [
+    {
+      "threshold": 12.5,
+      "message": "성격의 첫 번째 조각을 발견했어요! 🧩",
+      "emoji": "🌟",
+      "animationType": "achievement"
+    },
+    {
+      "threshold": 25,
+      "message": "성격의 25% 발견! 당신만의 특별함이 보이기 시작해요 ✨",
+      "emoji": "🎯",
+      "animationType": "celebration"
+    },
+    {
+      "threshold": 37.5,
+      "message": "벌써 1/3 완성! 진짜 나를 알아가는 여정이 흥미롭죠? 🚀",
+      "emoji": "🔍",
+      "animationType": "progress"
+    },
+    {
+      "threshold": 50,
+      "message": "반환점 돌파! 🎉 지금까지의 나, 정말 대단해요!",
+      "emoji": "🎊",
+      "animationType": "celebration"
+    },
+    {
+      "threshold": 62.5,
+      "message": "이제 더 깊은 내면이 궁금해지지 않나요? 🌊",
+      "emoji": "💫",
+      "animationType": "progress"
+    },
+    {
+      "threshold": 75,
+      "message": "75% 완료! 마지막 퍼즐 조각들이 기다리고 있어요 🧩",
+      "emoji": "🎨",
+      "animationType": "achievement"
+    },
+    {
+      "threshold": 87.5,
+      "message": "거의 다 왔어요! 진짜 나와 만날 준비 되셨나요? 🎭",
+      "emoji": "🏆",
+      "animationType": "progress"
+    },
+    {
+      "threshold": 100,
+      "message": "완성! 🎉 당신만의 성격 지도가 완성되었어요!",
+      "emoji": "👑",
+      "animationType": "celebration"
+    }
+  ],
+
+  "stageCompletionRewards": [
+    {
+      "stageId": 1,
+      "title": "성격의 기본 틀 발견! 🏗️",
+      "message": "당신의 기본적인 성향이 드러나기 시작했어요. 이미 흥미로운 패턴들이 보이네요!",
+      "badge": "explorer",
+      "insight": "지금까지의 응답을 보면, 당신은 상황에 따라 유연하게 대처하는 모습이 보여요."
+    },
+    {
+      "stageId": 2, 
+      "title": "감정의 주인이 되어가는 중! 💝",
+      "message": "감정을 다루는 당신만의 방식이 선명해지고 있어요. 정말 특별한 패턴이에요!",
+      "badge": "emotion_master",
+      "insight": "당신은 자신의 감정을 인식하고 표현하는데 독특한 강점이 있는 것 같아요."
+    },
+    {
+      "stageId": 3,
+      "title": "관계의 달인으로 거듭나는 중! 🤝",
+      "message": "사람들과의 관계에서 드러나는 당신만의 매력이 분석되었어요!",
+      "badge": "relationship_expert", 
+      "insight": "대인관계에서 당신만의 독특한 강점과 소통 스타일이 드러나고 있어요."
+    },
+    {
+      "stageId": 4,
+      "title": "완전체 달성! 당신만의 성격 지도 완성! 🗺️",
+      "message": "축하해요! 당신만의 완전한 성격 프로필이 완성되었습니다. 이제 진짜 변화가 시작돼요!",
+      "badge": "personality_master",
+      "insight": "모든 분석이 완료되었어요. 당신만의 강점과 성장 포인트가 명확해졌습니다!"
+    }
+  ],
+
+  "miniInsightTriggers": [
+    {
+      "questionIndex": 20,
+      "insightType": "personality_hint",
+      "title": "첫 번째 단서 발견! 🕵️",
+      "content": "지금까지의 응답을 보면, 당신은 신중하면서도 결단력 있는 면이 엿보여요."
+    },
+    {
+      "questionIndex": 45,
+      "insightType": "strength_discovery", 
+      "title": "숨겨진 강점을 찾았어요! 💪",
+      "content": "당신은 어려운 상황에서도 긍정적인 면을 찾으려 노력하는 특별한 능력이 있네요."
+    },
+    {
+      "questionIndex": 75,
+      "insightType": "pattern_notice",
+      "title": "흥미로운 패턴을 발견했어요! 🔍",
+      "content": "사람들과의 관계에서 당신만의 독특한 접근 방식이 일관되게 나타나고 있어요."
+    },
+    {
+      "questionIndex": 120,
+      "insightType": "personality_hint",
+      "title": "성격의 핵심을 발견! 💎",
+      "content": "당신의 가치관과 행동 방식 사이에서 일관된 철학이 드러나고 있어요."
+    },
+    {
+      "questionIndex": 160,
+      "insightType": "strength_discovery",
+      "title": "또 다른 재능 발견! ⭐",
+      "content": "스트레스 상황에서 보이는 당신만의 대처 방식이 정말 인상적이에요."
+    },
+    {
+      "questionIndex": 190,
+      "insightType": "pattern_notice", 
+      "title": "마지막 퍼즐 조각! 🧩",
+      "content": "모든 영역에서 당신만의 일관된 성향이 완성되어 가고 있어요."
+    }
+  ],
+
+  "encouragementMessages": {
+    "common": [
+      {
+        "stage": 1,
+        "message": "좋아요! 자신을 알아가는 첫 걸음을 내디뎠어요 🌱",
+        "tone": "supportive"
+      },
+      {
+        "stage": 1,
+        "message": "훌륭해요! 진솔한 답변이 느껴져요 ✨",
+        "tone": "encouraging"
+      },
+      {
+        "stage": 2,
+        "message": "대단해요! 벌써 여기까지 왔네요 🚀",
+        "tone": "motivational"
+      },
+      {
+        "stage": 2,
+        "message": "와! 정말 집중해서 답변하고 계시는군요 👏",
+        "tone": "appreciative"
+      },
+      {
+        "stage": 3,
+        "message": "놀라워요! 끝까지 포기하지 않는 당신이 멋져요 💪",
+        "tone": "inspiring"
+      },
+      {
+        "stage": 3,
+        "message": "거의 다 왔어요! 마지막까지 화이팅! 🔥",
+        "tone": "motivational"
+      },
+      {
+        "stage": 4,
+        "message": "최고예요! 끝까지 완주하는 당신이 자랑스러워요 🏆",
+        "tone": "celebratory"
+      }
+    ],
+    
+    "personalized": [
+      {
+        "personalityPattern": "high_conscientiousness",
+        "messages": [
+          "완벽주의자인 당신답게 정말 신중하게 답변하시는군요! 👌",
+          "계획적인 성향이 답변에서도 느껴져요. 정말 체계적이에요! 📋",
+          "디테일을 놓치지 않으려는 모습이 인상적이에요 🎯"
+        ]
+      },
+      {
+        "personalityPattern": "high_extraversion",
+        "messages": [
+          "에너지가 넘치는 당신! 이 검사도 신나게 완주해봐요! 🎉",
+          "사교적인 성향이 답변에서도 드러나네요! 멋져요! ✨",
+          "활발한 당신답게 척척 답변하는 모습이 보기 좋아요 🌟"
+        ]
+      },
+      {
+        "personalityPattern": "high_openness",
+        "messages": [
+          "새로운 경험을 즐기는 당신! 이 자기발견 여행도 즐기고 계시죠? 🗺️",
+          "창의적인 사고가 돋보이는 답변들이에요! 🎨",
+          "호기심 많은 당신답게 깊이 생각하며 답변하시는군요 💭"
+        ]
+      },
+      {
+        "personalityPattern": "competitive_spirit",
+        "messages": [
+          "겨우 200문항 검사를 완주 못한다고요? 당신답지 않은데? 😏",
+          "승부욕 강한 당신이라면 끝까지 완주할 거라 믿어요! 🔥",
+          "도전을 즐기는 당신! 이번에도 성공적으로 완주해봐요! 🏃‍♂️"
+        ]
+      },
+      {
+        "personalityPattern": "people_pleaser",
+        "messages": [
+          "남의 눈치 보느라 애쓰던 시간을 조금만 나에게 투자해보세요 💝",
+          "다른 사람을 배려하는 마음만큼 자신도 소중히 여겨주세요 🤗",
+          "타인을 위해 쓰던 에너지를 자기 이해에도 써보는 거예요 ⚡"
+        ]
+      },
+      {
+        "personalityPattern": "hobby_enthusiast",
+        "messages": [
+          "덕질하던 그 열정으로 자신을 파헤쳐봐요! 🕵️‍♀️",
+          "최애에게 쏟던 관심을 자신에게도 줘보세요 ❤️",
+          "덕질할 때처럼 깊이 파보면 자신에 대한 놀라운 발견이 있을 거예요 🔍"
+        ]
+      }
+    ]
+  },
+
+  "timeEstimation": {
+    "totalMinutes": 35,
+    "perStageMinutes": 9,
+    "showBreakSuggestions": true,
+    "breakSuggestionAfterStage": [2, 3],
+    "breakMessages": [
+      "잠깐 휴식하며 지금까지 발견한 것들을 곱씹어봐도 좋을 것 같아요 ☕",
+      "심호흡 한 번 하고 계속해요! 나머지 절반에서 더 놀라운 발견이 기다리고 있어요 🫧"
+    ]
+  },
+
+  "saveSystem": {
+    "autoSaveInterval": 30,
+    "savePoints": [25, 50, 75, 100, 125, 150, 175, 200],
+    "resumeMessages": [
+      "어서와요! 지난번에 여기서 멈췄었죠? 계속해서 나머지 자신을 발견해봐요! 🌟",
+      "다시 만나서 반가워요! 저장된 지점부터 이어서 해볼까요? 📍",
+      "완벽한 타이밍이에요! 중단했던 곳부터 다시 시작해봐요 🔄"
+    ]
+  }
+}

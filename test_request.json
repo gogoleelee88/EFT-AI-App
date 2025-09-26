@@ -1,0 +1,10 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "안녕하세요"
+    }
+  ],
+  "temperature": 0.6,
+  "max_tokens": 128
+}
