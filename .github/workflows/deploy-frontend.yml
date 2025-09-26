@@ -55,19 +55,26 @@ jobs:
           VITE_PREMIUM_VIA_BACKEND: true
         run: npm run build:ci
 
-      - name: Package dist
-        working-directory: frontend
-        run: tar -czf dist.tar.gz dist
-
       - name: Upload dist to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "frontend/dist.tar.gz"
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "frontend/dist/*"
           target: "${{ secrets.DEPLOY_UPLOAD_DIR }}/"
+
+      - name: Debug SSH connectivity
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            whoami; hostname
+            ls -la "${{ secrets.DEPLOY_UPLOAD_DIR }}" || true
 
       - name: Unpack & Atomic Swap on server
         uses: appleboy/ssh-action@v1.0.3
@@ -75,7 +82,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
             APP_ROOT="${{ secrets.APP_ROOT }}"
@@ -85,12 +92,12 @@ jobs:
 
             echo "🚀 Starting deployment: $REL"
 
-            # 릴리스 디렉토리 생성 및 압축 해제
+            # 릴리스 디렉토리 생성 및 파일 복사
             mkdir -p "$APP_ROOT/releases/$REL"
-            tar -xzf "$UPLOAD_DIR/frontend/dist.tar.gz" -C "$APP_ROOT/releases/$REL"
+            cp -r "$UPLOAD_DIR/frontend/dist/"* "$APP_ROOT/releases/$REL/"
 
             # 원자적 교체: 새 dist → 정적 서빙 디렉터리로 동기화
-            rsync -a --delete "$APP_ROOT/releases/$REL/dist/" "$STATIC_ROOT/"
+            rsync -a --delete "$APP_ROOT/releases/$REL/" "$STATIC_ROOT/"
 
             # Service Worker 캐시 무효화를 위한 버전 파일 생성
             echo "${{ github.run_id }}-${{ github.run_number }}" > "$STATIC_ROOT/version.txt"
