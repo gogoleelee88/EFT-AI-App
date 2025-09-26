@@ -58,9 +58,9 @@ const App: React.FC = () => {
             path="/ai-chat" 
             element={<AIChat userId={user?.uid || 'demo'} />} 
           />
-          <Route
-            path="/ar-holistic"
-            element={<ARHolisticTest />}
+          <Route 
+            path="/eft-guide" 
+            element={<EFTSessionSelector onClose={() => window.history.back()} />} 
           />
           <Route
             path="/ar-demo"
@@ -69,6 +69,10 @@ const App: React.FC = () => {
           <Route
             path="/ar-test"
             element={<ARTest />}
+          />
+          <Route
+            path="/ar-holistic"
+            element={<ARHolisticTest />}
           />
           <Route
             path="/ar/calibration"

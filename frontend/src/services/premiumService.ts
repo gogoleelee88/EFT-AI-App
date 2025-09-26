@@ -4,7 +4,6 @@
  */
 
 import { PremiumAuthManager } from '@/utils/premiumAuth';
-import { http, httpJson } from './http';
 
 export interface ChatRequest {
   message: string;
@@ -27,9 +26,8 @@ export interface ChatResponse {
 export class PremiumService {
   private baseUrl: string;
 
-  constructor() {
-    const env = (import.meta as any).env ?? {};
-    this.baseUrl = env.VITE_API_BASE_URL || env.VITE_BACKEND_URL || 'http://localhost:8000';
+  constructor(baseUrl: string = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000') {
+    this.baseUrl = baseUrl;
   }
 
   /**

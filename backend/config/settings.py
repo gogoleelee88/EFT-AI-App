@@ -31,11 +31,6 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
-        # 운영 환경 도메인
-        "https://moodtalk.app",
-        "https://www.moodtalk.app",
-        "https://eft-ai-app.vercel.app",  # Vercel 임시 도메인
-        "https://eft-ai-app.netlify.app", # Netlify 임시 도메인
     ]
     EXTRA_ALLOWED_ORIGINS: Optional[str] = None  # "https://example.com,https://app.example.com"
     
