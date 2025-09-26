@@ -6,10 +6,11 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-frontend.yml"
-  workflow_dispatch:  # 수동 실행 허용
+  workflow_dispatch: {}  # 수동 실행 허용
 
 jobs:
   build-and-deploy:
+    if: github.ref == 'refs/heads/main'  # ← 브랜치 가드(실수 방지)
     runs-on: ubuntu-latest
     environment: production
 
