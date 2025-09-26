@@ -329,7 +329,7 @@ export default function Calibration({
     if (onBack) {
       onBack();
     } else {
-      navigate('/dashboard'); // EFT 가이드 선택으로 돌아가기
+      navigate('/'); // 메인 대시보드로 돌아가기
     }
   };
 
