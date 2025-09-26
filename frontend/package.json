@@ -27,6 +27,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ci": "vite build --mode production --logLevel warn",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
