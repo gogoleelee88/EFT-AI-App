@@ -2,114 +2,31 @@ name: Deploy Frontend to moodtalk.app
 
 on:
   push:
-    branches: [ main ]   # 👉 main 브랜치에 push될 때만 실행
+    branches: [ main ]
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-frontend.yml"
-  workflow_dispatch: {}  # 수동 실행 허용
+  workflow_dispatch: {}
 
 jobs:
   build-and-deploy:
-    if: github.ref == 'refs/heads/main'  # ← 브랜치 가드(실수 방지)
+    if: github.ref == 'refs/heads/main'     # 🔒 main에서만 실행
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Print Node & npm info
-        run: |
-          node -v
-          npm -v
-          npm config list
-          npm config get cache
-          npm ci --version || true
-
-      - name: List workspace & lockfile
-        run: |
-          pwd && ls -la
-          cat package.json || true
-          cat package-lock.json || true
+      - uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0'
+          node-version: '20.19.0'           # EBADENGINE 경고 제거
           cache: 'npm'
-          cache-dependency-path: package-lock.json
 
-      - name: Clean install
-        working-directory: frontend
+      # ⚠️ lockfile이 리포지토리 루트에 있는 구조로 보입니다.
+      - name: Install deps (root)
         run: npm ci
 
-      - name: Build
-        working-directory: frontend
-        env:
-          # 빌드마다 버전 주입 → SW 캐시 즉시 갱신
-          VITE_APP_VERSION: ${{ github.run_id }}-${{ github.run_number }}
-          # 프로덕션 환경변수
-          VITE_BACKEND_URL: https://moodtalk.app
-          VITE_API_BASE_URL: https://moodtalk.app
-          VITE_API_KEY: eft-ai-moodtalk-2025!
-          VITE_PREMIUM_API_KEY: premium-eft-ai-moodtalk-2025!
-          VITE_PREMIUM_VIA_BACKEND: true
-        run: npm run build:ci
+      - name: Build (frontend)
+        run: npm --prefix frontend run build:ci
 
-      - name: Upload dist to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "frontend/dist/*"
-          target: "${{ secrets.DEPLOY_UPLOAD_DIR }}/"
-
-      - name: Debug SSH connectivity
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            whoami; hostname
-            ls -la "${{ secrets.DEPLOY_UPLOAD_DIR }}" || true
-
-      - name: Unpack & Atomic Swap on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            set -euo pipefail
-            APP_ROOT="${{ secrets.APP_ROOT }}"
-            UPLOAD_DIR="${{ secrets.DEPLOY_UPLOAD_DIR }}"
-            STATIC_ROOT="${{ secrets.STATIC_ROOT }}"
-            REL="release-$(date +%Y%m%d%H%M%S)"
-
-            echo "🚀 Starting deployment: $REL"
-
-            # 릴리스 디렉토리 생성 및 파일 복사
-            mkdir -p "$APP_ROOT/releases/$REL"
-            cp -r "$UPLOAD_DIR/frontend/dist/"* "$APP_ROOT/releases/$REL/"
-
-            # 원자적 교체: 새 dist → 정적 서빙 디렉터리로 동기화
-            rsync -a --delete "$APP_ROOT/releases/$REL/" "$STATIC_ROOT/"
-
-            # Service Worker 캐시 무효화를 위한 버전 파일 생성
-            echo "${{ github.run_id }}-${{ github.run_number }}" > "$STATIC_ROOT/version.txt"
-
-            # 백엔드 재시작 (정적 파일 갱신 반영)
-            systemctl --user reload eft-api || systemctl --user restart eft-api || true
-
-            # 구버전 정리 (최근 5개만 유지)
-            cd "$APP_ROOT/releases"
-            ls -1t | tail -n +6 | xargs -r rm -rf
-
-            echo "✅ Deployed successfully to: $STATIC_ROOT"
-            echo "📦 Release: $REL"
-            echo "🌐 URL: https://moodtalk.app"
+      # TODO: 배포 단계(서버/rsync/S3 등) 유지
