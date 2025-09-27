@@ -1,3 +1,4 @@
-FORCE REBUILD - Fix deployment sync issue
-Clear all caches and rebuild from scratch
-DateTime: 2025-09-27 16:30 KST
+FORCE BUNDLE REGENERATION - Fix eft-guide persistence
+Trigger new JavaScript bundle hash with content change
+Bundle verification MUST pass - no eft-guide allowed
+DateTime: 2025-09-27 16:47 KST

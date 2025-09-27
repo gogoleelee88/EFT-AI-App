@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// Force bundle regeneration - deployment sync fix: 2025-09-27T16:47:00Z
+
 const root = createRoot(document.getElementById('root')!)
 
 root.render(
