@@ -31,10 +31,12 @@ jobs:
       - name: Build (frontend)
         run: npm --prefix frontend run build:ci
 
-      - name: Sanity check ensure no /eft-guide in dist
+      - name: Build sanity check
         run: |
-          echo "Searching 'eft-guide' in dist..."
-          grep -R "eft-guide" frontend/dist || echo "OK: no 'eft-guide' in dist"
+          echo "Checking build output..."
+          ls -la frontend/dist/
+          echo "Main files:"
+          find frontend/dist -name "*.html" -o -name "*.js" -o -name "*.css" | head -10
 
       - name: SSH sanity check
         run: |
