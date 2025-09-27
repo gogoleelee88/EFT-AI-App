@@ -36,6 +36,15 @@ jobs:
           echo "Searching 'eft-guide' in dist..."
           grep -R "eft-guide" frontend/dist || echo "OK: no 'eft-guide' in dist"
 
+      - name: SSH sanity check
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh -o StrictHostKeyChecking=no -p ${{ secrets.DEPLOY_PORT }} \
+            -i ~/.ssh/id_rsa \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "echo 'SSH OK on $(hostname)'"
+
       - name: Deploy static files via rsync (auto-delete extras)
         uses: burnett01/rsync-deployments@5.2
         with:
