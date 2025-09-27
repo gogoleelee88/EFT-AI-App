@@ -47,10 +47,10 @@ jobs:
             -i ~/.ssh/id_rsa \
             ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "echo 'SSH OK on $(hostname)'"
 
-      - name: Deploy static files via rsync (auto-delete extras)
+      - name: Deploy static files via rsync (hard sync)
         uses: burnett01/rsync-deployments@5.2
         with:
-          switches: -az --delete
+          switches: -avzr --delete --omit-dir-times --no-perms --no-owner --no-group
           path: frontend/dist/
           remote_path: /home/moodtalk/tocmood/moodtalk-public/static-frontend/
           remote_host: ${{ secrets.DEPLOY_HOST }}
@@ -61,6 +61,14 @@ jobs:
       - name: Purge Cloudflare cache
         run: |
           curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" -H "Content-Type: application/json" --data '{"purge_everything":true}'
+
+      - name: Smoke test (ensure no 'eft-guide' in live bundle)
+        run: |
+          JS=$(curl -sS https://moodtalk.app/ | grep -o '/assets/index-[^"]*\.js' | head -1)
+          echo "Live JS: $JS"
+          curl -sS "https://moodtalk.app${JS}" | grep -q "eft-guide" && {
+            echo "❌ Found 'eft-guide' in live bundle"; exit 1;
+          } || echo "✅ No 'eft-guide' in live bundle"
 
       - name: Health check (homepage)
         run: |
