@@ -39,7 +39,7 @@ jobs:
       - name: Deploy static files via rsync (auto-delete extras)
         uses: burnett01/rsync-deployments@5.2
         with:
-          switches: -avzr --delete
+          switches: -az --delete
           path: frontend/dist/
           remote_path: ${{ secrets.DEPLOY_PATH }}/
           remote_host: ${{ secrets.SSH_HOST }}
