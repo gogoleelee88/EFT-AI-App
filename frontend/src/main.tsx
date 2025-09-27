@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
-// Force bundle regeneration - deployment sync fix: 2025-09-27T16:47:00Z
+// Build info for deployment tracking
+declare const __BUILD_ID__: string
+declare const __BUILD_TIME__: string
+console.info('BUILD', __BUILD_ID__, __BUILD_TIME__)
 
 const root = createRoot(document.getElementById('root')!)
 
