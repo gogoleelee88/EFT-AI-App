@@ -261,7 +261,7 @@ print('AI 엔진 초기화 성공')
 - [FastAPI 문서](https://fastapi.tiangolo.com/)
 - [Transformers 문서](https://huggingface.co/docs/transformers)
 - [Llama 모델 카드](https://huggingface.co/meta-llama)
-- [EFT 기법 가이드](../docs/eft-guide.md)
+- [EFT AR 홀리스틱 가이드](../docs/ar-holistic.md)
 
 ## 🤝 기여하기
 
