@@ -23,6 +23,7 @@ export default defineConfig({
         display: 'standalone',
         scope: '/',
         start_url: '/',
+        version: '2.1.0',
         icons: [
           {
             src: 'vite.svg',
@@ -43,6 +44,7 @@ export default defineConfig({
         ]
       },
       workbox: {
+        cacheId: 'eft-ai-v2.1.0',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
