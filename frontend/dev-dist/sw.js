@@ -67,8 +67,11 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-d9a5ed57'], (function (workbox) { 'use strict';
+define(['./workbox-5b34f81c'], (function (workbox) { 'use strict';
 
+  workbox.setCacheNameDetails({
+    prefix: "eft-ai-v2.1.0"
+  });
   self.skipWaiting();
   workbox.clientsClaim();
 
@@ -82,7 +85,7 @@ define(['./workbox-d9a5ed57'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.oktpckr8qho"
+    "revision": "0.b2quubt2kg"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {

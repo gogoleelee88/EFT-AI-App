@@ -1,1 +1,2 @@
-test deployment
+PWA cache busting deployment - v2.2.0
+Force update service worker cache
