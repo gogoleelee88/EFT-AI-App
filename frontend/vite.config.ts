@@ -23,7 +23,7 @@ export default defineConfig({
         display: 'standalone',
         scope: '/',
         start_url: '/',
-        version: '2.2.0',
+        version: new Date().toISOString(), // 빌드마다 바뀌도록
         icons: [
           {
             src: 'vite.svg',
@@ -44,7 +44,9 @@ export default defineConfig({
         ]
       },
       workbox: {
-        cacheId: 'eft-ai-v2.2.0',
+        clientsClaim: true,
+        skipWaiting: true,
+        cacheId: `eft-ai-${new Date().getTime()}`, // 빌드마다 고유 캐시 ID
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
