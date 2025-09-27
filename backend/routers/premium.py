@@ -103,7 +103,7 @@ async def chat(
         if not result["success"]:
             return ChatResponse(
                 response="지금은 연결이 불안정해서 간단히 안내드릴게요. 심호흡 3회 후, 눈썰미 포인트를 손가락으로 가볍게 두드리며 '괜찮아, 금방 지나갈 거야'를 30초간 반복해보세요.",
-                model="fallback-eft-guide",
+                model="fallback-ar-holistic",
                 processing_time=time.time() - start,
                 success=True,  # 사용자 관점에서는 성공적인 응답
                 session_id=payload.sessionId,
