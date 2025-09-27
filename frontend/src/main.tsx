@@ -8,6 +8,9 @@ declare const __BUILD_ID__: string
 declare const __BUILD_TIME__: string
 console.info('BUILD', __BUILD_ID__, __BUILD_TIME__)
 
+// Force bundle content change to eliminate eft-guide cache
+console.log('🔄 Bundle regeneration timestamp:', Date.now())
+
 const root = createRoot(document.getElementById('root')!)
 
 root.render(
