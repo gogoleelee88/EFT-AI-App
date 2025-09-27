@@ -46,7 +46,6 @@ jobs:
           remote_user: ${{ secrets.DEPLOY_USER }}
           remote_port: ${{ secrets.DEPLOY_PORT }}
           remote_key: ${{ secrets.DEPLOY_KEY }}
-          rsh: 'ssh -o StrictHostKeyChecking=no'
 
       - name: Purge Cloudflare cache
         run: |
