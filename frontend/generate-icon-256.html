@@ -1,0 +1,48 @@
+
+<!DOCTYPE html>
+<html>
+<head><title>Icon Generator 256x256</title></head>
+<body style="margin: 0; padding: 20px; background: #f0f0f0;">
+  <h3>Generate 256x256 PWA Icon</h3>
+  <canvas id="canvas" width="256" height="256" style="border: 1px solid #ccc;"></canvas>
+  <br><br>
+  <button onclick="downloadIcon()">Download icon-256x256.png</button>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // 🌿 EFT 앱 테마 색상으로 아이콘 생성
+    const gradient = ctx.createLinearGradient(0, 0, 256, 256);
+    gradient.addColorStop(0, '#4F46E5');  // theme-color
+    gradient.addColorStop(1, '#6366F1');  // background-color
+
+    // 배경 그라디언트
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 256, 256);
+
+    // 중앙에 하얀색 원
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(256/2, 256/2, 256/3, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // 🌿 EFT 로고 (잎사귀 모양)
+    ctx.fillStyle = '#4F46E5';
+    ctx.font = 'bold 102px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🌿', 256/2, 256/2);
+
+    function downloadIcon() {
+      const link = document.createElement('a');
+      link.download = 'icon-256x256.png';
+      link.href = canvas.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      console.log('Downloaded icon-256x256.png');
+    }
+  </script>
+</body>
+</html>
