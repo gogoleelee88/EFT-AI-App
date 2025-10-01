@@ -52,6 +52,8 @@ export default defineConfig({
         skipWaiting: true,
         cacheId: `eft-ai-${new Date().getTime()}`, // 빌드마다 고유 캐시 ID
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/eft-guide(\/.*)?$/], // eft-guide는 SW가 가로채지 않음
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/.*/,

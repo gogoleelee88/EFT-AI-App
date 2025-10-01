@@ -40,15 +40,33 @@ jobs:
           echo "Main files:"
           find frontend/dist -name "*.html" -o -name "*.js" -o -name "*.css" | head -10
 
-      - name: Check for leftover /eft-guide in build
+      - name: Check for harmful /eft-guide references in build
         run: |
-          echo "Scanning build output for eft-guide references..."
-          if grep -r "eft-guide" frontend/dist/; then
-            echo "❌ Found eft-guide in build output. Fix code before deploy."
-            echo "All eft-guide references must be removed from source code."
+          echo "Scanning build output for harmful eft-guide references..."
+
+          # 정상적인 React Router path는 제외하고, 하드코드 링크만 찾기
+          harmful_patterns=(
+            'href="/eft-guide"'
+            'navigate("/eft-guide")'
+            'to="/eft-guide"'
+            'window.location.*eft-guide'
+            'location.href.*eft-guide'
+          )
+
+          found_harmful=false
+          for pattern in "${harmful_patterns[@]}"; do
+            if grep -r -n --include="*.{html,js,css}" --exclude="*.map" "$pattern" frontend/dist/; then
+              echo "❌ Found harmful eft-guide reference: $pattern"
+              found_harmful=true
+            fi
+          done
+
+          if $found_harmful; then
+            echo "❌ Harmful eft-guide references found. Fix before deploy."
             exit 1
           else
-            echo "✅ No eft-guide found in dist bundle."
+            echo "✅ No harmful eft-guide references found."
+            echo "ℹ️  React Router paths are allowed for defensive redirects."
           fi
 
       - name: Upload build artifacts

@@ -1,0 +1,34 @@
+## 문제점
+
+3D가이드 버튼 클릭 시 /eft-guide로 이동하여 홈페이지로 리다이렉트되는 문제
+
+## 근본 원인
+
+1. React Router: /eft-guide 라우트 미정의
+2. CI 파서 오류: HTTP/2 응답 파싱 실패
+3. _redirects 무효: 자체 서버에서 작동 안 함
+
+## 해결 방법
+
+### 1. CI 파서 HTTP/2 호환 수정
+curl -w '%{http_code}' 방식으로 변경
+
+### 2. Cloudflare Redirect Rules 설정 필수
+URI Path equals "/eft-guide" -> "https://moodtalk.app/ar-holistic" (308)
+
+### 3. 불필요한 파일 정리
+효과 없는 _redirects 파일 제거
+
+## 완료 체크리스트
+
+- [x] CI HTTP/2 파서 수정
+- [x] _redirects 파일 제거
+- [x] 상태 코드 검증 범위 확장
+- [ ] Cloudflare Redirect Rules 설정 (수동 필요)
+
+## 최종 해결
+
+PR 머지 -> 5분 (CI 통과)
+Cloudflare 설정 -> 2분 (즉시 효과)
+
+Generated with Claude Code
