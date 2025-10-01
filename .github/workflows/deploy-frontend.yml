@@ -85,11 +85,17 @@ jobs:
           set -euo pipefail
           echo "Testing /eft-guide redirect..."
 
-          # Check HTTP redirect status and location
-          status=$(curl -sSI https://www.moodtalk.app/eft-guide | awk 'toupper($1)=="HTTP/"{code=$2} END{print code}')
-          location=$(curl -sSI https://www.moodtalk.app/eft-guide | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r')
+          URL=https://www.moodtalk.app/eft-guide
 
-          if [[ "$status" =~ ^30[12]$ ]] && [[ "$location" == */ar-holistic* ]]; then
+          # HTTP/2 호환 상태 코드 파싱
+          status=$(curl -sS -I -o /dev/null -w '%{http_code}' "$URL")
+          headers=$(curl -sS -I "$URL" | tr -d '\r')
+          location=$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="location"{print $2}' | tail -n1)
+
+          echo "status=$status"
+          echo "location=$location"
+
+          if [[ "$status" =~ ^30[12378]$ ]] && [[ "$location" == *"/ar-holistic"* ]]; then
             echo "✅ Edge redirect OK -> $location"
           else
             echo "❌ Edge redirect not configured (status=$status, location=$location)"
