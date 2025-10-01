@@ -80,16 +80,28 @@ jobs:
           curl -fsS "$DOMAIN${{ steps.livejs.outputs.JS_PATH }}" -o live.js
           echo "Bundle size: $(wc -c < live.js) bytes"
 
-      - name: Verify bundle (no 'eft-guide')
+      - name: Verify /eft-guide redirect (HTTP headers)
         run: |
           set -euo pipefail
-          if grep -q "eft-guide" live.js; then
-            echo "❌ Found 'eft-guide' in live bundle"
-            echo "Context:"
-            grep -n "eft-guide" live.js | head -3
+          echo "Testing /eft-guide redirect..."
+
+          # Check HTTP redirect status and location
+          status=$(curl -sSI https://www.moodtalk.app/eft-guide | awk 'toupper($1)=="HTTP/"{code=$2} END{print code}')
+          location=$(curl -sSI https://www.moodtalk.app/eft-guide | awk -F': ' 'tolower($1)=="location"{print $2}' | tr -d '\r')
+
+          if [[ "$status" =~ ^30[12]$ ]] && [[ "$location" == */ar-holistic* ]]; then
+            echo "✅ Edge redirect OK -> $location"
+          else
+            echo "❌ Edge redirect not configured (status=$status, location=$location)"
+            exit 1
+          fi
+
+          # Check for hard-coded links in HTML only
+          if curl -sS https://www.moodtalk.app/ | grep -q 'href="/eft-guide"'; then
+            echo "❌ Hard link to /eft-guide found in HTML"
             exit 1
           else
-            echo "✅ No 'eft-guide' in live bundle"
+            echo "✅ No hard link in HTML"
           fi
 
       - name: Health check (homepage)
