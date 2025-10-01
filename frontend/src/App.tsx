@@ -74,6 +74,8 @@ const App: React.FC = () => {
             path="/ar/calibration"
             element={<ArCalibrationPage />}
           />
+          {/* 방어적 리다이렉트: /eft-guide → /ar-holistic */}
+          <Route path="/eft-guide" element={<Navigate to="/ar-holistic" replace />} />
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
