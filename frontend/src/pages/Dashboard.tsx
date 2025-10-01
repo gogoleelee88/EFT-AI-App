@@ -128,7 +128,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const handle3DGuide = () => {
     console.log('3D/AR EFT 가이드 시작');
     setShowMenu(false);
-    navigate('/ar-holistic'); // EFT AR 홀리스틱 가이드로 이동
+    navigate('/ar-holistic'); // EFT AR 홀리스틱 가이드로 이동 (2025-10-01 핫픽스)
   };
 
   const handleViewInsight = (insightId: string | number) => {
