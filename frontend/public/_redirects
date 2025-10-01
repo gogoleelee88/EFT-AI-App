@@ -1,6 +1,0 @@
-# EFT Guide URL Redirect Fix
-# 3D가이드 버튼 클릭 시 /eft-guide → /ar-holistic 리다이렉트
-/eft-guide /ar-holistic 302
-
-# Fallback: 정의되지 않은 모든 경로는 index.html로 (SPA 지원)
-/* /index.html 200
