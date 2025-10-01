@@ -87,10 +87,10 @@ jobs:
 
           URL=https://www.moodtalk.app/eft-guide
 
-          # HTTP/2 호환 상태 코드 파싱
-          status=$(curl -sS -I -o /dev/null -w '%{http_code}' "$URL")
-          headers=$(curl -sS -I "$URL" | tr -d '\r')
-          location=$(printf '%s\n' "$headers" | awk -F': ' 'tolower($1)=="location"{print $2}' | tail -n1)
+          # GET 요청으로 상태 코드 확인 (HEAD 요청 405 에러 방지, 리다이렉트 따라가지 않음)
+          response=$(curl -sS -w '\nSTATUS:%{http_code}\nLOCATION:%{redirect_url}' "$URL")
+          status=$(echo "$response" | grep '^STATUS:' | cut -d: -f2)
+          location=$(echo "$response" | grep '^LOCATION:' | cut -d: -f2-)
 
           echo "status=$status"
           echo "location=$location"
