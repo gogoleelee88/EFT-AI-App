@@ -117,9 +117,9 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{"purge_everything":true}')
 
-          success=$(echo "$response" | grep -o '"success":[^,]*' | cut -d: -f2)
-          if [[ "$success" == "true" ]]; then
+          if echo "$response" | grep -q '"success":true'; then
             echo "✅ Cloudflare cache purged successfully"
+            echo "Response: $response"
           else
             echo "❌ Cloudflare cache purge failed: $response"
             exit 1
