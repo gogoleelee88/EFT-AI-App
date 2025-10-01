@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -40,6 +40,37 @@ jobs:
           echo "Main files:"
           find frontend/dist -name "*.html" -o -name "*.js" -o -name "*.css" | head -10
 
+      - name: Check for leftover /eft-guide in build
+        run: |
+          echo "Scanning build output for eft-guide references..."
+          if grep -r "eft-guide" frontend/dist/; then
+            echo "❌ Found eft-guide in build output. Fix code before deploy."
+            echo "All eft-guide references must be removed from source code."
+            exit 1
+          else
+            echo "✅ No eft-guide found in dist bundle."
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
       - name: SSH sanity check
         run: |
           mkdir -p ~/.ssh
@@ -62,7 +93,22 @@ jobs:
 
       - name: Purge Cloudflare cache
         run: |
-          curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" -H "Content-Type: application/json" --data '{"purge_everything":true}'
+          echo "Purging Cloudflare cache..."
+          response=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}')
+
+          success=$(echo "$response" | grep -o '"success":[^,]*' | cut -d: -f2)
+          if [[ "$success" == "true" ]]; then
+            echo "✅ Cloudflare cache purged successfully"
+          else
+            echo "❌ Cloudflare cache purge failed: $response"
+            exit 1
+          fi
+
+          echo "Waiting 10 seconds for cache propagation..."
+          sleep 10
 
       - name: Detect live JS bundle path
         id: livejs
