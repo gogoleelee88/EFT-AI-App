@@ -208,16 +208,42 @@ EFT-AI-App/
 
 ## 🚀 **배포 전략**
 
-### **1단계: 웹 배포**
-- Vercel/Netlify 자동 배포
-- HTTPS + 커스텀 도메인
-- PWA 기능 완전 활성화
+### **1단계: 웹 배포** ✅ 완료
+- ✅ Cloudflare 배포 (https://moodtalk.app)
+- ✅ HTTPS + 커스텀 도메인
+- ✅ PWA 기능 완전 활성화
+- ✅ Service Worker 2단계 마이그레이션
 
-### **2단계: 앱 스토어 배포**
+### **2단계: 모니터링 시스템 구축** ✅ 완료 (2025-10-02)
+- ✅ systemd 자동재시작 (3초 내 복구)
+- ✅ 헬스체크 엔드포인트 (/api/health)
+- ✅ Boot Smoke Test (배포 후 자동 검증)
+- ⏳ Uptime-Kuma 설치 대기 중 (Docker 권한)
+
+**자동 모니터링 기능**:
+```bash
+# 서비스 자동 재시작
+systemctl --user status eft-api
+# Restart=always, RestartSec=3
+
+# 배포 후 자동 검증
+./monitoring/boot-smoke-test.sh
+# API, LLM, 캐시, 금칙어 전체 검증
+
+# 장애 발생 시 2분 내 정보 수집
+./monitoring/extended-diagnostic.sh
+```
+
+**관련 문서**:
+- [모니터링 시스템 README](./monitoring/README.md)
+- [배포 검증 가이드](./DEPLOYMENT_CHECK_GUIDE.md)
+- [인시던트 대응 플레이북](./monitoring/incident-response-playbook.md)
+
+### **3단계: 앱 스토어 배포** (준비 중)
 - TWA (Trusted Web Activities)로 구글 Play 스토어
 - iOS PWA 홈화면 설치 지원
 
-### **3단계: 고도화**
+### **4단계: 고도화**
 - 사용자 피드백 반영
 - AI 모델 고도화
 - 추가 기능 개발
