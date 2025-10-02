@@ -1781,3 +1781,268 @@ const comparison = await response.json();
 4. **Engine A/B 병렬**: 두 모델 동시 비교 시스템 (Engine A 추가 필요)
 
 이 프로젝트는 사용자의 심리적 웰빙을 지원하는 혁신적인 EFT 기반 AI 애플리케이션을 목표로 합니다.
+
+---
+
+## 📊 **모니터링 & 헬스체크 시스템 (2025-10-02 구축 완료)**
+
+### **시스템 개요**
+
+배포 후 안정적인 운영을 위한 완전한 모니터링 및 장애 대응 시스템을 구축했습니다.
+
+### **✅ 구축 완료 항목**
+
+#### **1. systemd 자동재시작 시스템**
+```bash
+# 설정 위치
+~/.config/systemd/user/eft-api.service
+
+# 핵심 설정
+Restart=always
+RestartSec=3                    # 3초 내 자동 재시작
+StartLimitBurst=10              # 재시작 폭풍 방지
+MemoryMax=2G                    # 메모리 제한
+CPUQuota=200%                   # CPU 제한
+```
+
+**성공 기준**:
+- ✅ 서비스 강제 종료 시 3초 내 자동 재시작
+- ✅ 메모리 2GB 초과 시 자동 재시작
+- ✅ 10회 연속 실패 시 600초 대기 (재시작 폭풍 방지)
+
+#### **2. 헬스체크 엔드포인트**
+```bash
+# API 헬스체크
+curl https://moodtalk.app/api/health
+# {"ok":true,"ts":"2025-10-02T06:23:47Z","service":"eft-ai"}
+
+# 응답 시간 측정
+time curl -sS https://moodtalk.app/api/health
+# real    0m0.863s  (정상 범위: < 1초)
+```
+
+**설정**:
+- Nginx에서 `/api/health` 엔드포인트 퍼블릭 노출
+- `Cache-Control: no-store` (캐시 금지)
+- `cf-cache-status: DYNAMIC` (Cloudflare 캐시 안 됨)
+- CORS 허용 (외부 모니터링 도구 접근)
+
+#### **3. Boot Smoke Test (배포 후 자동 검증)**
+```bash
+cd ~/tocmood/moodtalk-public/monitoring
+./boot-smoke-test.sh
+```
+
+**검증 항목**:
+1. ✅ **API /health**: 응답 시간 측정 (863ms, 정상)
+2. ⚠️ **LLM 서버**: 선택사항 (미실행 시 스킵)
+3. ✅ **정적 번들**: HTTP 200, Cloudflare 캐시 HIT
+4. ✅ **금칙어 스캔**: localhost, 구버전 해시 없음
+5. ✅ **Service Worker**: 캐시 정책 검증
+6. ✅ **index.html**: 캐시 정책 검증
+
+**성공 출력**:
+```
+🎉 배포 자가진단 통과!
+✅ API /health: 863ms
+✅ 정적 번들: HTTP 200, CF 캐시 확인 완료
+✅ 금칙어: localhost/구버전 없음
+```
+
+#### **4. Extended Diagnostic (2분 내 정보 수집)**
+```bash
+./monitoring/extended-diagnostic.sh
+# → ~/eft-diagnostics/diagnostic_YYYYMMDD_HHMMSS.log
+```
+
+**수집 정보**:
+- 시스템 정보 (CPU, 메모리, 디스크)
+- 서비스 상태 (nginx, eft-api)
+- HTTP 엔드포인트 응답 시간 측정
+- 최근 에러 로그 (Nginx, FastAPI)
+- 네트워크 진단 (DNS, 포트 리스닝)
+- 프로세스 분석 (CPU/메모리 사용량)
+
+#### **5. Uptime-Kuma 모니터링 (선택사항)**
+```bash
+# Docker 권한 설정 후 설치
+sudo usermod -aG docker moodtalk
+./monitoring/uptime-kuma-setup.sh
+
+# 웹 UI: http://localhost:3001
+```
+
+**모니터 설정 (권장)**:
+- API Health: https://moodtalk.app/api/health (60초 간격)
+- Frontend: https://moodtalk.app (5분 간격)
+- LLM Health: https://moodtalk.app/llm/health (2분 간격)
+
+**알림 채널**: Telegram/Discord/Email/Slack
+
+### **📋 운영 프로세스**
+
+#### **일일 점검 (5분)**
+```bash
+# 1. 서비스 상태
+systemctl --user status eft-api
+
+# 2. 헬스체크
+curl -I https://moodtalk.app/api/health
+
+# 3. 최근 에러
+journalctl --user -u eft-api --since "1 hour ago" -p err --no-pager | wc -l
+
+# 4. Boot Smoke Test
+./monitoring/boot-smoke-test.sh
+```
+
+**성공 기준**:
+- [ ] 서비스 Active (running)
+- [ ] API /health → HTTP 200 (< 1초)
+- [ ] 최근 1시간 에러 < 5건
+- [ ] Smoke Test 통과
+
+#### **주간 점검 (30분)**
+- 디스크 사용량 확인 (`df -h`)
+- 로그 크기 확인 (`du -sh /var/log/nginx`)
+- 백업 상태 확인
+- 보안 패치 적용
+
+#### **월간 점검 (1시간)**
+- 시스템 업데이트 (`apt upgrade`)
+- 로그 로테이션 검증
+- 용량 계획 검토
+- 모니터링 시스템 점검
+
+### **🚨 장애 대응 프로세스**
+
+#### **Phase 1: 장애 감지 (0~30초)**
+```bash
+# 빠른 증상 확인
+curl -I https://moodtalk.app
+curl -I https://moodtalk.app/api/health
+```
+
+#### **Phase 2: 정보 수집 (30초~2분)**
+```bash
+# 자동 진단 스크립트 실행
+./monitoring/extended-diagnostic.sh
+
+# 핵심 로그 수집
+{
+  date
+  systemctl --user status eft-api --no-pager
+  tail -n 50 /var/log/nginx/error.log
+  journalctl --user -u eft-api -n 50 --no-pager
+} > ~/incident_$(date +%Y%m%d_%H%M%S).log
+```
+
+#### **Phase 3: 즉시 복구 시도 (2~5분)**
+```bash
+# Level 1: 서비스 재시작
+systemctl --user restart eft-api
+
+# Level 2: 캐시 재로드
+sudo systemctl reload nginx
+
+# Level 3: 디스크 정리 (가득 참)
+journalctl --vacuum-time=1d
+```
+
+#### **Phase 4: 에스컬레이션 (10분 이후)**
+- 10분 내 복구 불가능 시
+- 근본 원인 파악 실패 시
+- 데이터 손실 의심 시
+- 보안 침해 가능성 시
+
+### **📁 모니터링 시스템 파일 구조**
+
+```
+monitoring/
+├── systemd-service-example.conf    # systemd 자동재시작
+├── nginx-health-endpoint.conf      # Nginx 헬스체크
+├── uptime-kuma-setup.sh            # Uptime-Kuma 설치
+├── boot-smoke-test.sh              # 배포 후 자동 검증
+├── extended-diagnostic.sh          # 2분 내 정보 수집
+├── operational-checklist.md        # 일일/주간/월간 점검
+├── incident-response-playbook.md   # 장애 대응 절차
+├── log-filtering-guide.md          # 로그 필터링 & 로테이션
+├── log-quick-queries.md            # 로그 빠른 질의
+├── prometheus-blackbox.yml         # Prometheus (선택)
+├── telemetry.ts                    # 프론트엔드 텔레메트리
+└── README.md                       # 시스템 가이드
+```
+
+### **🎯 성공 지표 (KPI)**
+
+#### **가용성 목표**
+- Uptime: 99.5% 이상 (월 3.6시간 이내 다운타임)
+- API 응답률: 99% 이상 HTTP 200
+- 평균 응답 시간: < 500ms
+
+#### **성능 목표**
+- 동시 사용자: 1,000명 처리 가능
+- AI 응답 시간: < 5초 (95 percentile)
+- 에러율: < 1% (전체 요청 대비)
+
+#### **보안 목표**
+- SSL/TLS: A+ 등급
+- 보안 패치: 30일 이내 적용
+- 데이터 백업: 일 1회 자동
+
+### **📚 관련 문서**
+
+- [모니터링 시스템 README](./monitoring/README.md)
+- [배포 검증 가이드](./DEPLOYMENT_CHECK_GUIDE.md)
+- [운영 체크리스트](./monitoring/operational-checklist.md)
+- [인시던트 대응 플레이북](./monitoring/incident-response-playbook.md)
+- [로그 빠른 질의](./monitoring/log-quick-queries.md)
+
+### **📊 현재 상태 (2025-10-02)**
+
+**운영 서버 (modulabs.ddns.net:20233)**:
+- ✅ systemd 자동재시작 활성화
+- ✅ 헬스체크 엔드포인트 작동 중
+- ✅ Boot Smoke Test 통과
+- ✅ Extended Diagnostic 스크립트 배포
+- ⏳ Uptime-Kuma 설치 대기 (Docker 권한 필요)
+
+**성능 현황**:
+- API /health: 863ms (정상)
+- 서비스 재시작: 3초 내 자동 복구
+- 금칙어 스캔: localhost 0건 ✅
+
+---
+
+## 🎯 **프로젝트 현황 업데이트 (2025-10-02)**
+
+### **✅ 완료된 핵심 기능**
+- 🤖 **AI 채팅 시스템**: vLLM + Qwen-2.5-7B 완전 작동
+- 🎨 **프론트엔드**: React PWA + 반응형 디자인 + 홈화면 설치
+- 🔧 **백엔드**: FastAPI + 프롬프트 관리 + 감정 분석
+- 🔒 **보안**: Git 히스토리 정리 + 환경변수 관리
+- 📱 **PWA**: Service Worker + 오프라인 지원 + 설치 프롬프트
+- 🔍 **모니터링**: systemd 자동재시작 + 헬스체크 + Boot Smoke Test
+
+### **🚀 구글 Play 스토어 런칭 준비도: 90%** (업데이트)
+```javascript
+런칭_준비도 = {
+  core_functionality: "100% ✅",
+  ai_chat_system: "100% ✅",
+  pwa_features: "100% ✅",
+  responsive_design: "100% ✅",
+  monitoring_system: "95% ✅",  // 신규 추가!
+
+  // 런칭 전 완료 필요
+  uptime_kuma: "Docker 권한 대기 ⏳",
+  app_icons: "필요 🔄",
+  store_screenshots: "필요 🔄",
+  twa_build: "필요 🔄"
+};
+```
+
+### **🎯 다음 개발 단계**
+1. **Uptime-Kuma 완료**: Docker 권한 설정 후 모니터링 대시보드 구축
+2. **프롬프트 최적화**: 더 자연스러운 대화 흐름
+3. **EFT 탭핑 가이드**: 시각적 가이드 시스템 연동
+4. **통찰 시스템**: 32개 공통 통찰 + AI 개인맞춤 통찰

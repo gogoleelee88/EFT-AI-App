@@ -1,0 +1,240 @@
+# ===================================================================
+# Prometheus Blackbox Exporter 설정 (선택사항)
+# ===================================================================
+# 목적: 외부에서 엔드포인트 상태 모니터링 + 메트릭 수집
+# 사용: Docker Compose로 실행
+# 접속: http://localhost:9115 (Blackbox UI)
+#       http://localhost:9090 (Prometheus UI)
+# ===================================================================
+
+version: '3.8'
+
+services:
+  # Prometheus Blackbox Exporter
+  blackbox:
+    image: prom/blackbox-exporter:latest
+    container_name: blackbox-exporter
+    restart: always
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./blackbox-config.yml:/etc/blackbox_exporter/config.yml:ro
+    command:
+      - '--config.file=/etc/blackbox_exporter/config.yml'
+    networks:
+      - monitoring
+
+  # Prometheus 서버
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus-config.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - monitoring
+
+  # Grafana (시각화)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    ports:
+      - "3002:3000"  # 3001은 Uptime-Kuma가 사용 중
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+# ===================================================================
+# Blackbox Exporter 설정 파일
+# 파일: blackbox-config.yml
+# ===================================================================
+# 아래 내용을 blackbox-config.yml에 저장:
+#
+# modules:
+#   # HTTP GET 체크 (기본)
+#   http_2xx:
+#     prober: http
+#     timeout: 5s
+#     http:
+#       valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+#       valid_status_codes: []  # 기본: 2xx만 성공
+#       method: GET
+#       fail_if_ssl: false
+#       fail_if_not_ssl: true  # HTTPS 필수
+#       tls_config:
+#         insecure_skip_verify: false
+#
+#   # HTTP POST 체크 (API 테스트)
+#   http_post_2xx:
+#     prober: http
+#     timeout: 10s
+#     http:
+#       method: POST
+#       headers:
+#         Content-Type: application/json
+#       body: '{"test": true}'
+#       valid_status_codes: [200, 201]
+#
+#   # TCP 포트 체크
+#   tcp_connect:
+#     prober: tcp
+#     timeout: 5s
+#
+#   # ICMP Ping
+#   icmp:
+#     prober: icmp
+#     timeout: 5s
+
+# ===================================================================
+# Prometheus 설정 파일
+# 파일: prometheus-config.yml
+# ===================================================================
+# 아래 내용을 prometheus-config.yml에 저장:
+#
+# global:
+#   scrape_interval: 30s      # 30초마다 메트릭 수집
+#   evaluation_interval: 30s
+#
+# scrape_configs:
+#   # Blackbox Exporter 자체 메트릭
+#   - job_name: 'blackbox-exporter'
+#     static_configs:
+#       - targets: ['blackbox:9115']
+#
+#   # API 헬스체크 (HTTP GET)
+#   - job_name: 'api-health'
+#     metrics_path: /probe
+#     params:
+#       module: [http_2xx]
+#     static_configs:
+#       - targets:
+#           - https://moodtalk.app/api/health
+#     relabel_configs:
+#       - source_labels: [__address__]
+#         target_label: __param_target
+#       - source_labels: [__param_target]
+#         target_label: instance
+#       - target_label: __address__
+#         replacement: blackbox:9115
+#
+#   # LLM 헬스체크
+#   - job_name: 'llm-health'
+#     metrics_path: /probe
+#     params:
+#       module: [http_2xx]
+#     static_configs:
+#       - targets:
+#           - https://moodtalk.app/llm/health
+#     relabel_configs:
+#       - source_labels: [__address__]
+#         target_label: __param_target
+#       - source_labels: [__param_target]
+#         target_label: instance
+#       - target_label: __address__
+#         replacement: blackbox:9115
+#
+#   # 프론트엔드 체크
+#   - job_name: 'frontend'
+#     metrics_path: /probe
+#     params:
+#       module: [http_2xx]
+#     static_configs:
+#       - targets:
+#           - https://moodtalk.app
+#     relabel_configs:
+#       - source_labels: [__address__]
+#         target_label: __param_target
+#       - source_labels: [__param_target]
+#         target_label: instance
+#       - target_label: __address__
+#         replacement: blackbox:9115
+#
+#   # AI 채팅 엔드포인트 (POST)
+#   - job_name: 'ai-chat'
+#     metrics_path: /probe
+#     params:
+#       module: [http_post_2xx]
+#     static_configs:
+#       - targets:
+#           - https://moodtalk.app/api/chat
+#     relabel_configs:
+#       - source_labels: [__address__]
+#         target_label: __param_target
+#       - source_labels: [__param_target]
+#         target_label: instance
+#       - target_label: __address__
+#         replacement: blackbox:9115
+
+# ===================================================================
+# 사용 방법
+# ===================================================================
+#
+# 1. 설정 파일 생성:
+#    mkdir -p ~/eft-monitoring
+#    cd ~/eft-monitoring
+#
+#    # 위의 blackbox-config.yml 내용 저장
+#    # 위의 prometheus-config.yml 내용 저장
+#
+# 2. Docker Compose 실행:
+#    docker-compose -f prometheus-blackbox.yml up -d
+#
+# 3. 접속:
+#    - Prometheus: http://localhost:9090
+#    - Blackbox: http://localhost:9115
+#    - Grafana: http://localhost:3002 (admin/admin)
+#
+# 4. Grafana 대시보드 설정:
+#    - Data Source 추가: Prometheus (http://prometheus:9090)
+#    - Dashboard Import: ID 7587 (Prometheus Blackbox Exporter)
+#
+# 5. 유용한 PromQL 쿼리:
+#    # 성공률 (24시간)
+#    100 * (sum(rate(probe_success{job="api-health"}[24h])) / sum(rate(probe_duration_seconds_count{job="api-health"}[24h])))
+#
+#    # 평균 응답 시간
+#    probe_duration_seconds{job="api-health"}
+#
+#    # SSL 인증서 만료일 (일 단위)
+#    (probe_ssl_earliest_cert_expiry{job="frontend"} - time()) / 86400
+#
+# 6. 알림 설정 (alertmanager):
+#    # Prometheus에서 Alertmanager 연동 후 규칙 추가
+#    # API 다운 시 슬랙/이메일 알림
+
+# ===================================================================
+# 성공 기준
+# ===================================================================
+#
+# ✅ Blackbox Exporter:
+#    - http://localhost:9115/metrics → Prometheus 메트릭 표시
+#    - http://localhost:9115/probe?target=https://moodtalk.app&module=http_2xx → 수동 테스트 성공
+#
+# ✅ Prometheus:
+#    - http://localhost:9090/targets → 모든 타겟 UP 상태
+#    - http://localhost:9090/graph → probe_success 쿼리 결과 1 (성공)
+#
+# ✅ Grafana:
+#    - http://localhost:3002 → 대시보드에서 실시간 그래프 확인
+#    - API 응답 시간, 성공률, SSL 만료일 모니터링
