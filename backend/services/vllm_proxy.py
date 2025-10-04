@@ -12,6 +12,20 @@ from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
 from backend.services.circuit_breaker import get_circuit_breaker, retry_with_exponential_backoff
 
+import os  # ← 추가
+
+def _normalize_api_base(url: str) -> str:
+    u = (url or "").strip().rstrip("/")
+    # 완전 엔드포인트를 준 경우: .../v1/chat/completions  →  .../v1 로 절삭
+    if u.endswith("/v1/chat/completions"):
+        return u[:-len("/chat/completions")]
+    # /v1 까지만 있으면 그대로 사용
+    if u.endswith("/v1"):
+        return u
+    # host:port나 베이스만 준 경우엔 /v1 붙여서 OpenAI 호환 베이스로
+    return u + "/v1"
+
+
 logger = get_logger(__name__)
 settings = get_settings()
 

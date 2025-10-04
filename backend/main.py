@@ -1,8 +1,13 @@
-from backend.routers.health import router as health_router
+# 또는 vim/vi/VSCode 사용
+
+# => "from routers.compare ..." 라인을
+#    "from backend.routers.compare ..." 로 수정 후 저장
 """
 EFT AI 서버 - FastAPI 메인 애플리케이션
 심리상담 특화 Llama 3 기반 AI 서버
 """
+
+from backend.routers.health import router as health_router
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
 from fastapi.staticfiles import StaticFiles
@@ -160,8 +165,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None
 )
 app.include_router(health_router)  # <- health first
-
-app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
+# ⚠️ StaticFiles mount는 모든 API 라우트 정의 후 파일 끝에 배치
 # 🔍 미들웨어 스택 진단 로그 추가
 def _dump_middleware(tag: str):
     """미들웨어 스택 진단 로그"""
@@ -663,17 +667,17 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
         }
     )
 
-# 기본 엔드포인트
-@app.get("/")
-async def root():
-    """서버 상태 확인"""
-    return {
-        "service": "EFT AI 상담 서버",
-        "status": "running",
-        "version": "1.0.0",
-        "vllm_client": "ready",
-        "timestamp": datetime.now().isoformat()
-    }
+# 기본 엔드포인트 (StaticFiles가 / 를 처리하도록 주석 처리)
+# @app.get("/")
+# async def root():
+#     """서버 상태 확인"""
+#     return {
+#         "service": "EFT AI 상담 서버",
+#         "status": "running",
+#         "version": "1.0.0",
+#         "vllm_client": "ready",
+#         "timestamp": datetime.now().isoformat()
+#     }
 
 @app.get("/health")
 async def health_check():
@@ -1451,13 +1455,15 @@ async def compare_llama3_vs_qwen25(request: ChatProxyRequest, req: Request):
         """개별 엔진 호출 함수"""
         base_url = f"http://127.0.0.1:{engine_config['port']}/v1"
         engine_payload = payload.copy()
-        engine_payload["model"] = engine_config["model"]
+        engine_payload["model"] = f"engine-{engine_key[-1]}"  # engine_a -> engine-a, engine_b -> engine-b
         
         try:
             async with httpx.AsyncClient(timeout=timeout_config) as client:
+                logger.info(f"[{correlation_id}] {engine_key} → {base_url}/chat/completions")
                 start_time = time.time()
                 r = await client.post(f"{base_url}/chat/completions", json=engine_payload)
                 processing_time = time.time() - start_time
+                logger.error(f"[{correlation_id}] {engine_key} 응답 상태: {r.status_code}, 본문: {r.text[:500]}")
                 
                 if r.status_code >= 400:
                     raise httpx.HTTPStatusError(f"HTTP {r.status_code}", request=r.request, response=r)
@@ -1535,3 +1541,10 @@ if __name__ == "__main__":
     )
 
 app.include_router(health_router)  # health endpoints first-class
+
+# ===================================================================
+# StaticFiles 마운트 (모든 API 라우트 이후에 배치)
+# ===================================================================
+app.mount("/", StaticFiles(directory="static-frontend", html=True), name="static")
+from backend.routers.compare import router as compare_router
+app.include_router(compare_router)
