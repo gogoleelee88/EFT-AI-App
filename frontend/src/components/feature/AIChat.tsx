@@ -5,7 +5,7 @@ import SUDSModal from '../modals/SUDSModal';
 import SUDSInlineCard from '../ui/SUDSInlineCard';
 import useEFTSessionHook from '../../hooks/useEFTSessionHook';
 import { getServerAI } from '../../services/serverAI';
-import type { ChatResponse, ConversationMessage, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
+import type { ChatResponse, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
 import type {
   ActionObject,
   ActionType,
@@ -33,8 +33,6 @@ import {
   type ConversationState
 } from '../../types/conversationState';
 import {
-  fsCreateTurn,
-  fsAppendABTelemetry,
   fsSetTurnSUDS,
   fsSetSessionSUDS,
 } from '../../services/fs';
@@ -847,61 +845,86 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const handleSudsSubmit = async (score: number) => {
     if (!pendingSuds) return;
 
-    try {
-      // 백엔드 SUDS 기록 API 호출
-      const response = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/suds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          measurement_type: pendingSuds.measurementType,
-          suds_value: score,
-          turn_id: pendingSuds.turnId ?? `ui_${Date.now()}`
-        })
-      });
+    const sessionId = session.sessionId;
+    const canPersistToBackend = typeof sessionId === 'string' && sessionId.length > 0;
+    const turnId = pendingSuds.turnId ?? `ui_${Date.now()}`;
+    const { measurementType, context } = pendingSuds;
 
-      if (response.ok) {
-        console.log('SUDS 점수 기록 완료:', {
-          sessionId: session.sessionId,
-          measurementType: pendingSuds.measurementType,
-          score,
-          context: pendingSuds.context
+    try {
+      if (canPersistToBackend) {
+        // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
+        const response = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/suds`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            measurement_type: measurementType,
+            suds_value: score,
+            turn_id: turnId,
+          }),
         });
 
-        // 인라인 카드 제거
-        setPendingSuds(null);
-
-        // EFT 세션 중이었다면 완료 처리
-        if (pendingSuds.context?.includes('eft_complete')) {
-          eftSessionHook.completeEFTSession();
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          throw new Error(`SUDS 기록 실패: ${response.status} ${response.statusText} ${errorText}`.trim());
         }
 
-        // 피드백 메시지 추가
-        const feedbackMessage: Message = {
-          role: 'ai',
-          content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
-          timestamp: Date.now(),
-          metadata: { confidence: 1.0 }
-        };
-        setMessages(prev => [...prev, feedbackMessage]);
-
-        // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
-        if (import.meta.env.VITE_DEBUG_MODE === 'true') {
-          try {
-            const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/stats`);
-            if (statsResponse.ok) {
-              const stats = await statsResponse.json();
-              console.log('메모리 통계:', stats);
-            }
-          } catch (error) {
-            console.log('메모리 통계 조회 실패:', error);
-          }
-        }
+        console.log('SUDS 점수 기록 완료:', {
+          sessionId,
+          measurementType,
+          score,
+          context,
+        });
       } else {
-        throw new Error('SUDS 기록 실패');
+        console.log('SUDS 점수 로컬 처리: 세션 ID가 없어 백엔드 저장을 건너뜁니다.', {
+          measurementType,
+          score,
+          context,
+          turnId,
+        });
+      }
+
+      // 인라인 카드 제거
+      setPendingSuds(null);
+
+      // EFT 세션 중이었다면 완료 처리
+      if (context?.includes('eft_complete')) {
+        eftSessionHook.completeEFTSession();
+      }
+
+      // 피드백 메시지 추가
+      const feedbackMessage: Message = {
+        role: 'ai',
+        content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
+        timestamp: Date.now(),
+        metadata: { confidence: 1.0 },
+      };
+      setMessages(prev => [...prev, feedbackMessage]);
+
+      // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
+      if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
+        try {
+          const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/stats`);
+          if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            console.log('메모리 통계:', stats);
+          }
+        } catch (error) {
+          console.log('메모리 통계 조회 실패:', error);
+        }
       }
     } catch (error) {
       console.error('SUDS 제출 오류:', error);
-      notify('SUDS 점수 기록 중 오류가 발생했습니다.');
+      notify('SUDS 점수 기록 중 오류가 발생했습니다. 계속 진행하셔도 괜찮아요.');
+
+      setPendingSuds(null);
+
+      const fallbackMessage: Message = {
+        role: 'ai',
+        content: '점수 저장이 잠시 지연되고 있지만, 진행에는 영향이 없어요. 편안한 호흡을 이어가 볼까요?',
+        timestamp: Date.now(),
+        metadata: { confidence: 0.6 }
+      };
+      setMessages(prev => [...prev, fallbackMessage]);
     }
   };
 
@@ -1263,22 +1286,35 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         open={showPreSUDS}
         label="pre"
         onSubmit={async (rating) => {
+          const manualLaunch = manualEftRequested;
+          const sessionStateAtSubmit = session.state;
+          const turnCountAtSubmit = session.turn;
+
           try {
             setSuds(s => ({ ...s, pre: rating }));
             setShowPreSUDS(false);
 
-            // Firestore에 사전 SUDS 점수 저장
             const { sessionId, turn } = session;
+            const canPersistToFirestore = Boolean(sessionId) && turn > 0;
             const turnId = turnIdOf(turn);
 
-            await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+            if (canPersistToFirestore) {
+              try {
+                await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+                await fsSetSessionSUDS(sessionId, { pre: rating });
+                console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
+              } catch (error) {
+                console.error('사전 SUDS 저장 실패 (무시하고 진행):', error);
+                notify('점수 저장이 지연되고 있지만 세션은 계속 진행할 수 있어요.');
+              }
+            } else {
+              console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
+                sessionId,
+                turn,
+              });
+            }
 
-            // 세션 요약에도 pre 값 즉시 반영 (집계/리포트 편의)
-            await fsSetSessionSUDS(sessionId, { pre: rating });
-
-            console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
-
-            if (manualEftRequested) {
+            if (manualLaunch) {
               setManualEftRequested(false);
 
               const acknowledgement: Message = {
@@ -1287,16 +1323,25 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
                 timestamp: Date.now(),
                 metadata: {
                   confidence: 0.9,
-                  conversationState: session.state,
-                  turnCount: session.turn,
+                  conversationState: sessionStateAtSubmit,
+                  turnCount: turnCountAtSubmit,
                 },
               };
 
               setMessages(prev => [...prev, acknowledgement]);
 
-              setTimeout(() => {
-                navigate(`/ar-holistic?intensity=${rating}`);
-              }, 500);
+              try {
+                eftSessionHook.startEFTSession('ar_holistic', rating);
+              } catch (error) {
+                console.warn('EFT 세션 시작 기록 실패(무시):', error);
+              }
+
+              const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
+              if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(goToAR);
+              } else {
+                setTimeout(goToAR, 0);
+              }
             } else {
               // EFT 개입 시작 메시지 자동 전송
               setTimeout(() => {
@@ -1304,10 +1349,12 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               }, 1000);
             }
           } catch (error) {
-            console.error('사전 SUDS 저장 실패:', error);
-            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
+            console.error('사전 SUDS 처리 실패:', error);
             notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
             setShowPreSUDS(true);
+            if (manualLaunch) {
+              setManualEftRequested(true);
+            }
           }
         }}
         onClose={() => {
@@ -1321,53 +1368,57 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         open={showPostSUDS}
         label="post"
         onSubmit={async (rating) => {
-          try {
-            const preSafe = suds.pre ?? 5;
-            const delta = preSafe - rating;
+          const preSafe = suds.pre ?? 5;
+          const delta = preSafe - rating;
 
-            setSuds(s => ({ ...s, post: rating }));
-            setShowPostSUDS(false);
+          setSuds(s => ({ ...s, post: rating }));
+          setShowPostSUDS(false);
 
-            // Firestore에 사후 SUDS 점수 저장
-            const { sessionId, turn } = session;
-            const turnId = turnIdOf(turn);
+          const { sessionId, turn } = session;
+          const canPersistToFirestore = Boolean(sessionId) && turn > 0;
+          const turnId = turnIdOf(turn);
 
-            // 병렬 처리로 성능 최적화
-            await Promise.all([
-              fsSetTurnSUDS(sessionId, turnId, { sudsPost: rating }),
-              fsSetSessionSUDS(sessionId, {
-                ...(preSafe !== undefined ? { pre: preSafe } : {}),
-                post: rating
-              })
-            ]);
+          if (canPersistToFirestore) {
+            try {
+              await Promise.all([
+                fsSetTurnSUDS(sessionId, turnId, { sudsPost: rating }),
+                fsSetSessionSUDS(sessionId, {
+                  ...(preSafe !== undefined ? { pre: preSafe } : {}),
+                  post: rating
+                })
+              ]);
 
-            console.log('사후 SUDS 저장 완료:', {
+              console.log('사후 SUDS 저장 완료:', {
+                sessionId,
+                turnId,
+                pre: preSafe,
+                post: rating,
+                sudsDelta: delta
+              });
+            } catch (error) {
+              console.error('사후 SUDS 저장 실패 (무시하고 진행):', error);
+              notify('점수 저장이 지연되고 있지만 다음 단계로 계속 진행할게요.');
+            }
+          } else {
+            console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
               sessionId,
-              turnId,
-              pre: preSafe,
-              post: rating,
-              sudsDelta: delta
+              turn,
             });
-
-            // S4로 전환
-            setSession(prev => ({ ...prev, state: 'S4' }));
-
-            // 개선 결과에 따른 피드백 메시지 자동 전송
-            setTimeout(() => {
-              if (delta > 2) {
-                onSend(`정말 좋아졌네요! ${delta}점이나 개선되었습니다. 어떤 부분이 가장 도움이 되었나요?`);
-              } else if (delta > 0) {
-                onSend(`조금이나마 나아지셨군요. ${delta}점 개선되었습니다. 계속 이어서 해볼까요?`);
-              } else {
-                onSend('아직 큰 변화는 느끼지 못하시는군요. 괜찮습니다. 다른 방법을 함께 시도해보죠.');
-              }
-            }, 1500);
-          } catch (error) {
-            console.error('사후 SUDS 저장 실패:', error);
-            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
-            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
-            setShowPostSUDS(true);
           }
+
+          // S4로 전환
+          setSession(prev => ({ ...prev, state: 'S4' }));
+
+          // 개선 결과에 따른 피드백 메시지 자동 전송
+          setTimeout(() => {
+            if (delta > 2) {
+              onSend(`정말 좋아졌네요! ${delta}점이나 개선되었습니다. 어떤 부분이 가장 도움이 되었나요?`);
+            } else if (delta > 0) {
+              onSend(`조금이나마 나아지셨군요. ${delta}점 개선되었습니다. 계속 이어서 해볼까요?`);
+            } else {
+              onSend('아직 큰 변화는 느끼지 못하시는군요. 괜찮습니다. 다른 방법을 함께 시도해보죠.');
+            }
+          }, 1500);
         }}
         onClose={() => setShowPostSUDS(false)}
         currentValue={suds.post}
