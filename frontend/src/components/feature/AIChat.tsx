@@ -1289,62 +1289,72 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           const manualLaunch = manualEftRequested;
           const sessionStateAtSubmit = session.state;
           const turnCountAtSubmit = session.turn;
-          setSuds(s => ({ ...s, pre: rating }));
-          setShowPreSUDS(false);
 
-          const { sessionId, turn } = session;
-          const canPersistToFirestore = Boolean(sessionId) && turn > 0;
-          const turnId = turnIdOf(turn);
+          try {
+            setSuds(s => ({ ...s, pre: rating }));
+            setShowPreSUDS(false);
 
-          if (canPersistToFirestore) {
-            try {
-              await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
-              await fsSetSessionSUDS(sessionId, { pre: rating });
-              console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
-            } catch (error) {
-              console.error('사전 SUDS 저장 실패 (무시하고 진행):', error);
-              notify('점수 저장이 지연되고 있지만 세션은 계속 진행할 수 있어요.');
-            }
-          } else {
-            console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
-              sessionId,
-              turn,
-            });
-          }
+            const { sessionId, turn } = session;
+            const canPersistToFirestore = Boolean(sessionId) && turn > 0;
+            const turnId = turnIdOf(turn);
 
-          if (manualLaunch) {
-            setManualEftRequested(false);
-
-            const acknowledgement: Message = {
-              role: 'ai',
-              content: '살짝 숨을 고르셨다면, 이제 AR 가이드로 편안하게 이어가실 수 있도록 도와드릴게요.',
-              timestamp: Date.now(),
-              metadata: {
-                confidence: 0.9,
-                conversationState: sessionStateAtSubmit,
-                turnCount: turnCountAtSubmit,
-              },
-            };
-
-            setMessages(prev => [...prev, acknowledgement]);
-
-            try {
-              eftSessionHook.startEFTSession('ar_holistic', rating);
-            } catch (error) {
-              console.warn('EFT 세션 시작 기록 실패(무시):', error);
-            }
-
-            const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
-            if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-              window.requestAnimationFrame(goToAR);
+            if (canPersistToFirestore) {
+              try {
+                await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+                await fsSetSessionSUDS(sessionId, { pre: rating });
+                console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
+              } catch (error) {
+                console.error('사전 SUDS 저장 실패 (무시하고 진행):', error);
+                notify('점수 저장이 지연되고 있지만 세션은 계속 진행할 수 있어요.');
+              }
             } else {
-              setTimeout(goToAR, 0);
+              console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
+                sessionId,
+                turn,
+              });
             }
-          } else {
-            // EFT 개입 시작 메시지 자동 전송
-            setTimeout(() => {
-              onSend('이제 함께 EFT 세션을 진행해보겠습니다. 준비되셨나요?');
-            }, 1000);
+
+            if (manualLaunch) {
+              setManualEftRequested(false);
+
+              const acknowledgement: Message = {
+                role: 'ai',
+                content: '살짝 숨을 고르셨다면, 이제 AR 가이드로 편안하게 이어가실 수 있도록 도와드릴게요.',
+                timestamp: Date.now(),
+                metadata: {
+                  confidence: 0.9,
+                  conversationState: sessionStateAtSubmit,
+                  turnCount: turnCountAtSubmit,
+                },
+              };
+
+              setMessages(prev => [...prev, acknowledgement]);
+
+              try {
+                eftSessionHook.startEFTSession('ar_holistic', rating);
+              } catch (error) {
+                console.warn('EFT 세션 시작 기록 실패(무시):', error);
+              }
+
+              const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
+              if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(goToAR);
+              } else {
+                setTimeout(goToAR, 0);
+              }
+            } else {
+              // EFT 개입 시작 메시지 자동 전송
+              setTimeout(() => {
+                onSend('이제 함께 EFT 세션을 진행해보겠습니다. 준비되셨나요?');
+              }, 1000);
+            }
+          } catch (error) {
+            console.error('사전 SUDS 처리 실패:', error);
+            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+            setShowPreSUDS(true);
+            if (manualLaunch) {
+              setManualEftRequested(true);
+            }
           }
         }}
         onClose={() => {
