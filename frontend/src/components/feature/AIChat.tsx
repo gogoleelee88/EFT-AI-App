@@ -1352,6 +1352,12 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               }
 
               scheduleARNavigation(rating);
+              const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
+              if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(goToAR);
+              } else {
+                setTimeout(goToAR, 0);
+              }
             } else {
               // EFT 개입 시작 메시지 자동 전송
               setTimeout(() => {
