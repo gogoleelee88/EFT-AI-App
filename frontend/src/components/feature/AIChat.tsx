@@ -848,6 +848,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     const sessionId = session.sessionId;
     const canPersistToBackend = typeof sessionId === 'string' && sessionId.length > 0;
     const turnId = pendingSuds.turnId ?? `ui_${Date.now()}`;
+    const { measurementType, context } = pendingSuds;
 
     try {
       if (canPersistToBackend) {
@@ -856,7 +857,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            measurement_type: pendingSuds.measurementType,
+            measurement_type: measurementType,
             suds_value: score,
             turn_id: turnId,
           }),
@@ -869,15 +870,15 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
         console.log('SUDS 점수 기록 완료:', {
           sessionId,
-          measurementType: pendingSuds.measurementType,
+          measurementType,
           score,
-          context: pendingSuds.context,
+          context,
         });
       } else {
         console.log('SUDS 점수 로컬 처리: 세션 ID가 없어 백엔드 저장을 건너뜁니다.', {
-          measurementType: pendingSuds.measurementType,
+          measurementType,
           score,
-          context: pendingSuds.context,
+          context,
           turnId,
         });
       }
@@ -886,7 +887,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       setPendingSuds(null);
 
       // EFT 세션 중이었다면 완료 처리
-      if (pendingSuds.context?.includes('eft_complete')) {
+      if (context?.includes('eft_complete')) {
         eftSessionHook.completeEFTSession();
       }
 
@@ -1286,6 +1287,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         label="pre"
         onSubmit={async (rating) => {
           const manualLaunch = manualEftRequested;
+          const sessionStateAtSubmit = session.state;
+          const turnCountAtSubmit = session.turn;
           setSuds(s => ({ ...s, pre: rating }));
           setShowPreSUDS(false);
 
@@ -1318,8 +1321,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               timestamp: Date.now(),
               metadata: {
                 confidence: 0.9,
-                conversationState: session.state,
-                turnCount: session.turn,
+                conversationState: sessionStateAtSubmit,
+                turnCount: turnCountAtSubmit,
               },
             };
 
