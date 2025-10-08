@@ -845,57 +845,71 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const handleSudsSubmit = async (score: number) => {
     if (!pendingSuds) return;
 
-    try {
-      // 백엔드 SUDS 기록 API 호출
-      const response = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/suds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          measurement_type: pendingSuds.measurementType,
-          suds_value: score,
-          turn_id: pendingSuds.turnId ?? `ui_${Date.now()}`
-        })
-      });
+    const sessionId = session.sessionId;
+    const canPersistToBackend = typeof sessionId === 'string' && sessionId.length > 0;
+    const turnId = pendingSuds.turnId ?? `ui_${Date.now()}`;
 
-      if (response.ok) {
-        console.log('SUDS 점수 기록 완료:', {
-          sessionId: session.sessionId,
-          measurementType: pendingSuds.measurementType,
-          score,
-          context: pendingSuds.context
+    try {
+      if (canPersistToBackend) {
+        // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
+        const response = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/suds`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            measurement_type: pendingSuds.measurementType,
+            suds_value: score,
+            turn_id: turnId,
+          }),
         });
 
-        // 인라인 카드 제거
-        setPendingSuds(null);
-
-        // EFT 세션 중이었다면 완료 처리
-        if (pendingSuds.context?.includes('eft_complete')) {
-          eftSessionHook.completeEFTSession();
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          throw new Error(`SUDS 기록 실패: ${response.status} ${response.statusText} ${errorText}`.trim());
         }
 
-        // 피드백 메시지 추가
-        const feedbackMessage: Message = {
-          role: 'ai',
-          content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
-          timestamp: Date.now(),
-          metadata: { confidence: 1.0 }
-        };
-        setMessages(prev => [...prev, feedbackMessage]);
-
-        // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
-        if (import.meta.env.VITE_DEBUG_MODE === 'true') {
-          try {
-            const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/stats`);
-            if (statsResponse.ok) {
-              const stats = await statsResponse.json();
-              console.log('메모리 통계:', stats);
-            }
-          } catch (error) {
-            console.log('메모리 통계 조회 실패:', error);
-          }
-        }
+        console.log('SUDS 점수 기록 완료:', {
+          sessionId,
+          measurementType: pendingSuds.measurementType,
+          score,
+          context: pendingSuds.context,
+        });
       } else {
-        throw new Error('SUDS 기록 실패');
+        console.log('SUDS 점수 로컬 처리: 세션 ID가 없어 백엔드 저장을 건너뜁니다.', {
+          measurementType: pendingSuds.measurementType,
+          score,
+          context: pendingSuds.context,
+          turnId,
+        });
+      }
+
+      // 인라인 카드 제거
+      setPendingSuds(null);
+
+      // EFT 세션 중이었다면 완료 처리
+      if (pendingSuds.context?.includes('eft_complete')) {
+        eftSessionHook.completeEFTSession();
+      }
+
+      // 피드백 메시지 추가
+      const feedbackMessage: Message = {
+        role: 'ai',
+        content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
+        timestamp: Date.now(),
+        metadata: { confidence: 1.0 },
+      };
+      setMessages(prev => [...prev, feedbackMessage]);
+
+      // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
+      if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
+        try {
+          const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/stats`);
+          if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            console.log('메모리 통계:', stats);
+          }
+        } catch (error) {
+          console.log('메모리 통계 조회 실패:', error);
+        }
       }
     } catch (error) {
       console.error('SUDS 제출 오류:', error);
