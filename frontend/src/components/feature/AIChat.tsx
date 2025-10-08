@@ -1276,7 +1276,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           setShowPreSUDS(false);
 
           const { sessionId, turn } = session;
-          const canPersistToFirestore = turn > 0;
+          const canPersistToFirestore = Boolean(sessionId) && turn > 0;
           const turnId = turnIdOf(turn);
 
           if (canPersistToFirestore) {
@@ -1289,7 +1289,10 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               notify('점수 저장이 지연되고 있지만 세션은 계속 진행할 수 있어요.');
             }
           } else {
-            console.log('Firestore SUDS 저장 스킵: 아직 생성된 턴이 없습니다.');
+            console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
+              sessionId,
+              turn,
+            });
           }
 
           if (manualLaunch) {
@@ -1345,7 +1348,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           setShowPostSUDS(false);
 
           const { sessionId, turn } = session;
-          const canPersistToFirestore = turn > 0;
+          const canPersistToFirestore = Boolean(sessionId) && turn > 0;
           const turnId = turnIdOf(turn);
 
           if (canPersistToFirestore) {
@@ -1370,7 +1373,10 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               notify('점수 저장이 지연되고 있지만 다음 단계로 계속 진행할게요.');
             }
           } else {
-            console.log('Firestore SUDS 저장 스킵: 아직 생성된 턴이 없습니다.');
+            console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
+              sessionId,
+              turn,
+            });
           }
 
           // S4로 전환
