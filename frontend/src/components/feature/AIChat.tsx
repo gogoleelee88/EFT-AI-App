@@ -901,7 +901,17 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       }
     } catch (error) {
       console.error('SUDS 제출 오류:', error);
-      notify('SUDS 점수 기록 중 오류가 발생했습니다.');
+      notify('SUDS 점수 기록 중 오류가 발생했습니다. 계속 진행하셔도 괜찮아요.');
+
+      setPendingSuds(null);
+
+      const fallbackMessage: Message = {
+        role: 'ai',
+        content: '점수 저장이 잠시 지연되고 있지만, 진행에는 영향이 없어요. 편안한 호흡을 이어가 볼까요?',
+        timestamp: Date.now(),
+        metadata: { confidence: 0.6 }
+      };
+      setMessages(prev => [...prev, fallbackMessage]);
     }
   };
 
@@ -1299,9 +1309,18 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
             setMessages(prev => [...prev, acknowledgement]);
 
-            setTimeout(() => {
-              navigate(`/ar-holistic?intensity=${rating}`);
-            }, 500);
+            try {
+              eftSessionHook.startEFTSession('ar_holistic', rating);
+            } catch (error) {
+              console.warn('EFT 세션 시작 기록 실패(무시):', error);
+            }
+
+            const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
+            if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+              window.requestAnimationFrame(goToAR);
+            } else {
+              setTimeout(goToAR, 0);
+            }
           } else {
             // EFT 개입 시작 메시지 자동 전송
             setTimeout(() => {
