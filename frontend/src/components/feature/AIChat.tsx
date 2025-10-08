@@ -5,7 +5,7 @@ import SUDSModal from '../modals/SUDSModal';
 import SUDSInlineCard from '../ui/SUDSInlineCard';
 import useEFTSessionHook from '../../hooks/useEFTSessionHook';
 import { getServerAI } from '../../services/serverAI';
-import type { ChatResponse, ConversationMessage, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
+import type { ChatResponse, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
 import type {
   ActionObject,
   ActionType,
@@ -33,8 +33,6 @@ import {
   type ConversationState
 } from '../../types/conversationState';
 import {
-  fsCreateTurn,
-  fsAppendABTelemetry,
   fsSetTurnSUDS,
   fsSetSessionSUDS,
 } from '../../services/fs';
