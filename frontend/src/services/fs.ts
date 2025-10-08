@@ -137,6 +137,11 @@ export async function fsAppendABTelemetry(sessionId: string, turnId: string, dat
 export async function fsSetTurnSUDS(sessionId: string, turnId: string, patch: {
   sudsPre?: number; sudsPost?: number; topEmotion?: string;
 }) {
+  if (!auth.currentUser?.uid) {
+    console.warn('⚠️ Firestore SUDS 저장 건너뜀: 인증된 사용자가 없습니다.');
+    return;
+  }
+
   await updateDoc(doc(db, `sessions/${sessionId}/turns/${turnId}`), patch as any);
   console.log('📊 턴 SUDS 저장:', turnId, patch);
 }
@@ -145,6 +150,11 @@ export async function fsSetTurnSUDS(sessionId: string, turnId: string, patch: {
 export async function fsSetSessionSUDS(sessionId: string, args: {
   pre?: number; post?: number; preNotes?: string; postNotes?: string;
 }) {
+  if (!auth.currentUser?.uid) {
+    console.warn('⚠️ Firestore 세션 SUDS 저장 건너뜀: 인증된 사용자가 없습니다.');
+    return;
+  }
+
   const sRef = doc(db, 'sessions', sessionId);
   const snap = await getDoc(sRef);
   const cur = (snap.data()?.suds ?? {}) as EFTSession['suds'];
