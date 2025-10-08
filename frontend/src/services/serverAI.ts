@@ -4,6 +4,7 @@
  */
 
 import type { ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
+import { API_CONFIG, ENDPOINTS } from '../config/api';
 import { createApiHeaders, apiFetch } from './http';
 
 // API 키 가져오기 유틸리티 (localStorage 우선순위)
@@ -64,7 +65,15 @@ const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사�
 4. 지속적인 격려와 지지`;
 
 // 환경변수에서 서버 URL 가져오기 (Vite 환경변수 사용)
-const SERVER_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '').replace(/\/api$/, '');
+
+const rawServerUrl =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+  (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
+  (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
+  API_CONFIG.API_BASE_URL;
+
+const SERVER_URL = normalizeBaseUrl(rawServerUrl || 'http://127.0.0.1:8000');
 
 interface ChatRequest {
   message: string;
@@ -95,6 +104,7 @@ interface ChatResponse {
   professional_referral: boolean;
   session_id?: string;
   response_id: string;
+  usage?: Record<string, any>;
 }
 
 // 새로운 병렬 비교 응답 인터페이스
@@ -131,8 +141,13 @@ class ServerAI {
   private conversationHistory: ConversationMessage[] = [];
 
   constructor() {
-    this.baseURL = SERVER_URL;
+    this.baseURL = SERVER_URL.replace(/\/+$/, '');
     this.sessionId = this.generateSessionId();
+  }
+
+  private buildUrl(path: string): string {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${this.baseURL}${normalizedPath}`;
   }
 
   private generateSessionId(): string {
@@ -144,7 +159,7 @@ class ServerAI {
    */
   async checkServerStatus(): Promise<ServerStatus> {
     try {
-      const response = await fetch(`${this.baseURL}/health`, {
+      const response = await fetch(this.buildUrl('/health'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -195,7 +210,7 @@ class ServerAI {
     try {
       console.log('🤖 병렬 비교 요청:', { message: userMessage, baseURL: this.baseURL });
 
-      const response = await fetch(`${this.baseURL}/api/chat/compare`, {
+      const response = await fetch(this.buildUrl('/api/chat/compare'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -308,8 +323,18 @@ class ServerAI {
 
     } catch (error) {
       console.error('❌ Engine A/B 병렬 비교 실패:', error);
-      
-      // 폴백 응답 생성
+
+      try {
+        const directFallback = await this.tryDirectVLLMFallback(userMessage, options);
+        if (directFallback) {
+          console.warn('✅ Direct vLLM 폴백으로 응답 생성 성공');
+          return directFallback;
+        }
+      } catch (fallbackError) {
+        console.error('Direct vLLM 폴백 시도 실패:', fallbackError);
+      }
+
+      // 최종 폴백 응답 생성
       return this.createFallbackResponse(userMessage, error as Error);
     }
   }
@@ -335,7 +360,7 @@ class ServerAI {
     };
 
     try {
-      const response = await fetch(`${this.baseURL}/api/chat/stream`, {
+      const response = await fetch(this.buildUrl('/api/chat/stream'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -398,7 +423,7 @@ class ServerAI {
    */
   async analyzeEmotion(text: string): Promise<EmotionAnalysis | null> {
     try {
-      const response = await fetch(`${this.baseURL}/api/analyze/emotion`, {
+      const response = await fetch(this.buildUrl('/api/analyze/emotion'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -427,7 +452,7 @@ class ServerAI {
    */
   async recommendEFT(emotionAnalysis: EmotionAnalysis): Promise<EFTRecommendation[]> {
     try {
-      const response = await fetch(`${this.baseURL}/api/recommend/eft`, {
+      const response = await fetch(this.buildUrl('/api/recommend/eft'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -501,6 +526,111 @@ class ServerAI {
     };
   }
 
+  private async tryDirectVLLMFallback(
+    userMessage: string,
+    options: { maxTokens?: number; temperature?: number } = {}
+  ): Promise<ChatResponse | null> {
+    const configuredFallback = (import.meta.env as any)?.VITE_VLLM_ENGINE_FALLBACK_URL as string | undefined;
+    const fallbackCandidates = [
+      configuredFallback,
+      ENDPOINTS?.VLLM_ENGINE_A,
+      ENDPOINTS?.VLLM_ENGINE_B,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.replace(/\/+$/, ''));
+
+    const seen = new Set<string>();
+    const uniqueCandidates = fallbackCandidates.filter((value) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+
+    if (uniqueCandidates.length === 0) {
+      return null;
+    }
+
+    const model =
+      (import.meta.env as any)?.VITE_VLLM_ENGINE_FALLBACK_MODEL ||
+      (import.meta.env as any)?.VITE_VLLM_ENGINE_A_MODEL ||
+      'llama-3.1-8b-instruct';
+
+    for (const endpoint of uniqueCandidates) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer EMPTY',
+          },
+          body: JSON.stringify({
+            model,
+            temperature: options.temperature ?? 0.5,
+            max_tokens: options.maxTokens ?? 512,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: userMessage },
+            ],
+            stream: false,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => `${response.status}`);
+          console.warn('Direct vLLM 폴백 호출 실패:', { endpoint, status: response.status, errorText });
+          continue;
+        }
+
+        const data = await response.json().catch(() => null);
+        const candidateContent =
+          data?.choices?.[0]?.message?.content ??
+          data?.choices?.[0]?.text ??
+          data?.response ??
+          '';
+
+        if (!candidateContent) {
+          console.warn('Direct vLLM 폴백 응답이 비어 있습니다:', { endpoint });
+          continue;
+        }
+
+        const usage = data?.usage ?? {};
+        const processingTimeMs = typeof data?.processing_time === 'number' ? data.processing_time : 0;
+
+        this.addToHistory('user', userMessage);
+        this.addToHistory('assistant', candidateContent);
+
+        const fallbackResponse: ChatResponse = {
+          response: candidateContent,
+          emotion_analysis: {
+            primary_emotion: 'neutral' as any,
+            secondary_emotion: null,
+            intensity: 0.6,
+            confidence: 0.6,
+            emotional_keywords: [],
+          },
+          eft_recommendations: [],
+          suggested_actions: [],
+          confidence_score: 0.65,
+          processing_time: processingTimeMs,
+          timestamp: new Date().toISOString(),
+          requires_followup: false,
+          emergency_detected: false,
+          professional_referral: false,
+          response_id: `vllm_fallback_${Date.now()}`,
+          ...(usage && Object.keys(usage).length > 0
+            ? { usage }
+            : {}),
+        };
+
+        return fallbackResponse;
+      } catch (error) {
+        console.error('Direct vLLM 폴백 호출 중 예외 발생:', { endpoint, error });
+      }
+    }
+
+    return null;
+  }
+
   /**
    * 대화 히스토리 초기화
    */
@@ -555,12 +685,18 @@ export async function generateReplyAB(
     max_tokens: 512,
   };
 
-  const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+  const rawBase =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+    (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
+    (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
+    API_CONFIG.API_BASE_URL;
+  const base = normalizeBaseUrl(rawBase || 'http://127.0.0.1:8000');
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+  const targetUrl = `${base}${endpoint}`;
 
   // 총 소요 시간
   const T0 = performance.now();
-  const res = await fetch(`${base}${endpoint}`, {
+  const res = await fetch(targetUrl, {
     method: "POST",
     headers: headersCompat(isPremium),
     body: JSON.stringify(payload),
@@ -666,10 +802,16 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
     max_tokens: 512
   };
 
-  const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_BASE || import.meta.env.VITE_AI_SERVER_URL || 'http://127.0.0.1:8000';
+  const rawBase =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+    (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
+    (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
+    API_CONFIG.API_BASE_URL;
+  const base = normalizeBaseUrl(rawBase || 'http://127.0.0.1:8000');
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+  const targetUrl = `${base}${endpoint}`;
 
-  const res = await fetch(`${base}${endpoint}`, {
+  const res = await fetch(targetUrl, {
     method: 'POST',
     headers: headersCompat(isPremium),
     body: JSON.stringify(payload)
@@ -752,7 +894,7 @@ export class EnhancedServerAI extends ServerAI {
     }
 
     try {
-      const response = await fetch(`${this.baseURL}/api/chat/premium`, {
+      const response = await fetch(this.buildUrl('/api/chat/premium'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -813,7 +955,7 @@ export class EnhancedServerAI extends ServerAI {
     if (!key) return false;
 
     try {
-      const response = await fetch(`${this.baseURL}/api/premium/validate`, {
+      const response = await fetch(this.buildUrl('/api/premium/validate'), {
         method: 'GET',
         headers: {
           'X-API-Key': key

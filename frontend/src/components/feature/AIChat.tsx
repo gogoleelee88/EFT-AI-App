@@ -308,6 +308,21 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     setShowPreSUDS(true);
   };
 
+  const scheduleARNavigation = (intensity: number) => {
+    const goToAR = () => navigate(`/ar-holistic?intensity=${intensity}`);
+
+    if (typeof window === 'undefined') {
+      goToAR();
+      return;
+    }
+
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(goToAR);
+    } else {
+      setTimeout(goToAR, 0);
+    }
+  };
+
   // 🔍 그림자 테스트: fire-and-forget 비교 (UI 영향 없음)
   const shadowFireAndForget = (message: string, sessionData: any) => {
     if (!shouldShadowSample()) return;
@@ -1336,6 +1351,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
                 console.warn('EFT 세션 시작 기록 실패(무시):', error);
               }
 
+              scheduleARNavigation(rating);
               const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
               if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
                 window.requestAnimationFrame(goToAR);
