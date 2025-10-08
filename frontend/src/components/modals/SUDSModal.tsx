@@ -49,7 +49,7 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
   const isPre = label === 'pre';
   const title = isPre ? 'EFT 시작 전 상태' : 'EFT 적용 후 상태';
   const description = isPre
-    ? '현재 느끼는 스트레스/불편함 정도를 선택해주세요 (0=매우 편안, 10=매우 불편).'
+    ? 'EFT AR 가이드를 시작하기 전에 지금 느끼는 스트레스/불편함 정도를 선택해주세요 (0=매우 편안, 10=매우 불편).'
     : 'EFT 적용 후 스트레스/불편함의 변화를 평가해주세요.';
 
   const getScoreDescription = (v: number): string => {
@@ -165,7 +165,7 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
             </Button>
           )}
           <Button onClick={() => onSubmit(score)} className="flex-1 bg-blue-600 text-white hover:bg-blue-700">
-            {isPre ? '시작하기' : '완료하기'}
+            {isPre ? 'EFT 시작하기' : '완료하기'}
           </Button>
         </div>
       </div>
