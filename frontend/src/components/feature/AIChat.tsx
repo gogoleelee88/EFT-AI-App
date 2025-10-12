@@ -877,7 +877,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     try {
       if (canPersistToBackend) {
         // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
-        const response = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/suds`, {
+        const sudsUrl = joinUrl(API_BASE_URL, `/api/memory/${sessionId}/suds`);
+        const response = await fetch(sudsUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -927,7 +928,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
       if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
         try {
-          const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/stats`);
+          const statsUrl = joinUrl(API_BASE_URL, `/api/memory/${sessionId}/stats`);
+          const statsResponse = await fetch(statsUrl);
           if (statsResponse.ok) {
             const stats = await statsResponse.json();
             console.log('메모리 통계:', stats);

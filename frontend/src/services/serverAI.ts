@@ -226,26 +226,37 @@ class ServerAI {
    */
   async checkServerStatus(): Promise<ServerStatus> {
     try {
-      const response = await fetch(this.buildUrl('/api/health'), {
-      const response = await fetch(this.buildUrl('/health'), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const healthPaths = ['/api/health', '/health'];
+      let lastError: unknown;
 
-      if (!response.ok) {
-        throw new Error(`서버 응답 오류: ${response.status}`);
+      for (const path of healthPaths) {
+        try {
+          const endpointUrl = this.buildUrl(path);
+          const response = await fetch(endpointUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!response.ok) {
+            lastError = new Error(`서버 응답 오류: ${response.status}`);
+            continue;
+          }
+
+          const data = await response.json();
+          return {
+            status: data.status,
+            model_loaded: data.ai_engine === 'loaded',
+            ai_engine: data.ai_engine,
+            uptime: data.uptime || 0
+          };
+        } catch (error) {
+          lastError = error;
+        }
       }
 
-      const data = await response.json();
-      return {
-        status: data.status,
-        model_loaded: data.ai_engine === 'loaded',
-        ai_engine: data.ai_engine,
-        uptime: data.uptime || 0
-      };
-
+      throw lastError ?? new Error('서버 상태 확인 실패');
     } catch (error) {
       console.error('서버 상태 확인 실패:', error);
       return {
