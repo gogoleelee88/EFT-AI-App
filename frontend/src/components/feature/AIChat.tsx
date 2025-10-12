@@ -4,8 +4,9 @@ import Button from '../ui/Button';
 import SUDSModal from '../modals/SUDSModal';
 import SUDSInlineCard from '../ui/SUDSInlineCard';
 import useEFTSessionHook from '../../hooks/useEFTSessionHook';
+import { API_CONFIG } from '../../config/api';
 import { getServerAI } from '../../services/serverAI';
-import type { ChatResponse, ConversationMessage, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
+import type { ChatResponse, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
 import type {
   ActionObject,
   ActionType,
@@ -19,7 +20,7 @@ import type {
 } from '../../types/actionTypes';
 import { recToARParams } from '../../lib/eftAdapter';
 import { EftRecButton } from '../eft';
-import {
+import { 
   createSession,
   onUserMessage,
   enforceTwoTurnRule,
@@ -29,11 +30,10 @@ import {
   enforceLength,
   extractSlotsFrom,
   ensureTwoParagraphs,
-  type ConversationSession
+  type ConversationSession,
+  type ConversationState
 } from '../../types/conversationState';
 import {
-  fsCreateTurn,
-  fsAppendABTelemetry,
   fsSetTurnSUDS,
   fsSetSessionSUDS,
 } from '../../services/fs';
@@ -49,7 +49,15 @@ interface Message {
     processing_time?: number;
     emergency_detected?: boolean;
     professional_referral?: boolean;
+    conversationState?: ConversationState;
+    turnCount?: number;
+    actionResults?: ActionObject[];
   };
+}
+
+interface CushionFollowupState {
+  remainder: string;
+  metadata?: Message['metadata'];
 }
 
 interface AIChatProps {
@@ -62,6 +70,13 @@ type AITier = 'free' | 'premium' | 'enterprise';
 
 // turnId 유틸 - zero-pad로 정렬 안정성 확보
 const turnIdOf = (n: number) => String(n).padStart(4, '0');
+
+const LONG_RESPONSE_THRESHOLD = 460;
+const POSITIVE_FOLLOWUP_REGEX = /(네|넵|좋아요|좋습니다|괜찮아요|계속|더|알려줘|부탁해|응|그래요?)/i;
+const NEGATIVE_FOLLOWUP_REGEX = /(아니|않아|안돼|그만|싫|나중|필요없|보류|괜찮(?:으니|습니다만|지만))/i;
+const CUSHION_LEAD = '먼저 말씀드리고 싶은 것은';
+const CUSHION_ASK = '혹시 괜찮으시다면 이어서 조금 더 자세히 안내해드릴까요?';
+const CUSHION_CONTINUE = '그럼 이어서 부드럽게 안내드릴게요.';
 
 // 🔍 안전 파서: 여러 응답 스키마에서 텍스트를 추출
 const extractText = (res: any): string => {
@@ -158,9 +173,9 @@ const notify = (message: string) => {
 const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const navigate = useNavigate();
 
-  // 🌍 API 베이스 URL (환경변수 기반)
-  const API_BASE_URL = (import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000').replace(/\/+$/, '');
-  const VLLM_ENGINE_B_URL = import.meta.env.VITE_VLLM_ENGINE_B_URL || 'http://localhost:8002/v1';
+  // 🌍 API 베이스 URL (환경 설정 기반)
+  const API_BASE_URL = API_CONFIG.API_BASE_URL.replace(/\/+$/, '');
+  const VLLM_ENGINE_B_URL = `${API_CONFIG.VLLM_ENGINE_B_URL.replace(/\/+$/, '')}/v1`;
 
   // 🎛️ 프리미엄 라우팅 토글 (즉시 롤백 가능)
   const PREMIUM_VIA_BACKEND = String(import.meta.env.VITE_PREMIUM_VIA_BACKEND ?? 'false').toLowerCase() === 'true';
@@ -262,6 +277,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const [pendingEftRecommendation, setPendingEftRecommendation] = useState<EftRecommendationPayload | null>(null);
   const [pendingMoodCheck, setPendingMoodCheck] = useState<MoodCheckPayload | null>(null);
   const [pendingResource, setPendingResource] = useState<ResourceOfferPayload | null>(null);
+  const [pendingCushionFollowup, setPendingCushionFollowup] = useState<CushionFollowupState | null>(null);
+  const [manualEftRequested, setManualEftRequested] = useState(false);
 
   // 🔥 EFT 세션 훅 통합
   const eftSessionHook = useEFTSessionHook({
@@ -285,6 +302,26 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   // 뒤로가기 핸들러
   const handleGoBack = () => {
     navigate('/');
+  };
+
+  const handleManualEFTStart = () => {
+    setManualEftRequested(true);
+    setShowPreSUDS(true);
+  };
+
+  const scheduleARNavigation = (intensity: number) => {
+    const goToAR = () => navigate(`/ar-holistic?intensity=${intensity}`);
+
+    if (typeof window === 'undefined') {
+      goToAR();
+      return;
+    }
+
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(goToAR);
+    } else {
+      setTimeout(goToAR, 0);
+    }
   };
 
   // 🔍 그림자 테스트: fire-and-forget 비교 (UI 영향 없음)
@@ -326,7 +363,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           // 본선: vLLM 직접 → 그림자: 백엔드
           legacyRes = sessionData;
 
-          const url = joinUrl(API_BASE_URL, '/api/chat/premium');
+          const url = joinUrl(API_BASE_URL, '/chat/premium');
 
           // 백엔드 스펙과 동일하게 구성
           const payload = {
@@ -362,7 +399,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         });
 
         // 서버 수집 (선택)
-        // await fetch(joinUrl(API_BASE_URL, '/api/metrics/shadow'), {
+        // await fetch(joinUrl(API_BASE_URL, '/metrics/shadow'), {
         //   method: 'POST',
         //   headers: { 'Content-Type': 'application/json' },
         //   body: JSON.stringify({ summary, message_len: Array.from(message).length }),
@@ -386,40 +423,48 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   useEffect(() => {
     const initializeAI = async () => {
       try {
-        const healthResponse = await fetch('http://localhost:8000/health');
-        const healthData = await healthResponse.json();
-        
-        // Engine A/B 시스템은 항상 사용 가능 (vLLM 서버 여부와 무관)
-        setServerStatus('online');
+        const healthStatus = await serverAI.checkServerStatus();
+        const isHealthy = healthStatus.status !== 'offline';
+
+        setServerStatus(isHealthy ? 'online' : 'offline');
         setAvailableTiers(['free', 'premium', 'enterprise']);
-        
-        // 기본값을 무료로 설정 (Engine A/B 병렬 비교 사용)
         setSelectedTier('free');
-        
-        const initialMessage: Message = {
-          role: 'ai',
-          content: "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
-          timestamp: Date.now(),
-          metadata: {
-            confidence: 1.0,
-            processing_time: 0
-          }
-        };
-        
+
+        const initialMessage: Message = isHealthy
+          ? {
+              role: 'ai',
+              content:
+                "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
+              timestamp: Date.now(),
+              metadata: {
+                confidence: 1.0,
+                processing_time: 0,
+              },
+            }
+          : {
+              role: 'ai',
+              content:
+                '안녕하세요! 현재 AI 서버 연결이 불안정해요. 잠시 뒤 다시 시도해 주시면 안정적인 상담을 이어갈 수 있도록 준비해둘게요.',
+              timestamp: Date.now(),
+              metadata: {
+                confidence: 0.6,
+                processing_time: 0,
+              },
+            };
+
         setMessages([initialMessage]);
-        
       } catch (error) {
         console.error('서버 초기화 실패:', error);
-        // Engine A/B 시스템은 서버 오류가 있어도 기본 동작
-        setServerStatus('online');
-        
+        setServerStatus('offline');
+
         const errorMessage: Message = {
           role: 'ai',
-          content: "안녕하세요! Engine A/B 병렬 비교 시스템입니다. 🚀\n\n현재 vLLM 서버 연결을 시도 중입니다. 일부 응답이 제한될 수 있지만 기본 서비스는 이용 가능합니다.",
+          content:
+            '안녕하세요! 현재 AI 서버와 통신하는 데 어려움이 있습니다. 잠시 후 다시 시도해 주시겠어요? 문제가 지속되면 담당자에게 문의해주세요.',
           timestamp: Date.now(),
-          metadata: { confidence: 0.7 }
+          metadata: { confidence: 0.4 },
         };
-        
+
         setMessages([errorMessage]);
       }
     };
@@ -488,40 +533,73 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   ];
 
   // Qwen 호출 파이프라인 (상태머신 순서 준수)
-  const onSend = async (userText: string) => {
-    if (!userText.trim() || loading) return;
+  const onSend = async (rawInput: string) => {
+    const trimmed = rawInput.trim();
+    if (!trimmed || loading) return;
+
+    // 1) 사용자 입력 도착 - 핵심명사 추출 및 상태 전이
+    onUserMessage(session, trimmed);
+
+    const userMessage: Message = {
+      role: 'user',
+      content: trimmed,
+      timestamp: Date.now()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setInputMessage('');
+
+    const followup = pendingCushionFollowup;
+    const wantsMore = followup ? POSITIVE_FOLLOWUP_REGEX.test(trimmed) : false;
+    const declinesMore = followup ? NEGATIVE_FOLLOWUP_REGEX.test(trimmed) : false;
+
+    if (followup && (wantsMore || declinesMore)) {
+      setPendingCushionFollowup(null);
+
+      const followupMessage: Message = wantsMore
+        ? {
+            role: 'ai',
+            content: `${CUSHION_CONTINUE} ${followup.remainder}`.trim(),
+            timestamp: Date.now(),
+            metadata: {
+              ...followup.metadata,
+              confidence: followup.metadata?.confidence ?? 0.85,
+            },
+          }
+        : {
+            role: 'ai',
+            content: '알겠습니다. 필요하실 때 언제든지 더 이어서 말씀드릴게요.',
+            timestamp: Date.now(),
+            metadata: {
+              ...followup.metadata,
+              confidence: followup.metadata?.confidence ?? 0.8,
+            },
+          };
+
+      setMessages(prev => [...prev, followupMessage]);
+      return;
+    }
+
+    setPendingCushionFollowup(null);
     setLoading(true);
 
     try {
-      // 1) 사용자 입력 도착 - 핵심명사 추출 및 상태 전이
-      onUserMessage(session, userText);
-
-      // UI 메시지 추가
-      const userMessage: Message = {
-        role: 'user',
-        content: userText.trim(),
-        timestamp: Date.now()
-      };
-      setMessages(prev => [...prev, userMessage]);
-      setInputMessage('');
-
       // 2) 엔진 응답 생성 후(확정 직전) 상태 정책 적용
       enforceTwoTurnRule(session);
 
       // 슬롯 추출 (보조)
-      const slots = extractSlotsFrom(userText);
+      const slots = extractSlotsFrom(trimmed);
 
       // 시스템 프롬프트 구성 (+ 슬롯 JSON)
       const systemWithSlots = SYSTEM_PROMPT + `\n[슬롯]\n${JSON.stringify(slots)}`;
 
       // Qwen 호출 (기존 서버 래퍼 사용)
-      console.log(`🚀 Qwen 호출 시작 (${selectedTier} 티어, 상태: ${session.state}, 턴: ${session.turn}):`, userText);
+      console.log(`🚀 Qwen 호출 시작 (${selectedTier} 티어, 상태: ${session.state}, 턴: ${session.turn}):`, trimmed);
 
       let serverResponse: ChatResponse;
 
       if (selectedTier === 'free') {
         // 무료: 기존 Engine A/B 사용
-        serverResponse = await serverAI.chat(userText, {
+        serverResponse = await serverAI.chat(trimmed, {
           userId: userId,
           maxTokens: 300,
           temperature: 0.4
@@ -531,7 +609,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         if (PREMIUM_VIA_BACKEND) {
           // 경로 1: 백엔드 경유 (/api/chat/premium)
           const payload = {
-            message: userText,
+            message: trimmed,
             temperature: 0.7,
             max_tokens: 700,
             ...(session?.sessionId ? { sessionId: session.sessionId } : {}),
@@ -539,7 +617,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
             tier: 'premium',
           };
 
-          const response = await fetch(joinUrl(API_BASE_URL, '/api/chat/premium'), {
+          const response = await fetch(joinUrl(API_BASE_URL, '/chat/premium'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -569,9 +647,9 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               max_tokens: 700,
               messages: [
                 { role: 'system', content: systemWithSlots },
-                { role: 'user', content: userText }
-              ]
-            })
+              { role: 'user', content: trimmed }
+          ]
+        })
           });
 
           if (!response.ok) {
@@ -593,7 +671,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         }
 
         // 🔍 그림자 테스트 (비동기, UI 영향 없음)
-        shadowFireAndForget(userText, serverResponse);
+        shadowFireAndForget(trimmed, serverResponse);
       }
       
       // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌
@@ -618,7 +696,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       reply = sanitizeAssistantText(session, reply);
 
       // 3-2. 안전성 검사 (위험 키워드 감지 + 안전 안내)
-      reply = applySafetyCheck(session, userText, reply);
+      reply = applySafetyCheck(session, trimmed, reply);
 
       // 3-3. 반복 방지 적용 (24시간 캐시)
       reply = dampenRepetition(session, reply);
@@ -628,26 +706,48 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
       // UI 반영 (2단락 보장)
       const paragraphs = ensureTwoParagraphs(reply);
-      const finalContent = paragraphs.join('\n\n');
+      let finalContent = paragraphs.join('\n\n');
+      let followupState: CushionFollowupState | null = null;
+
+      const baseMetadata: Message['metadata'] = {
+        emotion_analysis: serverResponse.emotion_analysis,
+        eft_recommendations: serverResponse.eft_recommendations,
+        confidence: serverResponse.confidence_score,
+        processing_time: serverResponse.processing_time,
+        emergency_detected: serverResponse.emergency_detected,
+        professional_referral: serverResponse.professional_referral,
+        conversationState: session.state,
+        turnCount: session.turn,
+        actionResults,
+      };
+
+      if (finalContent.length >= LONG_RESPONSE_THRESHOLD && paragraphs.length >= 2) {
+        const [firstParagraph, ...restParagraphs] = paragraphs;
+        const restContent = restParagraphs.join('\n\n').trim();
+        const leadParagraph = firstParagraph.trim().startsWith(CUSHION_LEAD)
+          ? firstParagraph.trim()
+          : `${CUSHION_LEAD}, ${firstParagraph.trim()}`;
+
+        if (restContent) {
+          finalContent = `${leadParagraph}\n\n${CUSHION_ASK}`;
+          followupState = {
+            remainder: restContent,
+            metadata: baseMetadata,
+          };
+        } else {
+          finalContent = leadParagraph;
+        }
+      }
 
       const aiMessage: Message = {
         role: 'ai',
         content: finalContent,
         timestamp: Date.now(),
-        metadata: {
-          emotion_analysis: serverResponse.emotion_analysis,
-          eft_recommendations: serverResponse.eft_recommendations,
-          confidence: serverResponse.confidence_score,
-          processing_time: serverResponse.processing_time,
-          emergency_detected: serverResponse.emergency_detected,
-          professional_referral: serverResponse.professional_referral,
-          conversationState: session.state,
-          turnCount: session.turn,
-          actionResults // 🔥 AI 액션 토큰 처리 결과 포함
-        }
+        metadata: baseMetadata,
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      setPendingCushionFollowup(followupState);
 
       // 4) 메시지 렌더링 & turn 카운트 증가 (응답 확정 후)
       session.turn += 1;
@@ -769,61 +869,86 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const handleSudsSubmit = async (score: number) => {
     if (!pendingSuds) return;
 
-    try {
-      // 백엔드 SUDS 기록 API 호출
-      const response = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/suds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          measurement_type: pendingSuds.measurementType,
-          suds_value: score,
-          turn_id: pendingSuds.turnId ?? `ui_${Date.now()}`
-        })
-      });
+    const sessionId = session.sessionId;
+    const canPersistToBackend = typeof sessionId === 'string' && sessionId.length > 0;
+    const turnId = pendingSuds.turnId ?? `ui_${Date.now()}`;
+    const { measurementType, context } = pendingSuds;
 
-      if (response.ok) {
-        console.log('SUDS 점수 기록 완료:', {
-          sessionId: session.sessionId,
-          measurementType: pendingSuds.measurementType,
-          score,
-          context: pendingSuds.context
+    try {
+      if (canPersistToBackend) {
+        // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
+        const response = await fetch(joinUrl(API_BASE_URL, `/memory/${sessionId}/suds`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            measurement_type: measurementType,
+            suds_value: score,
+            turn_id: turnId,
+          }),
         });
 
-        // 인라인 카드 제거
-        setPendingSuds(null);
-
-        // EFT 세션 중이었다면 완료 처리
-        if (pendingSuds.context?.includes('eft_complete')) {
-          eftSessionHook.completeEFTSession();
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          throw new Error(`SUDS 기록 실패: ${response.status} ${response.statusText} ${errorText}`.trim());
         }
 
-        // 피드백 메시지 추가
-        const feedbackMessage: Message = {
-          role: 'ai',
-          content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
-          timestamp: Date.now(),
-          metadata: { confidence: 1.0 }
-        };
-        setMessages(prev => [...prev, feedbackMessage]);
-
-        // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
-        if (import.meta.env.VITE_DEBUG_MODE === 'true') {
-          try {
-            const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${session.sessionId}/stats`);
-            if (statsResponse.ok) {
-              const stats = await statsResponse.json();
-              console.log('메모리 통계:', stats);
-            }
-          } catch (error) {
-            console.log('메모리 통계 조회 실패:', error);
-          }
-        }
+        console.log('SUDS 점수 기록 완료:', {
+          sessionId,
+          measurementType,
+          score,
+          context,
+        });
       } else {
-        throw new Error('SUDS 기록 실패');
+        console.log('SUDS 점수 로컬 처리: 세션 ID가 없어 백엔드 저장을 건너뜁니다.', {
+          measurementType,
+          score,
+          context,
+          turnId,
+        });
+      }
+
+      // 인라인 카드 제거
+      setPendingSuds(null);
+
+      // EFT 세션 중이었다면 완료 처리
+      if (context?.includes('eft_complete')) {
+        eftSessionHook.completeEFTSession();
+      }
+
+      // 피드백 메시지 추가
+      const feedbackMessage: Message = {
+        role: 'ai',
+        content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
+        timestamp: Date.now(),
+        metadata: { confidence: 1.0 },
+      };
+      setMessages(prev => [...prev, feedbackMessage]);
+
+      // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
+      if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
+        try {
+          const statsResponse = await fetch(joinUrl(API_BASE_URL, `/memory/${sessionId}/stats`));
+          if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            console.log('메모리 통계:', stats);
+          }
+        } catch (error) {
+          console.log('메모리 통계 조회 실패:', error);
+        }
       }
     } catch (error) {
       console.error('SUDS 제출 오류:', error);
-      notify('SUDS 점수 기록 중 오류가 발생했습니다.');
+      notify('SUDS 점수 기록 중 오류가 발생했습니다. 계속 진행하셔도 괜찮아요.');
+
+      setPendingSuds(null);
+
+      const fallbackMessage: Message = {
+        role: 'ai',
+        content: '점수 저장이 잠시 지연되고 있지만, 진행에는 영향이 없어요. 편안한 호흡을 이어가 볼까요?',
+        timestamp: Date.now(),
+        metadata: { confidence: 0.6 }
+      };
+      setMessages(prev => [...prev, fallbackMessage]);
     }
   };
 
@@ -1165,38 +1290,96 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={handleManualEFTStart}
+        disabled={manualEftRequested || showPreSUDS || showPostSUDS}
+        className={`fixed bottom-28 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-emerald-300 transition-colors ${
+          manualEftRequested || showPreSUDS || showPostSUDS
+            ? 'bg-emerald-300 text-white cursor-not-allowed'
+            : 'bg-emerald-500 text-white hover:bg-emerald-600'
+        }`}
+        aria-label="지금 EFT 진행해보기"
+      >
+        <span>지금 EFT 진행해보기</span>
+        <span aria-hidden="true">🪄</span>
+      </button>
+
       {/* SUDS 모달들 */}
       <SUDSModal
         open={showPreSUDS}
         label="pre"
         onSubmit={async (rating) => {
+          const manualLaunch = manualEftRequested;
+          const sessionStateAtSubmit = session.state;
+          const turnCountAtSubmit = session.turn;
+
           try {
             setSuds(s => ({ ...s, pre: rating }));
             setShowPreSUDS(false);
 
-            // Firestore에 사전 SUDS 점수 저장
             const { sessionId, turn } = session;
+            const canPersistToFirestore = Boolean(sessionId) && turn > 0;
             const turnId = turnIdOf(turn);
 
-            await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+            if (canPersistToFirestore) {
+              try {
+                await fsSetTurnSUDS(sessionId, turnId, { sudsPre: rating });
+                await fsSetSessionSUDS(sessionId, { pre: rating });
+                console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
+              } catch (error) {
+                console.error('사전 SUDS 저장 실패 (무시하고 진행):', error);
+                notify('점수 저장이 지연되고 있지만 세션은 계속 진행할 수 있어요.');
+              }
+            } else {
+              console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
+                sessionId,
+                turn,
+              });
+            }
 
-            // 세션 요약에도 pre 값 즉시 반영 (집계/리포트 편의)
-            await fsSetSessionSUDS(sessionId, { pre: rating });
+            if (manualLaunch) {
+              setManualEftRequested(false);
 
-            console.log('사전 SUDS 저장 완료:', { sessionId, turnId, sudsPre: rating });
+              const acknowledgement: Message = {
+                role: 'ai',
+                content: '살짝 숨을 고르셨다면, 이제 AR 가이드로 편안하게 이어가실 수 있도록 도와드릴게요.',
+                timestamp: Date.now(),
+                metadata: {
+                  confidence: 0.9,
+                  conversationState: sessionStateAtSubmit,
+                  turnCount: turnCountAtSubmit,
+                },
+              };
 
-            // EFT 개입 시작 메시지 자동 전송
-            setTimeout(() => {
-              onSend('이제 함께 EFT 세션을 진행해보겠습니다. 준비되셨나요?');
-            }, 1000);
+              setMessages(prev => [...prev, acknowledgement]);
+
+              try {
+                eftSessionHook.startEFTSession('ar_holistic', rating);
+              } catch (error) {
+                console.warn('EFT 세션 시작 기록 실패(무시):', error);
+              }
+
+              scheduleARNavigation(rating);
+            } else {
+              // EFT 개입 시작 메시지 자동 전송
+              setTimeout(() => {
+                onSend('이제 함께 EFT 세션을 진행해보겠습니다. 준비되셨나요?');
+              }, 1000);
+            }
           } catch (error) {
-            console.error('사전 SUDS 저장 실패:', error);
-            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
+            console.error('사전 SUDS 처리 실패:', error);
             notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
             setShowPreSUDS(true);
+            if (manualLaunch) {
+              setManualEftRequested(true);
+            }
           }
         }}
-        onClose={() => setShowPreSUDS(false)}
+        onClose={() => {
+          setShowPreSUDS(false);
+          setManualEftRequested(false);
+        }}
         currentValue={suds.pre}
       />
 
@@ -1204,53 +1387,57 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         open={showPostSUDS}
         label="post"
         onSubmit={async (rating) => {
-          try {
-            const preSafe = suds.pre ?? 5;
-            const delta = preSafe - rating;
+          const preSafe = suds.pre ?? 5;
+          const delta = preSafe - rating;
 
-            setSuds(s => ({ ...s, post: rating }));
-            setShowPostSUDS(false);
+          setSuds(s => ({ ...s, post: rating }));
+          setShowPostSUDS(false);
 
-            // Firestore에 사후 SUDS 점수 저장
-            const { sessionId, turn } = session;
-            const turnId = turnIdOf(turn);
+          const { sessionId, turn } = session;
+          const canPersistToFirestore = Boolean(sessionId) && turn > 0;
+          const turnId = turnIdOf(turn);
 
-            // 병렬 처리로 성능 최적화
-            await Promise.all([
-              fsSetTurnSUDS(sessionId, turnId, { sudsPost: rating }),
-              fsSetSessionSUDS(sessionId, {
-                ...(preSafe !== undefined ? { pre: preSafe } : {}),
-                post: rating
-              })
-            ]);
+          if (canPersistToFirestore) {
+            try {
+              await Promise.all([
+                fsSetTurnSUDS(sessionId, turnId, { sudsPost: rating }),
+                fsSetSessionSUDS(sessionId, {
+                  ...(preSafe !== undefined ? { pre: preSafe } : {}),
+                  post: rating
+                })
+              ]);
 
-            console.log('사후 SUDS 저장 완료:', {
+              console.log('사후 SUDS 저장 완료:', {
+                sessionId,
+                turnId,
+                pre: preSafe,
+                post: rating,
+                sudsDelta: delta
+              });
+            } catch (error) {
+              console.error('사후 SUDS 저장 실패 (무시하고 진행):', error);
+              notify('점수 저장이 지연되고 있지만 다음 단계로 계속 진행할게요.');
+            }
+          } else {
+            console.log('Firestore SUDS 저장 스킵: 세션 식별자 또는 턴 정보가 부족합니다.', {
               sessionId,
-              turnId,
-              pre: preSafe,
-              post: rating,
-              sudsDelta: delta
+              turn,
             });
-
-            // S4로 전환
-            setSession(prev => ({ ...prev, state: 'S4' }));
-
-            // 개선 결과에 따른 피드백 메시지 자동 전송
-            setTimeout(() => {
-              if (delta > 2) {
-                onSend(`정말 좋아졌네요! ${delta}점이나 개선되었습니다. 어떤 부분이 가장 도움이 되었나요?`);
-              } else if (delta > 0) {
-                onSend(`조금이나마 나아지셨군요. ${delta}점 개선되었습니다. 계속 이어서 해볼까요?`);
-              } else {
-                onSend('아직 큰 변화는 느끼지 못하시는군요. 괜찮습니다. 다른 방법을 함께 시도해보죠.');
-              }
-            }, 1500);
-          } catch (error) {
-            console.error('사후 SUDS 저장 실패:', error);
-            // 비블로킹 피드백 + 모달 즉시 복구로 매끄러운 사용 흐름
-            notify('저장 중 오류가 발생했습니다. 다시 시도해주세요.');
-            setShowPostSUDS(true);
           }
+
+          // S4로 전환
+          setSession(prev => ({ ...prev, state: 'S4' }));
+
+          // 개선 결과에 따른 피드백 메시지 자동 전송
+          setTimeout(() => {
+            if (delta > 2) {
+              onSend(`정말 좋아졌네요! ${delta}점이나 개선되었습니다. 어떤 부분이 가장 도움이 되었나요?`);
+            } else if (delta > 0) {
+              onSend(`조금이나마 나아지셨군요. ${delta}점 개선되었습니다. 계속 이어서 해볼까요?`);
+            } else {
+              onSend('아직 큰 변화는 느끼지 못하시는군요. 괜찮습니다. 다른 방법을 함께 시도해보죠.');
+            }
+          }, 1500);
         }}
         onClose={() => setShowPostSUDS(false)}
         currentValue={suds.post}

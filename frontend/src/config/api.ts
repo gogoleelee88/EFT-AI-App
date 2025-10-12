@@ -8,8 +8,33 @@
 const isDevelopment = import.meta.env.DEV;
 const isProduction = import.meta.env.PROD;
 
-// 🌐 프로덕션 도메인 (moodtalk.app)
-const PRODUCTION_DOMAIN = 'https://moodtalk.app';
+// 🌐 프로덕션 도메인 (window.location 기준으로 자동 감지)
+const resolveProductionDomain = () => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+
+  const envOrigin = (import.meta.env.VITE_PRODUCTION_ORIGIN as string | undefined)?.trim();
+  if (envOrigin) {
+    return envOrigin.replace(/\/+$/, '');
+  }
+
+  // 기본값은 공개 서비스 도메인의 www 서브도메인을 사용
+  return 'https://www.moodtalk.app';
+};
+
+const PRODUCTION_DOMAIN = resolveProductionDomain();
+
+const toWebsocketUrl = (origin: string) => {
+  if (!origin) return 'wss://www.moodtalk.app';
+  try {
+    const url = new URL(origin);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : url.protocol === 'http:' ? 'ws:' : url.protocol;
+    return url.toString().replace(/\/+$/, '') + '/api/ws';
+  } catch {
+    return origin.replace(/^http/, 'ws');
+  }
+};
 
 // 🔧 개발 환경 설정
 const DEVELOPMENT_CONFIG = {
@@ -37,7 +62,7 @@ const PRODUCTION_CONFIG = {
   VLLM_ENGINE_B_URL: `${PRODUCTION_DOMAIN}/vllm-b`,
 
   // WebSocket (Nginx WebSocket 프록시)
-  WS_URL: `wss://moodtalk.app/api/ws`,
+  WS_URL: toWebsocketUrl(PRODUCTION_DOMAIN),
 };
 
 // 🎯 현재 환경에 따른 설정 선택
