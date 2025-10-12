@@ -769,9 +769,6 @@ export async function generateReplyAB(
     max_tokens: 512,
   };
 
-  const base = resolveServerUrl();
-  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
-  const targetUrl = joinBaseWithPath(base, endpoint);
   const rawBase =
     (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
     (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
@@ -889,9 +886,6 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
     max_tokens: 512
   };
 
-  const base = resolveServerUrl();
-  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
-  const targetUrl = joinBaseWithPath(base, endpoint);
   const rawBase =
     (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
     (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
