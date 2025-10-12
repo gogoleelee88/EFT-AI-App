@@ -224,14 +224,38 @@ class ServerAI {
    * 서버 상태 확인
    */
   async checkServerStatus(): Promise<ServerStatus> {
+    // /api/health 시도, 실패 시 /health 폴백
+    let response: Response | null = null;
+    let lastError: Error | null = null;
+
     try {
-      const response = await fetch(this.buildUrl('/api/health'), {
-      const response = await fetch(this.buildUrl('/health'), {
+      response = await fetch(this.buildUrl('/api/health'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
       });
+    } catch (error) {
+      lastError = error as Error;
+      console.warn('/api/health 실패, /health 시도:', error);
+
+      try {
+        response = await fetch(this.buildUrl('/health'), {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+      } catch (fallbackError) {
+        lastError = fallbackError as Error;
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('서버 연결 실패');
+    }
+
+    try {
 
       if (!response.ok) {
         throw new Error(`서버 응답 오류: ${response.status}`);
