@@ -71,7 +71,6 @@ const normalizeBaseUrl = (url: string) => stripTrailingSlashes(url).replace(/\/a
 
 const joinBaseWithPath = (base: string, path: string) =>
   `${stripTrailingSlashes(base)}/${path.replace(/^\/+/, '')}`;
-const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '').replace(/\/api$/, '');
 
 const rawServerUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
@@ -225,6 +224,10 @@ class ServerAI {
    * 서버 상태 확인
    */
   async checkServerStatus(): Promise<ServerStatus> {
+    // /api/health 시도, 실패 시 /health 폴백
+    let response: Response | null = null;
+    let lastError: Error | null = null;
+
     try {
       const healthPaths = ['/api/health', '/health'];
       let lastError: unknown;
