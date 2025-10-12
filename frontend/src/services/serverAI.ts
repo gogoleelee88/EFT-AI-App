@@ -71,6 +71,7 @@ const normalizeBaseUrl = (url: string) => stripTrailingSlashes(url).replace(/\/a
 
 const joinBaseWithPath = (base: string, path: string) =>
   `${stripTrailingSlashes(base)}/${path.replace(/^\/+/, '')}`;
+const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '').replace(/\/api$/, '');
 
 const rawServerUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
@@ -123,6 +124,7 @@ const computeServerUrl = (): string => {
 };
 
 const resolveServerUrl = () => normalizeBaseUrl(computeServerUrl());
+const SERVER_URL = normalizeBaseUrl(rawServerUrl || 'http://127.0.0.1:8000');
 
 interface ChatRequest {
   message: string;
@@ -206,6 +208,7 @@ class ServerAI {
       }
     }
 
+    this.baseURL = SERVER_URL.replace(/\/+$/, '');
     this.sessionId = this.generateSessionId();
   }
 
@@ -224,6 +227,7 @@ class ServerAI {
   async checkServerStatus(): Promise<ServerStatus> {
     try {
       const response = await fetch(this.buildUrl('/api/health'), {
+      const response = await fetch(this.buildUrl('/health'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -754,6 +758,14 @@ export async function generateReplyAB(
   const base = resolveServerUrl();
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
   const targetUrl = joinBaseWithPath(base, endpoint);
+  const rawBase =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+    (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
+    (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
+    API_CONFIG.API_BASE_URL;
+  const base = normalizeBaseUrl(rawBase || 'http://127.0.0.1:8000');
+  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+  const targetUrl = `${base}${endpoint}`;
 
   // 총 소요 시간
   const T0 = performance.now();
@@ -866,6 +878,14 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
   const base = resolveServerUrl();
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
   const targetUrl = joinBaseWithPath(base, endpoint);
+  const rawBase =
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+    (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
+    (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
+    API_CONFIG.API_BASE_URL;
+  const base = normalizeBaseUrl(rawBase || 'http://127.0.0.1:8000');
+  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+  const targetUrl = `${base}${endpoint}`;
 
   const res = await fetch(targetUrl, {
     method: 'POST',

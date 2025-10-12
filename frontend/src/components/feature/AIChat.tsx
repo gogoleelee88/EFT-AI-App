@@ -878,6 +878,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       if (canPersistToBackend) {
         // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
         const response = await fetch(joinUrl(API_BASE_URL, `/memory/${sessionId}/suds`), {
+        const response = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/suds`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -928,6 +929,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
         try {
           const statsResponse = await fetch(joinUrl(API_BASE_URL, `/memory/${sessionId}/stats`));
+          const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/stats`);
           if (statsResponse.ok) {
             const stats = await statsResponse.json();
             console.log('메모리 통계:', stats);
@@ -1361,6 +1363,12 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
               }
 
               scheduleARNavigation(rating);
+              const goToAR = () => navigate(`/ar-holistic?intensity=${rating}`);
+              if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(goToAR);
+              } else {
+                setTimeout(goToAR, 0);
+              }
             } else {
               // EFT 개입 시작 메시지 자동 전송
               setTimeout(() => {
