@@ -229,46 +229,37 @@ class ServerAI {
     let lastError: Error | null = null;
 
     try {
-      response = await fetch(this.buildUrl('/api/health'), {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-    } catch (error) {
-      lastError = error as Error;
-      console.warn('/api/health 실패, /health 시도:', error);
+      const healthPaths = ['/api/health', '/health'];
+      let lastError: unknown;
 
-      try {
-        response = await fetch(this.buildUrl('/health'), {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-      } catch (fallbackError) {
-        lastError = fallbackError as Error;
-      }
-    }
+      for (const path of healthPaths) {
+        try {
+          const endpointUrl = this.buildUrl(path);
+          const response = await fetch(endpointUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
 
-    if (!response) {
-      throw lastError || new Error('서버 연결 실패');
-    }
+          if (!response.ok) {
+            lastError = new Error(`서버 응답 오류: ${response.status}`);
+            continue;
+          }
 
-    try {
-
-      if (!response.ok) {
-        throw new Error(`서버 응답 오류: ${response.status}`);
+          const data = await response.json();
+          return {
+            status: data.status,
+            model_loaded: data.ai_engine === 'loaded',
+            ai_engine: data.ai_engine,
+            uptime: data.uptime || 0
+          };
+        } catch (error) {
+          lastError = error;
+        }
       }
 
-      const data = await response.json();
-      return {
-        status: data.status,
-        model_loaded: data.ai_engine === 'loaded',
-        ai_engine: data.ai_engine,
-        uptime: data.uptime || 0
-      };
-
+      throw lastError ?? new Error('서버 상태 확인 실패');
     } catch (error) {
       console.error('서버 상태 확인 실패:', error);
       return {
