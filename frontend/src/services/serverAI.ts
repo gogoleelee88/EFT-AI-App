@@ -71,7 +71,6 @@ const normalizeBaseUrl = (url: string) => stripTrailingSlashes(url).replace(/\/a
 
 const joinBaseWithPath = (base: string, path: string) =>
   `${stripTrailingSlashes(base)}/${path.replace(/^\/+/, '')}`;
-const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '').replace(/\/api$/, '');
 
 const rawServerUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
