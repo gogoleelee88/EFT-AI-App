@@ -4,6 +4,7 @@ import Button from '../ui/Button';
 import SUDSModal from '../modals/SUDSModal';
 import SUDSInlineCard from '../ui/SUDSInlineCard';
 import useEFTSessionHook from '../../hooks/useEFTSessionHook';
+import { API_CONFIG } from '../../config/api';
 import { getServerAI } from '../../services/serverAI';
 import type { ChatResponse, EmotionAnalysis, EFTRecommendation } from '../../types/serverAI';
 import type {
@@ -172,9 +173,9 @@ const notify = (message: string) => {
 const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const navigate = useNavigate();
 
-  // 🌍 API 베이스 URL (환경변수 기반)
-  const API_BASE_URL = (import.meta.env.VITE_BACKEND_BASE || 'http://localhost:8000').replace(/\/+$/, '');
-  const VLLM_ENGINE_B_URL = import.meta.env.VITE_VLLM_ENGINE_B_URL || 'http://localhost:8002/v1';
+  // 🌍 API 베이스 URL (환경 설정 기반)
+  const API_BASE_URL = API_CONFIG.API_BASE_URL.replace(/\/+$/, '');
+  const VLLM_ENGINE_B_URL = `${API_CONFIG.VLLM_ENGINE_B_URL.replace(/\/+$/, '')}/v1`;
 
   // 🎛️ 프리미엄 라우팅 토글 (즉시 롤백 가능)
   const PREMIUM_VIA_BACKEND = String(import.meta.env.VITE_PREMIUM_VIA_BACKEND ?? 'false').toLowerCase() === 'true';
@@ -362,7 +363,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           // 본선: vLLM 직접 → 그림자: 백엔드
           legacyRes = sessionData;
 
-          const url = joinUrl(API_BASE_URL, '/api/chat/premium');
+          const url = joinUrl(API_BASE_URL, '/chat/premium');
 
           // 백엔드 스펙과 동일하게 구성
           const payload = {
@@ -398,7 +399,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         });
 
         // 서버 수집 (선택)
-        // await fetch(joinUrl(API_BASE_URL, '/api/metrics/shadow'), {
+        // await fetch(joinUrl(API_BASE_URL, '/metrics/shadow'), {
         //   method: 'POST',
         //   headers: { 'Content-Type': 'application/json' },
         //   body: JSON.stringify({ summary, message_len: Array.from(message).length }),
@@ -422,40 +423,48 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   useEffect(() => {
     const initializeAI = async () => {
       try {
-        const healthResponse = await fetch('http://localhost:8000/health');
-        const healthData = await healthResponse.json();
-        
-        // Engine A/B 시스템은 항상 사용 가능 (vLLM 서버 여부와 무관)
-        setServerStatus('online');
+        const healthStatus = await serverAI.checkServerStatus();
+        const isHealthy = healthStatus.status !== 'offline';
+
+        setServerStatus(isHealthy ? 'online' : 'offline');
         setAvailableTiers(['free', 'premium', 'enterprise']);
-        
-        // 기본값을 무료로 설정 (Engine A/B 병렬 비교 사용)
         setSelectedTier('free');
-        
-        const initialMessage: Message = {
-          role: 'ai',
-          content: "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
-          timestamp: Date.now(),
-          metadata: {
-            confidence: 1.0,
-            processing_time: 0
-          }
-        };
-        
+
+        const initialMessage: Message = isHealthy
+          ? {
+              role: 'ai',
+              content:
+                "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
+              timestamp: Date.now(),
+              metadata: {
+                confidence: 1.0,
+                processing_time: 0,
+              },
+            }
+          : {
+              role: 'ai',
+              content:
+                '안녕하세요! 현재 AI 서버 연결이 불안정해요. 잠시 뒤 다시 시도해 주시면 안정적인 상담을 이어갈 수 있도록 준비해둘게요.',
+              timestamp: Date.now(),
+              metadata: {
+                confidence: 0.6,
+                processing_time: 0,
+              },
+            };
+
         setMessages([initialMessage]);
-        
       } catch (error) {
         console.error('서버 초기화 실패:', error);
-        // Engine A/B 시스템은 서버 오류가 있어도 기본 동작
-        setServerStatus('online');
-        
+        setServerStatus('offline');
+
         const errorMessage: Message = {
           role: 'ai',
-          content: "안녕하세요! Engine A/B 병렬 비교 시스템입니다. 🚀\n\n현재 vLLM 서버 연결을 시도 중입니다. 일부 응답이 제한될 수 있지만 기본 서비스는 이용 가능합니다.",
+          content:
+            '안녕하세요! 현재 AI 서버와 통신하는 데 어려움이 있습니다. 잠시 후 다시 시도해 주시겠어요? 문제가 지속되면 담당자에게 문의해주세요.',
           timestamp: Date.now(),
-          metadata: { confidence: 0.7 }
+          metadata: { confidence: 0.4 },
         };
-        
+
         setMessages([errorMessage]);
       }
     };
@@ -608,7 +617,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
             tier: 'premium',
           };
 
-          const response = await fetch(joinUrl(API_BASE_URL, '/api/chat/premium'), {
+          const response = await fetch(joinUrl(API_BASE_URL, '/chat/premium'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -868,6 +877,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     try {
       if (canPersistToBackend) {
         // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
+        const response = await fetch(joinUrl(API_BASE_URL, `/memory/${sessionId}/suds`), {
         const response = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/suds`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -918,6 +928,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
       if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
         try {
+          const statsResponse = await fetch(joinUrl(API_BASE_URL, `/memory/${sessionId}/stats`));
           const statsResponse = await fetch(`${API_BASE_URL}/api/memory/${sessionId}/stats`);
           if (statsResponse.ok) {
             const stats = await statsResponse.json();

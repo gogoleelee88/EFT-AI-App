@@ -65,6 +65,12 @@ const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사�
 4. 지속적인 격려와 지지`;
 
 // 환경변수에서 서버 URL 가져오기 (Vite 환경변수 사용)
+const stripTrailingSlashes = (value: string) => value.replace(/\/+$/, '');
+
+const normalizeBaseUrl = (url: string) => stripTrailingSlashes(url).replace(/\/api$/, '');
+
+const joinBaseWithPath = (base: string, path: string) =>
+  `${stripTrailingSlashes(base)}/${path.replace(/^\/+/, '')}`;
 const normalizeBaseUrl = (url: string) => url.replace(/\/+$/, '').replace(/\/api$/, '');
 
 const rawServerUrl =
@@ -73,6 +79,51 @@ const rawServerUrl =
   (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
   API_CONFIG.API_BASE_URL;
 
+const detectBrowserOrigin = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return window.location.origin.replace(/\/+$/, '');
+  } catch {
+    return undefined;
+  }
+};
+
+const computeServerUrl = (): string => {
+  const candidate = rawServerUrl?.trim();
+
+  const browserOrigin = detectBrowserOrigin();
+
+  if (!candidate && browserOrigin) {
+    return browserOrigin;
+  }
+
+  if (!candidate) {
+    return 'http://127.0.0.1:8000';
+  }
+
+  if (!browserOrigin) {
+    return candidate;
+  }
+
+  try {
+    const originUrl = new URL(browserOrigin);
+    const candidateUrl = new URL(candidate, browserOrigin);
+
+    const normalizeHost = (host: string) => host.replace(/^www\./, '');
+    const originHost = normalizeHost(originUrl.host);
+    const candidateHost = normalizeHost(candidateUrl.host);
+
+    if (originHost === candidateHost) {
+      return stripTrailingSlashes(originUrl.origin);
+    }
+
+    return stripTrailingSlashes(candidateUrl.origin);
+  } catch {
+    return browserOrigin || candidate;
+  }
+};
+
+const resolveServerUrl = () => normalizeBaseUrl(computeServerUrl());
 const SERVER_URL = normalizeBaseUrl(rawServerUrl || 'http://127.0.0.1:8000');
 
 interface ChatRequest {
@@ -141,6 +192,22 @@ class ServerAI {
   private conversationHistory: ConversationMessage[] = [];
 
   constructor() {
+    this.baseURL = resolveServerUrl();
+
+    const runtimeOrigin = detectBrowserOrigin();
+    if (runtimeOrigin) {
+      try {
+        const runtimeUrl = new URL(runtimeOrigin);
+        const currentUrl = new URL(this.baseURL);
+        const normalizeHost = (host: string) => host.replace(/^www\./, '');
+        if (normalizeHost(runtimeUrl.host) === normalizeHost(currentUrl.host)) {
+          this.baseURL = normalizeBaseUrl(runtimeOrigin);
+        }
+      } catch {
+        this.baseURL = normalizeBaseUrl(runtimeOrigin);
+      }
+    }
+
     this.baseURL = SERVER_URL.replace(/\/+$/, '');
     this.sessionId = this.generateSessionId();
   }
@@ -159,6 +226,7 @@ class ServerAI {
    */
   async checkServerStatus(): Promise<ServerStatus> {
     try {
+      const response = await fetch(this.buildUrl('/api/health'), {
       const response = await fetch(this.buildUrl('/health'), {
         method: 'GET',
         headers: {
@@ -533,6 +601,8 @@ class ServerAI {
     const configuredFallback = (import.meta.env as any)?.VITE_VLLM_ENGINE_FALLBACK_URL as string | undefined;
     const fallbackCandidates = [
       configuredFallback,
+      this.buildUrl('/vllm-a/v1/chat/completions'),
+      this.buildUrl('/vllm-b/v1/chat/completions'),
       ENDPOINTS?.VLLM_ENGINE_A,
       ENDPOINTS?.VLLM_ENGINE_B,
     ]
@@ -685,6 +755,9 @@ export async function generateReplyAB(
     max_tokens: 512,
   };
 
+  const base = resolveServerUrl();
+  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+  const targetUrl = joinBaseWithPath(base, endpoint);
   const rawBase =
     (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
     (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
@@ -802,6 +875,9 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
     max_tokens: 512
   };
 
+  const base = resolveServerUrl();
+  const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
+  const targetUrl = joinBaseWithPath(base, endpoint);
   const rawBase =
     (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
     (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
