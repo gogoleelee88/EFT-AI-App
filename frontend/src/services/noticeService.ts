@@ -43,9 +43,8 @@ export interface NoticeResponse {
   notModified?: boolean;
 }
 
-// 🌐 API 설정
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || '';
-const NOTICES_API = `${BASE_URL}/api/notices`;
+// 🌐 API 설정 (상대경로 - 동일 오리진)
+const NOTICES_API = '/api/notices';
 
 // 📱 클라이언트 상태 관리
 class NoticeCache {
