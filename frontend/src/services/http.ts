@@ -14,8 +14,9 @@ export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> {
-  const base = (import.meta as any).env?.VITE_BACKEND_URL ?? 'http://localhost:8000';
-  const res = await fetch(`${base}${path}`, init);
+  // 프로덕션: 상대경로 (동일 오리진)
+  // 개발: vite devServer proxy 또는 .env.development 사용
+  const res = await fetch(path, init);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} ${res.statusText} — ${text}`);
