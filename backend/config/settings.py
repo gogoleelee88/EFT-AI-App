@@ -31,6 +31,8 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
+        "https://www.moodtalk.app",  # 운영 도메인
+        "https://moodtalk.app",       # apex 도메인 (리다이렉트 전 대비)
     ]
     EXTRA_ALLOWED_ORIGINS: Optional[str] = None  # "https://example.com,https://app.example.com"
     
