@@ -1,0 +1,59 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/fe-ci.yml"
+  push:
+    branches: [ main ]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/fe-ci.yml"
+
+jobs:
+  fe-ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci --prefix frontend
+
+      - name: Type check
+        run: npm run -w frontend typecheck || true  # 타입 경고는 보고만, 실패는 선택
+
+      - name: Lint
+        run: npm run -w frontend lint || true       # 린트 경고 보고만, 실패는 선택
+
+      - name: Build
+        run: npm run -w frontend build
+
+      - name: Guard - ban localhost in bundle
+        run: |
+          set -e
+          cd frontend/dist
+          if grep -R -E "http://localhost|http://127\.0\.0\.1" assets/*.js; then
+            echo "❌ Found localhost references in build output"
+            exit 1
+          fi
+          echo "✅ No localhost in bundle"
+
+      - name: Guard - ban absolute URL envs in .env.production
+        run: |
+          set -e
+          if grep -E "VITE_.*(URL|BASE)" frontend/.env.production; then
+            echo "❌ Absolute URL-like envs found in .env.production"
+            exit 1
+          fi
+          echo "✅ .env.production minimal and clean"
