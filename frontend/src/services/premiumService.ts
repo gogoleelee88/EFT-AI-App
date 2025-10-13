@@ -24,10 +24,12 @@ export interface ChatResponse {
 }
 
 export class PremiumService {
-  private baseUrl: string;
+  // 상대경로 사용 (동일 오리진)
+  // 개발 환경: vite devServer proxy 또는 .env.development 사용
+  private baseUrl: string = '';
 
-  constructor(baseUrl: string = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000') {
-    this.baseUrl = baseUrl;
+  constructor() {
+    // baseUrl 파라미터 제거 - 항상 상대경로 사용
   }
 
   /**

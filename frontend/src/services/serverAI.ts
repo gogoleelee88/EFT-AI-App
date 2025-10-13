@@ -72,11 +72,8 @@ const normalizeBaseUrl = (url: string) => stripTrailingSlashes(url).replace(/\/a
 const joinBaseWithPath = (base: string, path: string) =>
   `${stripTrailingSlashes(base)}/${path.replace(/^\/+/, '')}`;
 
-const rawServerUrl =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
-  (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
-  (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
-  API_CONFIG.API_BASE_URL;
+// 상대경로 사용 (동일 오리진 정책)
+const rawServerUrl = '';
 
 const detectBrowserOrigin = (): string | undefined => {
   if (typeof window === 'undefined') return undefined;
@@ -612,13 +609,11 @@ class ServerAI {
     userMessage: string,
     options: { maxTokens?: number; temperature?: number } = {}
   ): Promise<ChatResponse | null> {
-    const configuredFallback = (import.meta.env as any)?.VITE_VLLM_ENGINE_FALLBACK_URL as string | undefined;
+    // 폴백 URL 상대경로로 변경
     const fallbackCandidates = [
-      configuredFallback,
-      this.buildUrl('/vllm-a/v1/chat/completions'),
-      this.buildUrl('/vllm-b/v1/chat/completions'),
-      ENDPOINTS?.VLLM_ENGINE_A,
-      ENDPOINTS?.VLLM_ENGINE_B,
+      '/v1/chat/completions',  // 기본 vLLM 엔드포인트
+      '/vllm-a/v1/chat/completions',
+      '/vllm-b/v1/chat/completions',
     ]
       .filter((value): value is string => Boolean(value))
       .map((value) => value.replace(/\/+$/, ''));
@@ -634,10 +629,8 @@ class ServerAI {
       return null;
     }
 
-    const model =
-      (import.meta.env as any)?.VITE_VLLM_ENGINE_FALLBACK_MODEL ||
-      (import.meta.env as any)?.VITE_VLLM_ENGINE_A_MODEL ||
-      'llama-3.1-8b-instruct';
+    // 모델명 하드코딩 제거 (백엔드에서 결정)
+    const model = 'llama-3.1-8b-instruct';
 
     for (const endpoint of uniqueCandidates) {
       try {
@@ -769,14 +762,9 @@ export async function generateReplyAB(
     max_tokens: 512,
   };
 
-  const rawBase =
-    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
-    (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
-    (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
-    API_CONFIG.API_BASE_URL;
-  const base = normalizeBaseUrl(rawBase || 'http://127.0.0.1:8000');
+  // 상대경로 직접 사용
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
-  const targetUrl = `${base}${endpoint}`;
+  const targetUrl = endpoint;
 
   // 총 소요 시간
   const T0 = performance.now();
@@ -886,14 +874,9 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
     max_tokens: 512
   };
 
-  const rawBase =
-    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
-    (import.meta.env.VITE_BACKEND_BASE as string | undefined) ||
-    (import.meta.env.VITE_AI_SERVER_URL as string | undefined) ||
-    API_CONFIG.API_BASE_URL;
-  const base = normalizeBaseUrl(rawBase || 'http://127.0.0.1:8000');
+  // 상대경로 직접 사용
   const endpoint = isPremium ? '/api/chat/premium' : '/ab/chat';
-  const targetUrl = `${base}${endpoint}`;
+  const targetUrl = endpoint;
 
   const res = await fetch(targetUrl, {
     method: 'POST',
