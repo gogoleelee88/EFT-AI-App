@@ -1,6 +1,20 @@
 /**
  * 서버 기반 AI 클라이언트
  * FastAPI 기반 EFT 전문 AI 서버와 통신
+ *
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 🚨 절대 URL 금지 원칙 (Absolute URL Prohibition Policy)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 1. 모든 API 호출은 상대경로(Relative Path)만 사용
+ *    예: '/api/chat', '/api/health' (✅)
+ *    금지: 'http://127.0.0.1:8000/api/chat' (❌)
+ *
+ * 2. 절대 URL은 인프라 계층에서 처리 (Proxy/CDN)
+ *    - 개발: vite.config.ts의 proxy 설정
+ *    - 운영: Cloudflare Workers 리다이렉트
+ *
+ * 3. 이 원칙을 위반하는 코드 변경은 즉시 거부됨
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 
 import type { ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
@@ -64,63 +78,64 @@ const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사�
 3. 적절한 EFT 기법 제안
 4. 지속적인 격려와 지지`;
 
-// 환경변수에서 서버 URL 가져오기 (Vite 환경변수 사용)
-const stripTrailingSlashes = (value: string) => value.replace(/\/+$/, '');
+// ✅ 상대경로 기반 BASE_URL (빈 문자열 = 동일 오리진)
+// 프록시/CDN이 /api/* 요청을 백엔드로 라우팅함
+// 절대 URL 하드코딩 금지 (보안 및 배포 유연성)
+const BASE_URL = '';
 
-const normalizeBaseUrl = (url: string) => stripTrailingSlashes(url).replace(/\/api$/, '');
+// 🔧 내부 전용 ChatResponse 확장 (외부 반환 시 model_version 제거)
+interface InternalChatResponse extends ChatResponse {
+  model_version?: string; // 내부 처리용 (외부 노출 금지)
+  tier?: 'free' | 'premium'; // 내부 티어 표시
+}
 
-const joinBaseWithPath = (base: string, path: string) =>
-  `${stripTrailingSlashes(base)}/${path.replace(/^\/+/, '')}`;
+// 외부 반환용 정리 함수
+function toPublicChatResponse(internal: InternalChatResponse): ChatResponse {
+  const { model_version, tier, ...publicResponse } = internal;
+  return publicResponse as ChatResponse;
+}
 
-// 상대경로 사용 (동일 오리진 정책)
-const rawServerUrl = '';
+// ComparisonResponse → ChatResponse 안전 어댑터 (실제 스키마 기준)
+function toChatResponseFromComparison(comp: any): ChatResponse {
+  const text =
+    comp?.winner?.response ??
+    comp?.winner_response?.response ??
+    comp?.response ??
+    comp?.reply ??
+    'No response available';
 
-const detectBrowserOrigin = (): string | undefined => {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    return window.location.origin.replace(/\/+$/, '');
-  } catch {
-    return undefined;
-  }
-};
+  return {
+    response: String(text),
+    emotion_analysis: {
+      primary_emotion: 'neutral' as any,
+      secondary_emotion: null,
+      intensity: typeof comp?.emotion_analysis?.intensity === 'number'
+        ? comp.emotion_analysis.intensity
+        : 0.0,
+      confidence: 0.0
+    },
+    // ChatResponse 인터페이스 필수 필드 (복수형 배열)
+    eft_recommendations: [],
+    suggested_actions: [],
 
-const computeServerUrl = (): string => {
-  const candidate = rawServerUrl?.trim();
+    // ChatResponse 인터페이스 필수 메타 필드 (평탄화)
+    confidence_score: typeof comp?.confidence_score === 'number'
+      ? comp.confidence_score
+      : 0.5,
+    processing_time: typeof comp?.comparison_time === 'number'
+      ? comp.comparison_time
+      : (typeof comp?.processing_time === 'number' ? comp.processing_time : 0),
+    timestamp: comp?.timestamp ?? new Date().toISOString(),
+    requires_followup: false,
+    emergency_detected: false,
+    professional_referral: false,
+    response_id: comp?.response_id ?? `cmp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
 
-  const browserOrigin = detectBrowserOrigin();
-
-  if (!candidate && browserOrigin) {
-    return browserOrigin;
-  }
-
-  if (!candidate) {
-    return 'http://127.0.0.1:8000';
-  }
-
-  if (!browserOrigin) {
-    return candidate;
-  }
-
-  try {
-    const originUrl = new URL(browserOrigin);
-    const candidateUrl = new URL(candidate, browserOrigin);
-
-    const normalizeHost = (host: string) => host.replace(/^www\./, '');
-    const originHost = normalizeHost(originUrl.host);
-    const candidateHost = normalizeHost(candidateUrl.host);
-
-    if (originHost === candidateHost) {
-      return stripTrailingSlashes(originUrl.origin);
-    }
-
-    return stripTrailingSlashes(candidateUrl.origin);
-  } catch {
-    return browserOrigin || candidate;
-  }
-};
-
-const resolveServerUrl = () => normalizeBaseUrl(computeServerUrl());
-const SERVER_URL = normalizeBaseUrl(rawServerUrl || 'http://127.0.0.1:8000');
+    // ChatResponse 인터페이스 선택 필드
+    session_id: comp?.session_id,
+    usage: comp?.usage ?? undefined
+  };
+}
 
 interface ChatRequest {
   message: string;
@@ -188,29 +203,28 @@ class ServerAI {
   private conversationHistory: ConversationMessage[] = [];
 
   constructor() {
-    this.baseURL = resolveServerUrl();
-
-    const runtimeOrigin = detectBrowserOrigin();
-    if (runtimeOrigin) {
-      try {
-        const runtimeUrl = new URL(runtimeOrigin);
-        const currentUrl = new URL(this.baseURL);
-        const normalizeHost = (host: string) => host.replace(/^www\./, '');
-        if (normalizeHost(runtimeUrl.host) === normalizeHost(currentUrl.host)) {
-          this.baseURL = normalizeBaseUrl(runtimeOrigin);
-        }
-      } catch {
-        this.baseURL = normalizeBaseUrl(runtimeOrigin);
-      }
-    }
-
-    this.baseURL = SERVER_URL.replace(/\/+$/, '');
+    // ✅ 상대경로 원칙 준수 (절대 URL 계산 로직 제거됨)
+    this.baseURL = BASE_URL;
     this.sessionId = this.generateSessionId();
   }
 
-  private buildUrl(path: string): string {
+  public buildUrl(path: string): string {
+    // 🚨 보완 1: 절대 URL 차단 가드
+    if (/^https?:\/\//i.test(path)) {
+      throw new Error(
+        `[serverAI] 절대 URL 사용 금지됨: "${path}"\n` +
+        `상대경로만 허용됨 (예: "/api/chat"). 인프라 설정을 확인하세요.`
+      );
+    }
+
+    // ✅ 보완 2: 이중 슬래시 제거 + 정규화
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    return `${this.baseURL}${normalizedPath}`;
+    const combined = this.baseURL
+      ? `${this.baseURL}${normalizedPath}`
+      : normalizedPath;
+
+    // 이중 슬래시 제거 (단, 프로토콜 :// 제외)
+    return combined.replace(/([^:]\/)\/+/g, '$1');
   }
 
   private generateSessionId(): string {
@@ -368,7 +382,7 @@ class ServerAI {
       }
 
       // 기본 ChatResponse 형태로 반환
-      const chatResponse: ChatResponse = {
+      const chatResponse: InternalChatResponse = {
         response: winnerResponse.response,
         emotion_analysis: {
           primary_emotion: 'neutral' as any,
@@ -398,20 +412,14 @@ class ServerAI {
         qwen25_time: comparisonResult.qwen25_response.processing_time
       });
 
-      return chatResponse;
+      // 외부 반환 직전 model_version 제거
+      return toPublicChatResponse(chatResponse);
 
     } catch (error) {
       console.error('❌ Engine A/B 병렬 비교 실패:', error);
 
-      try {
-        const directFallback = await this.tryDirectVLLMFallback(userMessage, options);
-        if (directFallback) {
-          console.warn('✅ Direct vLLM 폴백으로 응답 생성 성공');
-          return directFallback;
-        }
-      } catch (fallbackError) {
-        console.error('Direct vLLM 폴백 시도 실패:', fallbackError);
-      }
+      // ✅ /api/chat/compare 실패 시 즉시 폴백 메시지 반환
+      console.warn('⚠️ Engine A/B 실패, 폴백 메시지 표시');
 
       // 최종 폴백 응답 생성
       return this.createFallbackResponse(userMessage, error as Error);
@@ -605,109 +613,6 @@ class ServerAI {
     };
   }
 
-  private async tryDirectVLLMFallback(
-    userMessage: string,
-    options: { maxTokens?: number; temperature?: number } = {}
-  ): Promise<ChatResponse | null> {
-    // 폴백 URL 상대경로로 변경
-    const fallbackCandidates = [
-      '/v1/chat/completions',  // 기본 vLLM 엔드포인트
-      '/vllm-a/v1/chat/completions',
-      '/vllm-b/v1/chat/completions',
-    ]
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.replace(/\/+$/, ''));
-
-    const seen = new Set<string>();
-    const uniqueCandidates = fallbackCandidates.filter((value) => {
-      if (seen.has(value)) return false;
-      seen.add(value);
-      return true;
-    });
-
-    if (uniqueCandidates.length === 0) {
-      return null;
-    }
-
-    // 모델명 하드코딩 제거 (백엔드에서 결정)
-    const model = 'llama-3.1-8b-instruct';
-
-    for (const endpoint of uniqueCandidates) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer EMPTY',
-          },
-          body: JSON.stringify({
-            model,
-            temperature: options.temperature ?? 0.5,
-            max_tokens: options.maxTokens ?? 512,
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user', content: userMessage },
-            ],
-            stream: false,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => `${response.status}`);
-          console.warn('Direct vLLM 폴백 호출 실패:', { endpoint, status: response.status, errorText });
-          continue;
-        }
-
-        const data = await response.json().catch(() => null);
-        const candidateContent =
-          data?.choices?.[0]?.message?.content ??
-          data?.choices?.[0]?.text ??
-          data?.response ??
-          '';
-
-        if (!candidateContent) {
-          console.warn('Direct vLLM 폴백 응답이 비어 있습니다:', { endpoint });
-          continue;
-        }
-
-        const usage = data?.usage ?? {};
-        const processingTimeMs = typeof data?.processing_time === 'number' ? data.processing_time : 0;
-
-        this.addToHistory('user', userMessage);
-        this.addToHistory('assistant', candidateContent);
-
-        const fallbackResponse: ChatResponse = {
-          response: candidateContent,
-          emotion_analysis: {
-            primary_emotion: 'neutral' as any,
-            secondary_emotion: null,
-            intensity: 0.6,
-            confidence: 0.6,
-            emotional_keywords: [],
-          },
-          eft_recommendations: [],
-          suggested_actions: [],
-          confidence_score: 0.65,
-          processing_time: processingTimeMs,
-          timestamp: new Date().toISOString(),
-          requires_followup: false,
-          emergency_detected: false,
-          professional_referral: false,
-          response_id: `vllm_fallback_${Date.now()}`,
-          ...(usage && Object.keys(usage).length > 0
-            ? { usage }
-            : {}),
-        };
-
-        return fallbackResponse;
-      } catch (error) {
-        console.error('Direct vLLM 폴백 호출 중 예외 발생:', { endpoint, error });
-      }
-    }
-
-    return null;
-  }
-
   /**
    * 대화 히스토리 초기화
    */
@@ -856,7 +761,8 @@ export async function generateReplyAB(
     console.log('텔레메트리 저장 (성공):', { logCtx, telemetry });
   }
 
-  return json;
+  // 타입 안전 반환
+  return toChatResponseFromComparison(json);
 }
 
 /**
@@ -885,7 +791,8 @@ export async function generateReplyAB_simple(message: string, isPremium: boolean
   });
 
   if (!res.ok) throw new Error(`AB chat failed: ${res.status}`);
-  return res.json(); // { llama3_response, qwen25_response, faster_model, ... }
+  const json = await res.json();
+  return toChatResponseFromComparison(json);
 }
 
 // 싱글톤 인스턴스
@@ -940,14 +847,14 @@ export class EnhancedServerAI extends ServerAI {
           if (typeof window !== 'undefined') {
             localStorage.removeItem('premiumKey');
           }
-          return await this.chatCompare(message, options);
+          return await this.chat(message, options);
         }
         throw error;
       }
     }
 
     // 무료 티어
-    return await this.chatCompare(message, options);
+    return await this.chat(message, options);
   }
 
   /**
@@ -986,7 +893,7 @@ export class EnhancedServerAI extends ServerAI {
 
       const data = await response.json();
 
-      return {
+      const internalResponse: InternalChatResponse = {
         response: data.response || 'No response available',
         emotion_analysis: {
           primary_emotion: 'neutral' as any,
@@ -1007,6 +914,9 @@ export class EnhancedServerAI extends ServerAI {
         professional_referral: false,
         response_id: `premium_${Date.now()}`
       };
+
+      // 외부 반환 직전 model_version과 tier 제거
+      return toPublicChatResponse(internalResponse);
 
     } catch (error: any) {
       console.error('Premium chat error:', error);
