@@ -1,8 +1,6 @@
 // frontend/src/services/premiumAPI.ts - 프리미엄 백엔드 연동
 export const PREMIUM_API_CONFIG = {
-  BASE_URL: process.env.NODE_ENV === 'production'
-    ? 'https://your-domain.com'
-    : 'http://localhost:8000',
+  BASE_URL: '',  // ✅ 상대경로만 사용 (Proxy/CDN이 라우팅 처리)
   HEADERS: {
     'Content-Type': 'application/json; charset=utf-8',
     'X-API-Key': 'premium-eft-ai-moodtalk-2025!'
