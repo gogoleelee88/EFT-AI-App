@@ -422,6 +422,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   // 서버 상태 체크 및 초기화 (Engine A/B 시스템)
   useEffect(() => {
     const initializeAI = async () => {
+      if (typeof window === 'undefined') return;
+
       try {
         const healthStatus = await serverAI.checkServerStatus();
         const isHealthy = healthStatus.status !== 'offline';
@@ -477,6 +479,16 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }, 1000);
   }, [serverAI]);
 
+  // localStorage 초기화 (세션 ID 영속성 보장)
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('eft.sess.id') && session?.sessionId) {
+        localStorage.setItem('eft.sess.id', session.sessionId);
+      }
+    } catch {
+      /* storage 불가 환경은 무시 */
+    }
+  }, [session?.sessionId]);
 
   // 티어 선택 외부 클릭 감지
   useEffect(() => {
