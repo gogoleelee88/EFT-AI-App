@@ -444,6 +444,8 @@ export default function ARHolisticTest() {
 
   // 🔑 뒤로가기 + 안전 종료 함수 (상황별 이동)
   const handleBack = (target: "back" | "home" | "dashboard" = "back") => {
+    if (typeof window === 'undefined') return;
+
     console.log(`⬅️ ${target} 이동하기 전 정리 실행`);
 
     // 1. 가이드/상태 초기화
