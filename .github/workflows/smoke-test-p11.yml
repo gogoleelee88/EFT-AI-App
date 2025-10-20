@@ -26,28 +26,24 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend dependencies
-        working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          # 프로젝트 의존성 설치: requirements.txt 우선, 없으면 uvicorn만 설치
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install "uvicorn[standard]" fastapi pydantic
-          fi
+          pip install -r backend/requirements.txt
 
       - name: Install test dependencies
         run: |
           pip install requests
 
       - name: Start API server (uvicorn)
-        working-directory: backend
         env:
-          HOST: 127.0.0.1
-          PORT: 8000
+          PYTHONPATH: ${{ github.workspace }}
+          DEBUG: "false"
           LOG_LEVEL: WARNING
         run: |
-          nohup python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 > /tmp/api.log 2>&1 &
+          nohup python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 > /tmp/api.log 2>&1 &
+          sleep 1
+          echo "--- head /tmp/api.log ---"
+          head -n 50 /tmp/api.log || true
 
       - name: Wait for API to be ready
         shell: bash
@@ -62,7 +58,7 @@ jobs:
             sleep 10
           done
           echo "API did not become ready in time ❌"
-          echo "--- /tmp/api.log (tail) ---"
+          echo "--- /tmp/api.log (last 200 lines) ---"
           tail -n 200 /tmp/api.log || true
           exit 1
 
