@@ -1464,7 +1464,7 @@ async def completion(request: ChatProxyRequest, req: Request):
         raise HTTPException(status_code=500, detail=f"AI 응답 생성 오류: {str(e)}")
 
 # 병렬 비교 엔드포인트 (DialoGPT 완전 대체!)
-@app.post("/api/chat/compare", response_model=ComparisonResponse)
+@app.post("/api/chat/compare", response_model=ComparisonResponse, response_model_exclude_unset=False, response_model_exclude_none=False)
 async def compare_llama3_vs_qwen25(request: ChatProxyRequest, req: Request):
     """
     Llama-3-8B vs Qwen-2.5-7B 병렬 비교 채팅
@@ -1551,15 +1551,38 @@ async def compare_llama3_vs_qwen25(request: ChatProxyRequest, req: Request):
             faster_model = "qwen25"
         else:
             faster_model = "none"
-        
-        logger.info(f"[{correlation_id}] 비교 완료: {total_time:.3f}s (빠른 모델: {faster_model})")
-        
+
+        # 더 빠른 모델의 응답 텍스트 추출 (P11 휴리스틱 적용용)
+        winner_text = ""
+        if faster_model == "llama3" and llama3_result["success"]:
+            winner_text = llama3_result["response"]
+        elif faster_model == "qwen25" and qwen25_result["success"]:
+            winner_text = qwen25_result["response"]
+
+        # P11 휴리스틱: ask_suds 자동 방출
+        executed_actions = []
+        try:
+            ask = _maybe_emit_ask_suds(
+                user_text=request.message,      # 클라이언트가 보낸 원문
+                assistant_text=winner_text       # 비교 결과로 선택된 응답 텍스트
+            )
+            if ask:
+                executed_actions.append(ask)
+                logger.info(f"[{correlation_id}] ✅ P11 휴리스틱 발동: ask_suds emitted")
+            else:
+                logger.info(f"[{correlation_id}] ⚠️ P11 휴리스틱 미발동: user={request.message[:30]}, ai={winner_text[:30]}")
+        except Exception as e:
+            logger.error(f"[{correlation_id}] ❌ P11 휴리스틱 오류: {e}")
+
+        logger.info(f"[{correlation_id}] 비교 완료: {total_time:.3f}s (빠른 모델: {faster_model}), actions={len(executed_actions)}")
+
         return ComparisonResponse(
             llama3_response=llama3_result,
             qwen25_response=qwen25_result,
             comparison_time=round(total_time, 3),
             faster_model=faster_model,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
+            actions=executed_actions  # P11 휴리스틱 결과 반영
         )
         
     except Exception as e:
@@ -1583,6 +1606,13 @@ app.include_router(health_router)  # health endpoints first-class
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
-app.mount("/", StaticFiles(directory="backend/static-frontend", html=True), name="static")
+# 프론트엔드 별도 배포 시 디렉터리가 없을 수 있으므로 존재할 때만 마운트
+static_dir = Path("backend/static-frontend")
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    logger.info(f"📂 StaticFiles 마운트 완료: {static_dir}")
+else:
+    logger.info(f"📂 StaticFiles 마운트 스킵: {static_dir} 디렉터리 없음 (프론트엔드 별도 배포 시 정상)")
+
 from backend.routers.compare import router as compare_router
 app.include_router(compare_router)
