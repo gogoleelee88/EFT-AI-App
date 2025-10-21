@@ -1583,6 +1583,6 @@ app.include_router(health_router)  # health endpoints first-class
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
-app.mount("/", StaticFiles(directory="static-frontend", html=True), name="static")
+app.mount("/", StaticFiles(directory="backend/static-frontend", html=True), name="static")
 from backend.routers.compare import router as compare_router
 app.include_router(compare_router)
