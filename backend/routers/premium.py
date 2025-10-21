@@ -82,7 +82,7 @@ async def call_vllm_direct(message: str, temperature: float = 0.7, max_tokens: i
             "success": False
         }
 
-@router.post("/api/chat", response_model=ChatResponse)
+# @router.post("/api/chat", response_model=ChatResponse)  # P11 테스트를 위해 임시 비활성화
 @router.post("/api/chat/premium", response_model=ChatResponse)  # 호환용
 async def chat(
     request: Request,          # ✅ 기본값 없음

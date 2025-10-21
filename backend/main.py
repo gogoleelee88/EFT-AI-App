@@ -30,6 +30,7 @@ import os
 from pathlib import Path
 import itertools
 import random
+import re
 import logging
 import uuid
 from uuid import uuid4
@@ -53,7 +54,7 @@ from backend.models.suds import SUDSType, SUDSEntry, SUDSRequest, SUDSResponse
 from backend.services.suds_logger import append_suds
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
-from backend.routers import premium as premium_router
+# Premium router removed - using only free tier /api/chat endpoint
 
 # 설정 및 로거
 settings = get_settings()
@@ -71,6 +72,32 @@ def _now_iso() -> str:
 # SUDS 타입은 models.suds에서 임포트
 
 # VLLMClient는 app.state로 관리
+
+# --- ask_suds 자동 방출 헬퍼 함수 ---
+def _maybe_emit_ask_suds(user_text: str, assistant_text: str) -> Optional[dict]:
+    """
+    사용자의 요청/숫자(0~10) 또는 어시스턴트의 '0~10 평가' 유도 문구가 있을 때
+    액션 토큰 {"type":"ask_suds", "payload":{"measurement_type":"check"}}을 반환.
+    매칭 실패 시 None.
+    """
+    try:
+        t_user = (user_text or "").strip()
+        t_ai = (assistant_text or "").strip()
+
+        # 1) 한국어/일반 유도문 감지 (0~10 / 0에서 10 / 0-10)
+        if re.search(r"0\s*[-~]\s*10|0에서\s*10|0\s*~\s*10", t_ai):
+            return {"type": "ask_suds", "payload": {"measurement_type": "check"}}
+
+        # 2) 사용자가 숫자만 입력 (0~10)
+        if re.fullmatch(r"\s*(?:10|[0-9])\s*", t_user):
+            return {"type": "ask_suds", "payload": {"measurement_type": "check"}}
+
+        # 3) 사용자 키워드
+        if re.search(r"(평가|점수|몇\s*점|suds)", t_user, flags=re.I):
+            return {"type": "ask_suds", "payload": {"measurement_type": "check"}}
+    except Exception:
+        pass
+    return None
 
 # --- A/B 라우팅 상태 ---
 _engine_keys = list(settings.FREE_ENGINES.keys())
@@ -464,8 +491,7 @@ else:  # 운영 환경
 app.add_middleware(IdempotentBodyMiddleware)
 logger.info("🔧 IdempotentBodyMiddleware: 최우선 배치 완료 (body 캐싱)")
 
-# 🎛️ 프리미엄 라우터 등록
-app.include_router(premium_router.router)
+# Premium router removed - free tier /api/chat is the primary endpoint
 
 # AI 지원 서비스 전역 변수 (서버 시작시 로드)  
 # AI 엔진은 app.state.vllm으로 대체됨
@@ -1107,13 +1133,25 @@ async def eft_chat(request: ChatRequest, req: Request):
         updated_summary = update_running_summary(session_id)
         logger.info(f"대화 기록 저장 완료: {session_id}/{turn_id}")
 
+        # ask_suds 자동 방출 (조건 충족 시)
+        executed_actions = list(action_results.get("executed_actions", []))
+        try:
+            ask = _maybe_emit_ask_suds(
+                user_text=request.message,
+                assistant_text=clean_response
+            )
+            if ask:
+                executed_actions.append(ask)
+        except Exception:
+            pass
+
         # ChatResponse 형태로 반환 (토큰 처리 결과 포함)
         return ChatResponse(
             response=clean_response,  # 🔥 토큰 제거된 깔끔한 텍스트
             emotion_analysis=emotion_analysis,
             eft_recommendations=[],  # 병렬 비교에서는 기본값
             suggested_actions=[],
-            actions=action_results.get("executed_actions", []),  # 🔥 토큰 실행 결과
+            actions=executed_actions,  # 🔥 토큰 실행 결과 + ask_suds 자동 방출
             confidence_score=0.8 if comparison_result.faster_model != "none" else 0.3,
             processing_time=comparison_result.comparison_time,
             timestamp=comparison_result.timestamp,
@@ -1545,6 +1583,6 @@ app.include_router(health_router)  # health endpoints first-class
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
-app.mount("/", StaticFiles(directory="static-frontend", html=True), name="static")
+app.mount("/", StaticFiles(directory="backend/static-frontend", html=True), name="static")
 from backend.routers.compare import router as compare_router
 app.include_router(compare_router)
