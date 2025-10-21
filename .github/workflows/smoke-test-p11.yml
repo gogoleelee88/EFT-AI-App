@@ -34,6 +34,14 @@ jobs:
         run: |
           pip install requests
 
+      - name: Ensure static-frontend exists
+        shell: bash
+        run: |
+          # FastAPI StaticFiles(directory="static-frontend") requires the dir to exist
+          # Create minimal directory so the API can boot during CI smoke test
+          mkdir -p backend/static-frontend
+          ls -la backend/static-frontend
+
       - name: Start API server (uvicorn)
         env:
           PYTHONPATH: ${{ github.workspace }}
