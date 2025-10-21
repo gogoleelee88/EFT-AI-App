@@ -958,5 +958,48 @@ export class EnhancedServerAI extends ServerAI {
   }
 }
 
+/**
+ * SUDS 점수 기록 함수
+ * 백엔드 /api/memory/{sessionId}/suds 엔드포인트 호출
+ */
+export async function recordSuds(
+  sessionId: string,
+  payload: {
+    measurementType: string;
+    sudsValue: number;
+    turnId?: string;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const response = await fetch(`/api/memory/${sessionId}/suds`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        measurement_type: payload.measurementType,
+        suds_value: payload.sudsValue,
+        turn_id: payload.turnId
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      return {
+        ok: false,
+        error: `HTTP ${response.status}: ${errorText}`
+      };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('SUDS 기록 실패:', error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 export default ServerAI;
 export type { ChatResponse, ComparisonResponse };
