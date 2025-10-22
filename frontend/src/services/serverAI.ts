@@ -188,6 +188,7 @@ interface ComparisonResponse {
   comparison_time: number;
   faster_model: 'llama3' | 'qwen25' | 'none';
   timestamp: string;
+  actions?: Array<{ type: string; payload?: any }>;  // P11 휴리스틱 액션 (ask_suds 등)
 }
 
 interface ServerStatus {
@@ -293,7 +294,7 @@ class ServerAI {
       temperature?: number;
     } = {}
   ): Promise<ComparisonResponse> {
-    
+
     const request = {
       message: userMessage,
       max_tokens: options.maxTokens || 512,
@@ -317,19 +318,72 @@ class ServerAI {
         throw new Error(`비교 API 오류 (${response.status}): ${errorText}`);
       }
 
-      const comparisonResponse: ComparisonResponse = await response.json();
+      const data: any = await response.json();
+      const comparisonResponse: ComparisonResponse = data;
 
       // 대화 히스토리에 사용자 메시지만 추가 (응답은 두 개이므로 별도 처리)
       this.addToHistory('user', userMessage);
-      
+
       // 성공한 응답이 있으면 히스토리에 추가 (더 빠른 것을 우선)
       if (comparisonResponse.faster_model !== 'none') {
-        const winnerResponse = comparisonResponse.faster_model === 'llama3' 
-          ? comparisonResponse.llama3_response 
+        const winnerResponse = comparisonResponse.faster_model === 'llama3'
+          ? comparisonResponse.llama3_response
           : comparisonResponse.qwen25_response;
-        
+
         if (winnerResponse.success) {
           this.addToHistory('assistant', winnerResponse.response);
+        }
+      }
+
+      // 🎬 P11 휴리스틱: actions 처리 + A-option 폴백
+      // Runtime guard: ensure actions is array
+      const actions = Array.isArray(data.actions) ? data.actions : [];
+
+      // A-option 폴백: 백엔드에서 actions가 없으면 프론트에서 휴리스틱 적용
+      const enableFallback = import.meta.env.VITE_ENABLE_SUDS_FALLBACK === 'true';
+      if (actions.length === 0 && enableFallback) {
+        const winnerText = comparisonResponse.faster_model === 'llama3'
+          ? comparisonResponse.llama3_response.response
+          : comparisonResponse.qwen25_response.response;
+
+        // 클라이언트 측 휴리스틱 (테스트용)
+        const shouldEmitSuds = this.checkSudsHeuristic(userMessage, winnerText);
+        if (shouldEmitSuds) {
+          if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+            console.log('🎬 A-option 폴백: 클라이언트에서 ask_suds 합성');
+          }
+          actions.push({
+            type: 'ask_suds',
+            payload: { measurement_type: 'check' }
+          });
+        }
+      }
+
+      // SUDS 배너 이벤트 발송 (중복 방지 가드)
+      const seen = new Set<string>();
+      for (const action of actions) {
+        if (action.type === 'ask_suds') {
+          // 중복 방지: 동일한 action은 한 번만 처리
+          const key = JSON.stringify(action);
+          if (seen.has(key)) {
+            if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+              console.warn('⚠️ 중복 SUDS 액션 스킵:', action);
+            }
+            continue;
+          }
+          seen.add(key);
+
+          if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+            console.log('🎬 액션 토큰 수신(or 합성):', action);
+          }
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('show-suds-banner', {
+                detail: action.payload || { measurement_type: 'check' }
+              })
+            );
+          }
         }
       }
 
@@ -337,7 +391,8 @@ class ServerAI {
         faster_model: comparisonResponse.faster_model,
         llama3_time: comparisonResponse.llama3_response.processing_time,
         qwen25_time: comparisonResponse.qwen25_response.processing_time,
-        total_time: comparisonResponse.comparison_time
+        total_time: comparisonResponse.comparison_time,
+        actions_count: actions.length
       });
 
       return comparisonResponse;
@@ -346,6 +401,41 @@ class ServerAI {
       console.error('❌ 병렬 비교 실패:', error);
       throw error;
     }
+  }
+
+  /**
+   * SUDS 휴리스틱 체크 (A-option 폴백용)
+   * 사용자 입력 또는 AI 응답이 SUDS 측정을 요구하는지 판단
+   */
+  private checkSudsHeuristic(userText: string, aiText: string): boolean {
+    const userLower = (userText || '').toLowerCase().trim();
+    const aiLower = (aiText || '').toLowerCase().trim();
+
+    // 패턴 1: 사용자가 숫자만 입력 (0-10)
+    if (/^\s*(?:10|[0-9])\s*$/.test(userLower)) {
+      if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+        console.log('[P11 A-option] 패턴 1 매칭: 숫자 입력');
+      }
+      return true;
+    }
+
+    // 패턴 2: AI 응답에 "0~10", "0에서 10", "0-10" 포함
+    if (/0\s*[-~]\s*10|0에서\s*10|0\s*~\s*10/.test(aiLower)) {
+      if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+        console.log('[P11 A-option] 패턴 2 매칭: AI 0~10 유도');
+      }
+      return true;
+    }
+
+    // 패턴 3: 사용자 키워드 - "평가", "점수", "몇 점", "suds"
+    if (/(평가|점수|몇\s*점|suds)/.test(userLower)) {
+      if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+        console.log('[P11 A-option] 패턴 3 매칭: 평가 키워드');
+      }
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -961,7 +1051,11 @@ export class EnhancedServerAI extends ServerAI {
 /**
  * SUDS 점수 기록 함수
  * 백엔드 /api/memory/{sessionId}/suds 엔드포인트 호출
+ *
+ * 중복 제출 방지: 동일 세션에서 동시에 여러 요청 방지
  */
+let sudsSubmitting = false;
+
 export async function recordSuds(
   sessionId: string,
   payload: {
@@ -970,6 +1064,19 @@ export async function recordSuds(
     turnId?: string;
   }
 ): Promise<{ ok: boolean; error?: string }> {
+  // Debounce guard: 이미 제출 중이면 스킵
+  if (sudsSubmitting) {
+    if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+      console.warn('⚠️ SUDS 제출 중복 방지: 이미 제출 중입니다');
+    }
+    return {
+      ok: false,
+      error: 'Already submitting SUDS score'
+    };
+  }
+
+  sudsSubmitting = true;
+
   try {
     const response = await fetch(`/api/memory/${sessionId}/suds`, {
       method: 'POST',
@@ -991,6 +1098,10 @@ export async function recordSuds(
       };
     }
 
+    if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+      console.log('✅ SUDS 기록 성공:', payload);
+    }
+
     return { ok: true };
   } catch (error) {
     console.error('SUDS 기록 실패:', error);
@@ -998,6 +1109,9 @@ export async function recordSuds(
       ok: false,
       error: error instanceof Error ? error.message : String(error)
     };
+  } finally {
+    // 요청 완료 후 플래그 해제
+    sudsSubmitting = false;
   }
 }
 
