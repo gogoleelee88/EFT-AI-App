@@ -188,6 +188,7 @@ interface ComparisonResponse {
   comparison_time: number;
   faster_model: 'llama3' | 'qwen25' | 'none';
   timestamp: string;
+  actions?: Array<{ type: string; payload?: any }>;  // P11 휴리스틱 액션 (ask_suds 등)
 }
 
 interface ServerStatus {
@@ -335,10 +336,12 @@ class ServerAI {
       }
 
       // 🎬 P11 휴리스틱: actions 처리 + A-option 폴백
-      const actions = data.actions || [];
+      // Runtime guard: ensure actions is array
+      const actions = Array.isArray(data.actions) ? data.actions : [];
 
       // A-option 폴백: 백엔드에서 actions가 없으면 프론트에서 휴리스틱 적용
-      if (actions.length === 0) {
+      const enableFallback = import.meta.env.VITE_ENABLE_SUDS_FALLBACK === 'true';
+      if (actions.length === 0 && enableFallback) {
         const winnerText = comparisonResponse.faster_model === 'llama3'
           ? comparisonResponse.llama3_response.response
           : comparisonResponse.qwen25_response.response;
@@ -346,7 +349,9 @@ class ServerAI {
         // 클라이언트 측 휴리스틱 (테스트용)
         const shouldEmitSuds = this.checkSudsHeuristic(userMessage, winnerText);
         if (shouldEmitSuds) {
-          console.log('🎬 A-option 폴백: 클라이언트에서 ask_suds 합성');
+          if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+            console.log('🎬 A-option 폴백: 클라이언트에서 ask_suds 합성');
+          }
           actions.push({
             type: 'ask_suds',
             payload: { measurement_type: 'check' }
@@ -354,10 +359,24 @@ class ServerAI {
         }
       }
 
-      // SUDS 배너 이벤트 발송
+      // SUDS 배너 이벤트 발송 (중복 방지 가드)
+      const seen = new Set<string>();
       for (const action of actions) {
         if (action.type === 'ask_suds') {
-          console.log('🎬 액션 토큰 수신(or 합성):', action);
+          // 중복 방지: 동일한 action은 한 번만 처리
+          const key = JSON.stringify(action);
+          if (seen.has(key)) {
+            if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+              console.warn('⚠️ 중복 SUDS 액션 스킵:', action);
+            }
+            continue;
+          }
+          seen.add(key);
+
+          if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+            console.log('🎬 액션 토큰 수신(or 합성):', action);
+          }
+
           if (typeof window !== 'undefined') {
             window.dispatchEvent(
               new CustomEvent('show-suds-banner', {
@@ -394,19 +413,25 @@ class ServerAI {
 
     // 패턴 1: 사용자가 숫자만 입력 (0-10)
     if (/^\s*(?:10|[0-9])\s*$/.test(userLower)) {
-      console.log('[P11 A-option] 패턴 1 매칭: 숫자 입력');
+      if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+        console.log('[P11 A-option] 패턴 1 매칭: 숫자 입력');
+      }
       return true;
     }
 
     // 패턴 2: AI 응답에 "0~10", "0에서 10", "0-10" 포함
     if (/0\s*[-~]\s*10|0에서\s*10|0\s*~\s*10/.test(aiLower)) {
-      console.log('[P11 A-option] 패턴 2 매칭: AI 0~10 유도');
+      if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+        console.log('[P11 A-option] 패턴 2 매칭: AI 0~10 유도');
+      }
       return true;
     }
 
     // 패턴 3: 사용자 키워드 - "평가", "점수", "몇 점", "suds"
     if (/(평가|점수|몇\s*점|suds)/.test(userLower)) {
-      console.log('[P11 A-option] 패턴 3 매칭: 평가 키워드');
+      if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+        console.log('[P11 A-option] 패턴 3 매칭: 평가 키워드');
+      }
       return true;
     }
 
@@ -1026,7 +1051,11 @@ export class EnhancedServerAI extends ServerAI {
 /**
  * SUDS 점수 기록 함수
  * 백엔드 /api/memory/{sessionId}/suds 엔드포인트 호출
+ *
+ * 중복 제출 방지: 동일 세션에서 동시에 여러 요청 방지
  */
+let sudsSubmitting = false;
+
 export async function recordSuds(
   sessionId: string,
   payload: {
@@ -1035,6 +1064,19 @@ export async function recordSuds(
     turnId?: string;
   }
 ): Promise<{ ok: boolean; error?: string }> {
+  // Debounce guard: 이미 제출 중이면 스킵
+  if (sudsSubmitting) {
+    if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+      console.warn('⚠️ SUDS 제출 중복 방지: 이미 제출 중입니다');
+    }
+    return {
+      ok: false,
+      error: 'Already submitting SUDS score'
+    };
+  }
+
+  sudsSubmitting = true;
+
   try {
     const response = await fetch(`/api/memory/${sessionId}/suds`, {
       method: 'POST',
@@ -1056,6 +1098,10 @@ export async function recordSuds(
       };
     }
 
+    if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+      console.log('✅ SUDS 기록 성공:', payload);
+    }
+
     return { ok: true };
   } catch (error) {
     console.error('SUDS 기록 실패:', error);
@@ -1063,6 +1109,9 @@ export async function recordSuds(
       ok: false,
       error: error instanceof Error ? error.message : String(error)
     };
+  } finally {
+    // 요청 완료 후 플래그 해제
+    sudsSubmitting = false;
   }
 }
 
