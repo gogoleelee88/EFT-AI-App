@@ -48,7 +48,7 @@ from backend.services.memory_system import (
     get_memory_system,
     get_memory_stats,
 )
-from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse
+from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType
 from backend.utils.action_builder import build_actions
 from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
 from backend.models.suds import SUDSType, SUDSEntry, SUDSRequest, SUDSResponse
@@ -1080,30 +1080,28 @@ async def eft_chat(request: ChatRequest, req: Request):
 
         meta = {"session_id": session_id, "user_id": user_id}
 
-        # ChatRequest를 ChatProxyRequest로 변환
-        proxy_request = ChatProxyRequest(
-            message=request.message,
-            temperature=request.temperature or 0.7,
-            max_tokens=request.max_tokens or 400
-        )
-
-        # Engine A/B 병렬 비교 수행
-        comparison_result = await compare_llama3_vs_qwen25(proxy_request, req)
-
         # 감정 분석 수행
         emotion_analysis = await emotion_analyzer.analyze(request.message)
-        
-        # 더 빠른 모델의 응답을 메인 응답으로 사용
-        if comparison_result.faster_model == "llama3" and comparison_result.llama3_response["success"]:
-            raw_response = comparison_result.llama3_response["response"]
-            model_info = "Engine A (Llama-3-8B)"
-        elif comparison_result.faster_model == "qwen25" and comparison_result.qwen25_response["success"]:
-            raw_response = comparison_result.qwen25_response["response"]
-            model_info = "Engine B (Qwen-2.5-7B)"
-        else:
+
+        # vLLM client를 통한 AI 응답 생성
+        try:
+            system_prompt = prompt_manager.get_system_prompt(emotion_analysis.primary_emotion.value)
+            user_prompt = prompt_manager.get_user_prompt(request.message)
+
+            raw_response = app.state.vllm.chat_completion(
+                message=user_prompt,
+                system_prompt=system_prompt,
+                temperature=request.temperature or 0.7,
+                max_tokens=request.max_tokens or 400
+            )
+            model_info = "vLLM Engine"
+            processing_time = 0.0  # Simple fallback
+        except Exception as vllm_error:
+            logger.warning(f"vLLM 서버 연결 실패: {vllm_error}")
             # 둘 다 실패했을 경우 폴백 (vLLM 서버 미실행 상태)
             raw_response = "안녕하세요! 현재 AI 모델 서버가 준비 중입니다. vLLM 서버를 실행해주세요. (포트 8001, 8002)"
             model_info = "Fallback (vLLM 서버 필요)"
+            processing_time = 0.0
 
         # 🔥 토큰 파이프라인 처리
         tokens = TokenParser.extract_tokens(raw_response)
@@ -1159,10 +1157,10 @@ async def eft_chat(request: ChatRequest, req: Request):
             eft_recommendations=[],  # 병렬 비교에서는 기본값
             suggested_actions=[],
             actions=executed_actions,  # 🔥 토큰 실행 결과 + ask_suds 자동 방출
-            confidence_score=0.8 if comparison_result.faster_model != "none" else 0.3,
-            processing_time=comparison_result.comparison_time,
-            timestamp=comparison_result.timestamp,
-            response_id=f"ab_resp_{int(time.time() * 1000)}",
+            confidence_score=0.8,
+            processing_time=processing_time,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            response_id=f"resp_{int(time.time() * 1000)}",
             tier="free",
             model_version=model_info,
             requires_followup=False,
@@ -1171,15 +1169,19 @@ async def eft_chat(request: ChatRequest, req: Request):
         )
         
     except Exception as e:
-        logger.error(f"Engine A/B 병렬 처리 오류: {e}")
-        
+        logger.error(f"채팅 처리 오류: {e}")
+
         # 완전한 폴백 응답 - vLLM 서버 없을 때
-        emotion_analysis = EmotionAnalysis(
-            primary_emotion=EmotionType.NEUTRAL,
-            intensity=0.5,
-            confidence=0.3,
-            emotional_keywords=[]
-        )
+        # 기본 중립 감정 분석 결과 생성
+        try:
+            emotion_analysis = await emotion_analyzer.analyze("안녕하세요")
+        except Exception:
+            emotion_analysis = EmotionAnalysis(
+                primary_emotion=EmotionType.NEUTRAL,
+                intensity=0.5,
+                confidence=0.3,
+                emotional_keywords=[]
+            )
         
         return ChatResponse(
             response="안녕하세요! 현재 Engine A/B 병렬 시스템을 준비 중입니다. vLLM 서버(포트 8001, 8002)를 실행해주세요.",
