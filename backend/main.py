@@ -49,6 +49,7 @@ from backend.services.memory_system import (
     get_memory_stats,
 )
 from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse
+from backend.utils.action_builder import build_actions
 from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
 from backend.models.suds import SUDSType, SUDSEntry, SUDSRequest, SUDSResponse
 from backend.services.suds_logger import append_suds
@@ -1077,6 +1078,8 @@ async def eft_chat(request: ChatRequest, req: Request):
 
         logger.info(f"대화 컨텍스트: {session_id} ({context['context_stats']['total_turns']}턴)")
 
+        meta = {"session_id": session_id, "user_id": user_id}
+
         # ChatRequest를 ChatProxyRequest로 변환
         proxy_request = ChatProxyRequest(
             message=request.message,
@@ -1134,7 +1137,11 @@ async def eft_chat(request: ChatRequest, req: Request):
         logger.info(f"대화 기록 저장 완료: {session_id}/{turn_id}")
 
         # ask_suds 자동 방출 (조건 충족 시)
-        executed_actions = list(action_results.get("executed_actions", []))
+        executed_actions: List[Dict[str, Any]] = list(action_results.get("executed_actions", []))
+
+        actions_from_builder = build_actions(request.message, meta) or []
+        executed_actions.extend(actions_from_builder)
+
         try:
             ask = _maybe_emit_ask_suds(
                 user_text=request.message,
