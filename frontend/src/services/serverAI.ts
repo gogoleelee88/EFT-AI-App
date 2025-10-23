@@ -340,7 +340,7 @@ class ServerAI {
       const actions = Array.isArray(data.actions) ? data.actions : [];
 
       // A-option 폴백: 백엔드에서 actions가 없으면 프론트에서 휴리스틱 적용
-      const enableFallback = import.meta.env.VITE_ENABLE_SUDS_FALLBACK === 'true';
+      const enableFallback = (import.meta.env.VITE_ENABLE_SUDS_FALLBACK ?? 'true') === 'true';
       if (actions.length === 0 && enableFallback) {
         const winnerText = comparisonResponse.faster_model === 'llama3'
           ? comparisonResponse.llama3_response.response
