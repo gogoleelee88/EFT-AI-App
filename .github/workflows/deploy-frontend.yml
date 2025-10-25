@@ -144,35 +144,35 @@ jobs:
           curl -fsS "$DOMAIN${{ steps.livejs.outputs.JS_PATH }}" -o live.js
           echo "Bundle size: $(wc -c < live.js) bytes"
 
-      - name: Verify /eft-guide redirect (HTTP headers)
+      - name: Verify /ar-holistic route (HTTP 200 + bundle hint)
         run: |
           set -euo pipefail
-          echo "Testing /eft-guide redirect..."
+          echo "Testing /ar-holistic accessibility..."
 
-          URL=https://www.moodtalk.app/eft-guide
+          URL=https://www.moodtalk.app/ar-holistic
 
-          # GET 요청으로 상태 코드 확인 (HEAD 요청 405 에러 방지, 리다이렉트 따라가지 않음)
-          response=$(curl -sS -w '\nSTATUS:%{http_code}\nLOCATION:%{redirect_url}' "$URL")
+          # GET 요청으로 상태 코드 확인
+          response=$(curl -sS -w '\nSTATUS:%{http_code}' -o /tmp/ar-holistic.html "$URL")
           status=$(echo "$response" | grep '^STATUS:' | cut -d: -f2)
-          location=$(echo "$response" | grep '^LOCATION:' | cut -d: -f2-)
 
-          echo "status=$status"
-          echo "location=$location"
+          echo "HTTP status: $status"
 
-          if [[ "$status" =~ ^30[12378]$ ]] && [[ "$location" == *"/ar-holistic"* ]]; then
-            echo "✅ Edge redirect OK -> $location"
-          else
-            echo "❌ Edge redirect not configured (status=$status, location=$location)"
+          if [[ "$status" != "200" ]]; then
+            echo "❌ /ar-holistic returned HTTP $status (expected 200)"
             exit 1
           fi
 
-          # Check for hard-coded links in HTML only
-          if curl -sS https://www.moodtalk.app/ | grep -q 'href="/eft-guide"'; then
-            echo "❌ Hard link to /eft-guide found in HTML"
-            exit 1
+          echo "✅ /ar-holistic returned HTTP 200"
+
+          # Check for bundle hint in HTML (index-*.js reference)
+          if grep -q '/assets/index-[^"]*\.js' /tmp/ar-holistic.html; then
+            echo "✅ Bundle reference found in HTML"
           else
-            echo "✅ No hard link in HTML"
+            echo "❌ No bundle reference found in HTML"
+            exit 1
           fi
+
+          echo "✅ /ar-holistic route verified successfully"
 
       - name: Health check (homepage)
         run: |

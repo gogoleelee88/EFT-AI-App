@@ -20,6 +20,7 @@ import type {
 } from '../../types/actionTypes';
 import { recToARParams } from '../../lib/eftAdapter';
 import { EftRecButton } from '../eft';
+import { recordSuds } from '@/services/serverAI';
 import { 
   createSession,
   onUserMessage,
@@ -272,6 +273,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
   // 🔥 액션 상태 관리 (확장 가능)
   const [pendingSuds, setPendingSuds] = useState<SudsActionPayload | null>(null);
+  const [localSuds, setLocalSuds] = useState<number | ''>('');
   const [pendingBreathGuide, setPendingBreathGuide] = useState<BreathGuidePayload | null>(null);
   const [pendingGrounding, setPendingGrounding] = useState<GroundingPayload | null>(null);
   const [pendingEftRecommendation, setPendingEftRecommendation] = useState<EftRecommendationPayload | null>(null);
@@ -422,6 +424,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   // 서버 상태 체크 및 초기화 (Engine A/B 시스템)
   useEffect(() => {
     const initializeAI = async () => {
+      if (typeof window === 'undefined') return;
+
       try {
         const healthStatus = await serverAI.checkServerStatus();
         const isHealthy = healthStatus.status !== 'offline';
@@ -477,6 +481,41 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }, 1000);
   }, [serverAI]);
 
+  // localStorage 초기화 (세션 ID 영속성 보장)
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('eft.sess.id') && session?.sessionId) {
+        localStorage.setItem('eft.sess.id', session.sessionId);
+      }
+    } catch {
+      /* storage 불가 환경은 무시 */
+    }
+  }, [session?.sessionId]);
+
+  // 🔄 AR 세션 컨텍스트 복원 (마운트 시 1회)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const sidFromLs = localStorage.getItem('eft.sess.id');
+      const sidFromUrl = new URLSearchParams(window.location.search).get('sid') || '';
+      const sid = sidFromLs || session?.sessionId || sidFromUrl;
+      if (!sid) return;
+
+      const ctxKey = `chat.ctx/${sid}`;
+      const savedCtx = sessionStorage.getItem(ctxKey);
+      if (!savedCtx) return;
+
+      const ctx = JSON.parse(savedCtx);
+      if (Array.isArray(ctx.conversationHistory) && ctx.conversationHistory.length > 0) {
+        setMessages(ctx.conversationHistory);
+        console.info(`🔄 대화 컨텍스트 복원 완료 (${ctx.conversationHistory.length}개)`);
+        sessionStorage.removeItem(ctxKey);
+      }
+    } catch (err) {
+      console.info('🔄 컨텍스트 복원 실패 (무시)', err);
+    }
+  }, []);
 
   // 티어 선택 외부 클릭 감지
   useEffect(() => {
@@ -503,6 +542,13 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // 🧾 SUDS 입력 배너 노출 감지
+  useEffect(() => {
+    if (pendingSuds) {
+      console.info('📝 SUDS 입력 대기 배너 노출', pendingSuds);
+    }
+  }, [pendingSuds]);
 
   // S3 진입 시 사전 SUDS 모달 띄우기
   useEffect(() => {
@@ -531,6 +577,61 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     { id: 'tapping', label: '탭핑 3포인트', duration: 75 },
     { id: 'grounding', label: '5감 그라운딩', duration: 90 }
   ];
+
+  // 🎬 액션 토큰 핸들러 (백엔드 응답의 actions 배열 처리)
+  function handleActionTokens(actions: any[]) {
+    try {
+      if (!Array.isArray(actions) || actions.length === 0) return;
+      console.log('🎬 액션 토큰 수신:', actions);
+
+      for (const a of actions) {
+        const t = a?.type;
+        const payload = a?.payload ?? {};
+        if (typeof t !== 'string') {
+          console.warn('⚠️ 액션 타입 누락/비정상:', a);
+          continue;
+        }
+
+        if (t === 'ask_suds') {
+          const mt = payload?.measurementType ?? payload?.measurement_type;
+          const ctx = payload?.context ?? '';
+          if (!mt) {
+            console.warn('⚠️ ask_suds: measurementType 누락', a);
+            continue;
+          }
+          setPendingSuds({
+            measurementType: mt,
+            prompt: payload?.prompt ?? payload?.prompt_message ?? 'SUDS 측정을 시작합니다.',
+            context: ctx,
+            sessionId: session.sessionId,
+            turnId: turnIdOf(session.turn)
+          });
+          console.info('🧪 ask_suds 예약:', payload);
+          continue;
+        }
+
+        if (t === 'recommend_eft') {
+          console.info('👉 recommend_eft 네비게이션 준비:', payload);
+          try {
+            if (payload?.recommendation) {
+              goAR(payload.recommendation);
+            } else if (typeof payload?.intensity === 'number') {
+              scheduleARNavigation(Number(payload.intensity));
+            } else {
+              console.warn('⚠️ recommend_eft: 유효한 payload 없음', payload);
+            }
+          } catch (navErr) {
+            console.warn('⚠️ recommend_eft 네비게이션 오류:', navErr);
+          }
+          continue;
+        }
+
+        console.log('ℹ️ 미지원 액션 타입:', t);
+      }
+    } catch (err) {
+      console.warn('⚠️ handleActionTokens 오류 (무시):', err);
+    }
+  }
 
   // Qwen 호출 파이프라인 (상태머신 순서 준수)
   const onSend = async (rawInput: string) => {
@@ -677,6 +778,9 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌
       const actionResults = serverResponse.actions ?? [];
       let reply = serverResponse.response ?? '';
+
+      // 🎬 액션 토큰 처리 (ask_suds, recommend_eft 등)
+      handleActionTokens(actionResults);
 
       // 🎯 액션 타입별 라우팅 시스템 (핸들러 맵 기반 - 확장 용이)
       actionResults.forEach((action: any) => {
@@ -865,6 +969,61 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     inputRef.current?.focus();
   };
 
+  // 🧾 SUDS 배너 제출 핸들러
+  const handleSubmitSuds = async () => {
+    if (typeof window === 'undefined') return;
+    if (!pendingSuds) return;
+
+    // sid 폴백 체인
+    const sidFromLs = (() => {
+      try {
+        return localStorage.getItem('eft.sess.id') || '';
+      } catch {
+        return '';
+      }
+    })();
+    const sidFromUrl = new URLSearchParams(window.location.search).get('sid') || '';
+    const sid = sidFromLs || session?.sessionId || sidFromUrl;
+
+    if (!sid) {
+      console.warn('⚠️ SUDS 제출 실패', 'sid 없음');
+      return;
+    }
+
+    const value = typeof localSuds === 'string' ? Number.NaN : localSuds;
+    if (!Number.isInteger(value) || value < 0 || value > 10) {
+      console.warn('⚠️ SUDS 제출 실패', '유효하지 않은 점수 값:', localSuds);
+      return;
+    }
+
+    const mt = pendingSuds.measurementType ?? 'check';
+    const turnId = pendingSuds.turnId ?? undefined;
+
+    const res = await recordSuds(sid, {
+      measurementType: mt,
+      sudsValue: value,
+      turnId,
+    });
+
+    if (!res || !res.ok) {
+      console.warn('⚠️ SUDS 제출 실패', res);
+      return;
+    }
+
+    console.info('✅ SUDS 제출 성공', res);
+
+    // 배너 닫기
+    setPendingSuds(null);
+    setLocalSuds('');
+
+    // 토스트 알림 (SSR 가드)
+    if (typeof window !== 'undefined') {
+      console.info('📢 SUDS 완료 토스트 표시');
+      // 실제 토스트 UI는 추후 toast 라이브러리 통합 시 구현
+      // 현재는 로그로 대체
+    }
+  };
+
   // 🔥 SUDS 인라인 카드 제출 핸들러
   const handleSudsSubmit = async (score: number) => {
     if (!pendingSuds) return;
@@ -964,6 +1123,43 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
   return (
     <div className="flex flex-col h-screen lg:min-h-0 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 lg:bg-transparent">
+      {/* 🧾 SUDS 입력 배너 */}
+      {pendingSuds && (
+        <div
+          role="region"
+          aria-label="SUDS 입력 배너"
+          className="w-full bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 mb-2 rounded-md flex items-center gap-2"
+        >
+          <span className="text-sm font-medium">
+            SUDS {pendingSuds.measurementType ?? 'check'} 점수 선택
+          </span>
+          <select
+            aria-label="SUDS 점수 선택"
+            className="border rounded px-2 py-1 text-sm"
+            value={localSuds === '' ? '' : String(localSuds)}
+            onChange={(e) => {
+              const v = e.target.value === '' ? '' : Number(e.target.value);
+              setLocalSuds(v as number | '');
+            }}
+          >
+            <option value="">선택</option>
+            {Array.from({ length: 11 }).map((_, n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="text-sm px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+            onClick={handleSubmitSuds}
+            disabled={localSuds === '' || Number.isNaN(localSuds as number)}
+          >
+            저장
+          </button>
+        </div>
+      )}
+
       {/* 헤더 */}
       <div className="bg-white shadow-lg border-b-2 border-indigo-100 sticky top-0 z-40">
         <div className="max-w-md mx-auto px-4 py-3">

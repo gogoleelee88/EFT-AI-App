@@ -120,9 +120,9 @@ class ChatResponse(BaseModel):
     """채팅 응답"""
     response: str = Field(..., description="AI 응답 메시지")
     emotion_analysis: EmotionAnalysis = Field(..., description="감정 분석 결과")
-    eft_recommendations: List[EFTRecommendation] = Field(default=[], description="EFT 기법 추천들")
-    suggested_actions: List[SuggestedAction] = Field(default=[], description="제안 액션들")
-    actions: List[Dict[str, Any]] = Field(default=[], description="액션 토큰 실행 결과")
+    eft_recommendations: List[EFTRecommendation] = Field(default_factory=list, description="EFT 기법 추천들")
+    suggested_actions: List[SuggestedAction] = Field(default_factory=list, description="제안 액션들")
+    actions: List[Dict[str, Any]] = Field(default_factory=list, description="액션 토큰 실행 결과")
     
     # 메타데이터
     confidence_score: float = Field(..., ge=0.0, le=1.0, description="응답 신뢰도")

@@ -129,7 +129,7 @@ export class PremiumAuthManager {
   /**
    * 프리미엄 키 유효성 검증 (백엔드 호출)
    */
-  static async validatePremiumKey(baseUrl: string = 'http://127.0.0.1:8000'): Promise<boolean> {
+  static async validatePremiumKey(baseUrl: string = ''): Promise<boolean> {
     const key = this.getPremiumKey();
     if (!key) return false;
 

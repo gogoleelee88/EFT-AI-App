@@ -30,6 +30,7 @@ import os
 from pathlib import Path
 import itertools
 import random
+import re
 import logging
 import uuid
 from uuid import uuid4
@@ -47,13 +48,14 @@ from backend.services.memory_system import (
     get_memory_system,
     get_memory_stats,
 )
-from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse
+from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType
+from backend.utils.action_builder import build_actions
 from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
 from backend.models.suds import SUDSType, SUDSEntry, SUDSRequest, SUDSResponse
 from backend.services.suds_logger import append_suds
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
-from backend.routers import premium as premium_router
+# Premium router removed - using only free tier /api/chat endpoint
 
 # 설정 및 로거
 settings = get_settings()
@@ -71,6 +73,32 @@ def _now_iso() -> str:
 # SUDS 타입은 models.suds에서 임포트
 
 # VLLMClient는 app.state로 관리
+
+# --- ask_suds 자동 방출 헬퍼 함수 ---
+def _maybe_emit_ask_suds(user_text: str, assistant_text: str) -> Optional[dict]:
+    """
+    사용자의 요청/숫자(0~10) 또는 어시스턴트의 '0~10 평가' 유도 문구가 있을 때
+    액션 토큰 {"type":"ask_suds", "payload":{"measurement_type":"check"}}을 반환.
+    매칭 실패 시 None.
+    """
+    try:
+        t_user = (user_text or "").strip()
+        t_ai = (assistant_text or "").strip()
+
+        # 1) 한국어/일반 유도문 감지 (0~10 / 0에서 10 / 0-10)
+        if re.search(r"0\s*[-~]\s*10|0에서\s*10|0\s*~\s*10", t_ai):
+            return {"type": "ask_suds", "payload": {"measurement_type": "check"}}
+
+        # 2) 사용자가 숫자만 입력 (0~10)
+        if re.fullmatch(r"\s*(?:10|[0-9])\s*", t_user):
+            return {"type": "ask_suds", "payload": {"measurement_type": "check"}}
+
+        # 3) 사용자 키워드
+        if re.search(r"(평가|점수|몇\s*점|suds)", t_user, flags=re.I):
+            return {"type": "ask_suds", "payload": {"measurement_type": "check"}}
+    except Exception:
+        pass
+    return None
 
 # --- A/B 라우팅 상태 ---
 _engine_keys = list(settings.FREE_ENGINES.keys())
@@ -464,8 +492,7 @@ else:  # 운영 환경
 app.add_middleware(IdempotentBodyMiddleware)
 logger.info("🔧 IdempotentBodyMiddleware: 최우선 배치 완료 (body 캐싱)")
 
-# 🎛️ 프리미엄 라우터 등록
-app.include_router(premium_router.router)
+# Premium router removed - free tier /api/chat is the primary endpoint
 
 # AI 지원 서비스 전역 변수 (서버 시작시 로드)  
 # AI 엔진은 app.state.vllm으로 대체됨
@@ -1051,30 +1078,30 @@ async def eft_chat(request: ChatRequest, req: Request):
 
         logger.info(f"대화 컨텍스트: {session_id} ({context['context_stats']['total_turns']}턴)")
 
-        # ChatRequest를 ChatProxyRequest로 변환
-        proxy_request = ChatProxyRequest(
-            message=request.message,
-            temperature=request.temperature or 0.7,
-            max_tokens=request.max_tokens or 400
-        )
-
-        # Engine A/B 병렬 비교 수행
-        comparison_result = await compare_llama3_vs_qwen25(proxy_request, req)
+        meta = {"session_id": session_id, "user_id": user_id}
 
         # 감정 분석 수행
         emotion_analysis = await emotion_analyzer.analyze(request.message)
-        
-        # 더 빠른 모델의 응답을 메인 응답으로 사용
-        if comparison_result.faster_model == "llama3" and comparison_result.llama3_response["success"]:
-            raw_response = comparison_result.llama3_response["response"]
-            model_info = "Engine A (Llama-3-8B)"
-        elif comparison_result.faster_model == "qwen25" and comparison_result.qwen25_response["success"]:
-            raw_response = comparison_result.qwen25_response["response"]
-            model_info = "Engine B (Qwen-2.5-7B)"
-        else:
+
+        # vLLM client를 통한 AI 응답 생성
+        try:
+            system_prompt = prompt_manager.get_system_prompt(emotion_analysis.primary_emotion.value)
+            user_prompt = prompt_manager.get_user_prompt(request.message)
+
+            raw_response = app.state.vllm.chat_completion(
+                message=user_prompt,
+                system_prompt=system_prompt,
+                temperature=request.temperature or 0.7,
+                max_tokens=request.max_tokens or 400
+            )
+            model_info = "vLLM Engine"
+            processing_time = 0.0  # Simple fallback
+        except Exception as vllm_error:
+            logger.warning(f"vLLM 서버 연결 실패: {vllm_error}")
             # 둘 다 실패했을 경우 폴백 (vLLM 서버 미실행 상태)
             raw_response = "안녕하세요! 현재 AI 모델 서버가 준비 중입니다. vLLM 서버를 실행해주세요. (포트 8001, 8002)"
             model_info = "Fallback (vLLM 서버 필요)"
+            processing_time = 0.0
 
         # 🔥 토큰 파이프라인 처리
         tokens = TokenParser.extract_tokens(raw_response)
@@ -1107,17 +1134,33 @@ async def eft_chat(request: ChatRequest, req: Request):
         updated_summary = update_running_summary(session_id)
         logger.info(f"대화 기록 저장 완료: {session_id}/{turn_id}")
 
+        # ask_suds 자동 방출 (조건 충족 시)
+        executed_actions: List[Dict[str, Any]] = list(action_results.get("executed_actions", []))
+
+        actions_from_builder = build_actions(request.message, meta) or []
+        executed_actions.extend(actions_from_builder)
+
+        try:
+            ask = _maybe_emit_ask_suds(
+                user_text=request.message,
+                assistant_text=clean_response
+            )
+            if ask:
+                executed_actions.append(ask)
+        except Exception:
+            pass
+
         # ChatResponse 형태로 반환 (토큰 처리 결과 포함)
         return ChatResponse(
             response=clean_response,  # 🔥 토큰 제거된 깔끔한 텍스트
             emotion_analysis=emotion_analysis,
             eft_recommendations=[],  # 병렬 비교에서는 기본값
             suggested_actions=[],
-            actions=action_results.get("executed_actions", []),  # 🔥 토큰 실행 결과
-            confidence_score=0.8 if comparison_result.faster_model != "none" else 0.3,
-            processing_time=comparison_result.comparison_time,
-            timestamp=comparison_result.timestamp,
-            response_id=f"ab_resp_{int(time.time() * 1000)}",
+            actions=executed_actions,  # 🔥 토큰 실행 결과 + ask_suds 자동 방출
+            confidence_score=0.8,
+            processing_time=processing_time,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            response_id=f"resp_{int(time.time() * 1000)}",
             tier="free",
             model_version=model_info,
             requires_followup=False,
@@ -1126,15 +1169,19 @@ async def eft_chat(request: ChatRequest, req: Request):
         )
         
     except Exception as e:
-        logger.error(f"Engine A/B 병렬 처리 오류: {e}")
-        
+        logger.error(f"채팅 처리 오류: {e}")
+
         # 완전한 폴백 응답 - vLLM 서버 없을 때
-        emotion_analysis = EmotionAnalysis(
-            primary_emotion=EmotionType.NEUTRAL,
-            intensity=0.5,
-            confidence=0.3,
-            emotional_keywords=[]
-        )
+        # 기본 중립 감정 분석 결과 생성
+        try:
+            emotion_analysis = await emotion_analyzer.analyze("안녕하세요")
+        except Exception:
+            emotion_analysis = EmotionAnalysis(
+                primary_emotion=EmotionType.NEUTRAL,
+                intensity=0.5,
+                confidence=0.3,
+                emotional_keywords=[]
+            )
         
         return ChatResponse(
             response="안녕하세요! 현재 Engine A/B 병렬 시스템을 준비 중입니다. vLLM 서버(포트 8001, 8002)를 실행해주세요.",
@@ -1425,108 +1472,7 @@ async def completion(request: ChatProxyRequest, req: Request):
         logger.error(f"프리미엄 모델 오류: {e}")
         raise HTTPException(status_code=500, detail=f"AI 응답 생성 오류: {str(e)}")
 
-# 병렬 비교 엔드포인트 (DialoGPT 완전 대체!)
-@app.post("/api/chat/compare", response_model=ComparisonResponse)
-async def compare_llama3_vs_qwen25(request: ChatProxyRequest, req: Request):
-    """
-    Llama-3-8B vs Qwen-2.5-7B 병렬 비교 채팅
-    - 두 모델을 동시에 호출하여 응답 비교
-    - DialoGPT 완전 대체 시스템
-    """
-    import httpx
-    
-    correlation_id = getattr(req.state, 'correlation_id', 'unknown')
-    logger.info(f"[{correlation_id}] 병렬 비교 요청: {request.message[:50]}...")
-    
-    # vLLM 호환 페이로드
-    payload = {
-        "model": "",  # 각 엔진별로 설정
-        "messages": [
-            {"role": "system", "content": "You are a helpful EFT counselor assistant specialized in Korean emotional support."},
-            {"role": "user", "content": request.message},
-        ],
-        "temperature": request.temperature,
-        "max_tokens": request.max_tokens,
-    }
-    
-    timeout_config = httpx.Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
-    
-    async def call_engine(engine_key: str, engine_config: dict):
-        """개별 엔진 호출 함수"""
-        base_url = f"http://127.0.0.1:{engine_config['port']}/v1"
-        engine_payload = payload.copy()
-        engine_payload["model"] = f"engine-{engine_key[-1]}"  # engine_a -> engine-a, engine_b -> engine-b
-        
-        try:
-            async with httpx.AsyncClient(timeout=timeout_config) as client:
-                logger.info(f"[{correlation_id}] {engine_key} → {base_url}/chat/completions")
-                start_time = time.time()
-                r = await client.post(f"{base_url}/chat/completions", json=engine_payload)
-                processing_time = time.time() - start_time
-                logger.error(f"[{correlation_id}] {engine_key} 응답 상태: {r.status_code}, 본문: {r.text[:500]}")
-                
-                if r.status_code >= 400:
-                    raise httpx.HTTPStatusError(f"HTTP {r.status_code}", request=r.request, response=r)
-                    
-                data = r.json()
-                content = data["choices"][0]["message"]["content"]
-                
-                return {
-                    "model": engine_config["model"],
-                    "response": content,
-                    "processing_time": round(processing_time, 3),
-                    "success": True,
-                    "error": None
-                }
-        except Exception as e:
-            logger.error(f"[{correlation_id}] {engine_key} 실패: {str(e)[:200]}")
-            return {
-                "model": engine_config["model"],
-                "response": f"❌ {engine_key} 연결 실패: {str(e)[:100]}",
-                "processing_time": 0,
-                "success": False,
-                "error": str(e)
-            }
-    
-    try:
-        # 병렬 호출 시작
-        start_time = time.time()
-        
-        # Llama-3와 Qwen-2.5 동시 호출
-        engine_a_config = settings.FREE_ENGINES["engine_a"]  # Llama-3
-        engine_b_config = settings.FREE_ENGINES["engine_b"]  # Qwen-2.5
-        
-        llama3_task = call_engine("engine_a", engine_a_config)
-        qwen25_task = call_engine("engine_b", engine_b_config)
-        
-        # Promise.all 방식으로 병렬 처리
-        llama3_result, qwen25_result = await asyncio.gather(llama3_task, qwen25_task)
-        
-        total_time = time.time() - start_time
-        
-        # 더 빠른 모델 결정
-        if llama3_result["success"] and qwen25_result["success"]:
-            faster_model = "llama3" if llama3_result["processing_time"] <= qwen25_result["processing_time"] else "qwen25"
-        elif llama3_result["success"]:
-            faster_model = "llama3"
-        elif qwen25_result["success"]:
-            faster_model = "qwen25"
-        else:
-            faster_model = "none"
-        
-        logger.info(f"[{correlation_id}] 비교 완료: {total_time:.3f}s (빠른 모델: {faster_model})")
-        
-        return ComparisonResponse(
-            llama3_response=llama3_result,
-            qwen25_response=qwen25_result,
-            comparison_time=round(total_time, 3),
-            faster_model=faster_model,
-            timestamp=datetime.now().isoformat()
-        )
-        
-    except Exception as e:
-        logger.error(f"[{correlation_id}] 병렬 비교 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"병렬 비교 처리 오류: {str(e)}")
+# 병렬 비교 엔드포인트는 backend.routers.compare로 이동됨 (중복 제거)
 
 if __name__ == "__main__":
     import uvicorn
@@ -1545,6 +1491,13 @@ app.include_router(health_router)  # health endpoints first-class
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
-app.mount("/", StaticFiles(directory="static-frontend", html=True), name="static")
+# 프론트엔드 별도 배포 시 디렉터리가 없을 수 있으므로 존재할 때만 마운트
+static_dir = Path("backend/static-frontend")
+if static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+    logger.info(f"📂 StaticFiles 마운트 완료: {static_dir}")
+else:
+    logger.info(f"📂 StaticFiles 마운트 스킵: {static_dir} 디렉터리 없음 (프론트엔드 별도 배포 시 정상)")
+
 from backend.routers.compare import router as compare_router
 app.include_router(compare_router)

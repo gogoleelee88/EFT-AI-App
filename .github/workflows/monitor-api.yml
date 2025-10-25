@@ -1,0 +1,33 @@
+name: Monitor API
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes (UTC)
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /api/health
+        run: |
+          set -euo pipefail
+          RES=$(curl -fsS -w '\nSTATUS:%{http_code}\nTIME:%{time_total}\n' \
+                 -o /tmp/health.json https://www.moodtalk.app/api/health)
+          STATUS=$(printf "%s" "$RES" | awk -F: '/^STATUS/{print $2}')
+          TIME=$(printf "%s" "$RES" | awk -F: '/^TIME/{print $2}')
+          echo "health status=$STATUS time=$TIME"
+          test "$STATUS" = "200"
+
+      - name: Check /api/chat/compare
+        run: |
+          set -euo pipefail
+          RES=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+                -d '{"message":"monitor"}' \
+                -w '\nSTATUS:%{http_code}\nTIME:%{time_total}\n' \
+                -o /tmp/compare.json https://www.moodtalk.app/api/chat/compare)
+          STATUS=$(printf "%s" "$RES" | awk -F: '/^STATUS/{print $2}')
+          TIME=$(printf "%s" "$RES" | awk -F: '/^TIME/{print $2}')
+          echo "compare status=$STATUS time=$TIME"
+          test "$STATUS" = "200"

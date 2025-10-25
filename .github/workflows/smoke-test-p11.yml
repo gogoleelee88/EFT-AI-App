@@ -1,0 +1,213 @@
+name: P11 Smoke Test - ask_suds Auto-Emission
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 수동 실행 가능
+
+env:
+  API_BASE_URL: http://127.0.0.1:8000
+
+jobs:
+  smoke-test:
+    name: P11 Heuristic Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Install test dependencies
+        run: |
+          pip install requests
+
+      - name: Ensure static-frontend exists
+        shell: bash
+        run: |
+          # FastAPI StaticFiles(directory="static-frontend") requires the dir to exist
+          # Create minimal directory so the API can boot during CI smoke test
+          mkdir -p backend/static-frontend
+          ls -la backend/static-frontend
+
+      - name: Start API server (uvicorn)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          DEBUG: "false"
+          LOG_LEVEL: WARNING
+        run: |
+          nohup python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 > /tmp/api.log 2>&1 &
+          sleep 1
+          echo "--- head /tmp/api.log ---"
+          head -n 50 /tmp/api.log || true
+
+      - name: Wait for API to be ready
+        shell: bash
+        run: |
+          echo "Waiting for API server to be healthy..."
+          for i in {1..30}; do
+            if curl -sSf http://127.0.0.1:8000/health >/dev/null; then
+              echo "API is ready ✅"
+              exit 0
+            fi
+            echo "Attempt $i/30: API not ready, waiting 10s..."
+            sleep 10
+          done
+          echo "API did not become ready in time ❌"
+          echo "--- /tmp/api.log (last 200 lines) ---"
+          tail -n 200 /tmp/api.log || true
+          exit 1
+
+      - name: Test 1 - AI response with "0~10" pattern
+        id: test1
+        run: |
+          python -c "
+          import requests
+          import json
+          import sys
+
+          payload = {
+              'message': '지금 내 불안 정도를 0에서 10까지 평가해줘',
+              'conversation_history': []
+          }
+
+          response = requests.post(
+              '${{ env.API_BASE_URL }}/api/chat',
+              json=payload,
+              headers={'Content-Type': 'application/json'},
+              timeout=120
+          )
+
+          if response.status_code != 200:
+              print(f'FAIL: HTTP {response.status_code}')
+              print(f'Response: {response.text}')
+              sys.exit(1)
+
+          data = response.json()
+          actions = data.get('actions', [])
+          ask_suds_found = any(a.get('type') == 'ask_suds' for a in actions)
+
+          if ask_suds_found:
+              print('PASS: ask_suds action emitted for 0~10 pattern')
+              sys.exit(0)
+          else:
+              print('FAIL: ask_suds action NOT found')
+              print(f'Actions: {json.dumps(actions, ensure_ascii=False)}')
+              sys.exit(1)
+          "
+
+      - name: Test 2 - User inputs number (0-10)
+        id: test2
+        run: |
+          python -c "
+          import requests
+          import json
+          import sys
+
+          payload = {
+              'message': '7',
+              'conversation_history': []
+          }
+
+          response = requests.post(
+              '${{ env.API_BASE_URL }}/api/chat',
+              json=payload,
+              headers={'Content-Type': 'application/json'},
+              timeout=120
+          )
+
+          if response.status_code != 200:
+              print(f'FAIL: HTTP {response.status_code}')
+              print(f'Response: {response.text}')
+              sys.exit(1)
+
+          data = response.json()
+          actions = data.get('actions', [])
+          ask_suds_found = any(a.get('type') == 'ask_suds' for a in actions)
+
+          if ask_suds_found:
+              print('PASS: ask_suds action emitted for number input')
+              sys.exit(0)
+          else:
+              print('FAIL: ask_suds action NOT found')
+              print(f'Actions: {json.dumps(actions, ensure_ascii=False)}')
+              sys.exit(1)
+          "
+
+      - name: Test 3 - User keyword "평가"
+        id: test3
+        run: |
+          python -c "
+          import requests
+          import json
+          import sys
+
+          payload = {
+              'message': '내 기분을 평가하고 싶어요',
+              'conversation_history': []
+          }
+
+          response = requests.post(
+              '${{ env.API_BASE_URL }}/api/chat',
+              json=payload,
+              headers={'Content-Type': 'application/json'},
+              timeout=120
+          )
+
+          if response.status_code != 200:
+              print(f'FAIL: HTTP {response.status_code}')
+              print(f'Response: {response.text}')
+              sys.exit(1)
+
+          data = response.json()
+          actions = data.get('actions', [])
+          ask_suds_found = any(a.get('type') == 'ask_suds' for a in actions)
+
+          if ask_suds_found:
+              print('PASS: ask_suds action emitted for keyword 평가')
+              sys.exit(0)
+          else:
+              print('FAIL: ask_suds action NOT found')
+              print(f'Actions: {json.dumps(actions, ensure_ascii=False)}')
+              sys.exit(1)
+          "
+
+      - name: Summary Report
+        if: always()
+        run: |
+          echo "## P11 Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Case | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Test 1: 0~10 Pattern | ${{ steps.test1.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test 2: Number Input | ${{ steps.test2.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test 3: Keyword 평가 | ${{ steps.test3.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.test1.outcome }}" == "success" ] && \
+             [ "${{ steps.test2.outcome }}" == "success" ] && \
+             [ "${{ steps.test3.outcome }}" == "success" ]; then
+            echo "✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some tests failed. Check logs above.**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "P11 smoke test failed! Check the workflow logs for details."
+          echo "API URL: ${{ env.API_BASE_URL }}/api/chat"
+          echo "--- /tmp/api.log (last 100 lines) ---"
+          tail -n 100 /tmp/api.log || true
