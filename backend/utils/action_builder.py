@@ -24,6 +24,7 @@ _NEGATIVE_EMOTIONS_RAW = {
     "불안함", "불안하다", "불안해",
     "두렵다", "두려워",
     "짜증", "짜증남", "짜증나",
+    "화", "화나", "화남", "화가", "화나다",
 }
 
 # 정규화된 형태로 비교용 세트 구성
@@ -103,6 +104,10 @@ def should_ask_suds(message: str, meta: Dict[str, Any]) -> bool:
 def build_actions(message: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
     """메시지와 메타데이터 기반 액션 리스트 생성
 
+    플로우:
+        1. 부정적 감정 감지 → suggest_eft (EFT 제안)
+        2. SUDS 측정은 별도 (_maybe_emit_ask_suds)
+
     Args:
         message: 사용자 메시지
         meta: 메타데이터
@@ -111,8 +116,14 @@ def build_actions(message: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
         액션 리스트
     """
     try:
+        logger.info(f"[BuildActions] 호출됨 - message: '{message[:30]}', meta keys: {list(meta.keys())}")
+
         if should_ask_suds(message, meta):
-            return [{"type": "ask_suds", "payload": {"measurement_type": "check"}}]
+            # 부정적 감정 감지 시 EFT 제안
+            logger.info(f"[BuildActions] ✅ suggest_eft 액션 생성!")
+            return [{"type": "suggest_eft", "payload": {"reason": "negative_emotion_detected"}}]
+
+        logger.info(f"[BuildActions] ⚠️ 부정적 감정 감지 안 됨")
         return []
     except Exception as e:
         logger.exception(f"❌ build_actions error: {e}")
