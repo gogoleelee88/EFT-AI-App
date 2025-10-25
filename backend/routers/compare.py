@@ -7,6 +7,7 @@ from typing import Optional
 from backend.models.action_tokens import TokenParser, TokenProcessor
 from backend.utils.action_builder import build_actions
 from backend.config.settings import get_settings
+from backend.services.emotion_analyzer import get_emotion_analyzer
 
 router = APIRouter(prefix="/api/chat", tags=["compare"])
 logger = logging.getLogger(__name__)
@@ -153,9 +154,18 @@ async def compare(req: CompareReq, x_api_key: str | None = Header(default=None, 
                 # 둘 다 실패
                 logger.warning("[P11] 두 엔진 모두 실패 - winner_text 빈 문자열")
 
-            # 🔥 완전한 Action 생성 시스템 (3단계)
+            # 🔥 완전한 Action 생성 시스템 (4단계)
             executed_actions = []
             clean_winner_text = winner_text  # 기본값
+
+            # 0️⃣ 감정 분석 (EmotionAnalyzer 활용)
+            emotion_analysis = None
+            try:
+                analyzer = get_emotion_analyzer()
+                emotion_analysis = await analyzer.analyze(req.message)
+                logger.info(f"[EmotionAnalyzer] 감정: {emotion_analysis.primary_emotion}, 강도: {emotion_analysis.intensity:.2f}, 신뢰도: {emotion_analysis.confidence:.2f}")
+            except Exception as e:
+                logger.warning(f"[EmotionAnalyzer] 감정 분석 실패: {e}")
 
             # 1️⃣ 토큰 파이프라인: AI 응답에서 액션 토큰 추출
             try:
@@ -168,7 +178,7 @@ async def compare(req: CompareReq, x_api_key: str | None = Header(default=None, 
                         "session_id": getattr(req, 'session_id', None),
                         "user_id": getattr(req, 'user_id', None),
                         "message": req.message,
-                        "emotion_analysis": None
+                        "emotion_analysis": emotion_analysis
                     }
 
                     action_results = await TokenProcessor().process_tokens(tokens, context=token_context)
@@ -181,7 +191,8 @@ async def compare(req: CompareReq, x_api_key: str | None = Header(default=None, 
             try:
                 meta = {
                     "session_id": getattr(req, 'session_id', None),
-                    "user_id": getattr(req, 'user_id', None)
+                    "user_id": getattr(req, 'user_id', None),
+                    "emotion_analysis": emotion_analysis  # 🔥 EmotionAnalyzer 결과 전달!
                 }
                 actions_from_builder = build_actions(req.message, meta) or []
                 executed_actions.extend(actions_from_builder)

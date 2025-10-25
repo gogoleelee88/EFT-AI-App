@@ -7,6 +7,7 @@
 from typing import List, Dict, Any
 import logging
 from .text_norm import normalize_text
+from backend.models.chat_models import EmotionType
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,65 @@ _NEGATIVE_EMOTIONS_RAW = {
 # 정규화된 형태로 비교용 세트 구성
 NEGATIVE_EMOTIONS = {normalize_text(e) for e in _NEGATIVE_EMOTIONS_RAW}
 
+# 부정적 감정 타입 (EmotionType 기반)
+NEGATIVE_EMOTION_TYPES = {
+    EmotionType.SADNESS,
+    EmotionType.ANGER,
+    EmotionType.FEAR,
+    EmotionType.DISGUST,
+    EmotionType.STRESS,
+    EmotionType.ANXIETY,
+    EmotionType.LONELINESS,
+    EmotionType.FRUSTRATION,
+}
+
+# 감정별 맞춤 조언
+EMOTION_ADVICE = {
+    EmotionType.ANGER: {
+        "emotion_name": "분노",
+        "advice": "분노는 강한 에너지를 동반하는 감정입니다. EFT 탭핑을 통해 이 에너지를 건강하게 방출할 수 있습니다.",
+        "focus": "감정의 에너지 방출"
+    },
+    EmotionType.SADNESS: {
+        "emotion_name": "슬픔",
+        "advice": "슬픔은 자연스러운 감정입니다. EFT를 통해 이 감정을 받아들이고 치유할 수 있습니다.",
+        "focus": "감정 수용과 치유"
+    },
+    EmotionType.ANXIETY: {
+        "emotion_name": "불안",
+        "advice": "불안할 때는 호흡과 함께 EFT 탭핑을 하면 긴장이 풀립니다.",
+        "focus": "긴장 완화와 안정"
+    },
+    EmotionType.STRESS: {
+        "emotion_name": "스트레스",
+        "advice": "누적된 스트레스는 EFT로 단계적으로 해소할 수 있습니다.",
+        "focus": "누적된 긴장 해소"
+    },
+    EmotionType.FEAR: {
+        "emotion_name": "두려움",
+        "advice": "두려움을 직면하는 것이 첫걸음입니다. EFT가 그 과정을 도와드립니다.",
+        "focus": "두려움 직면과 극복"
+    },
+    EmotionType.LONELINESS: {
+        "emotion_name": "외로움",
+        "advice": "외로움을 느낄 때 자기 자신과 연결되는 것이 중요합니다. EFT가 자기 위로를 도와드립니다.",
+        "focus": "자기 연결과 위로"
+    },
+    EmotionType.FRUSTRATION: {
+        "emotion_name": "좌절",
+        "advice": "좌절감은 막힌 에너지입니다. EFT로 이 막힘을 풀어줄 수 있습니다.",
+        "focus": "막힌 에너지 해소"
+    },
+    EmotionType.DISGUST: {
+        "emotion_name": "혐오",
+        "advice": "불편한 감정을 인정하고 EFT로 정화할 수 있습니다.",
+        "focus": "감정 정화"
+    },
+}
+
 # 모듈 로드 확인
 logger.info(f"[ACTION_BUILDER] Loaded with {len(NEGATIVE_EMOTIONS)} normalized negative emotions")
+logger.info(f"[ACTION_BUILDER] EmotionType-based advice for {len(EMOTION_ADVICE)} emotions")
 
 
 def _to_plain_dict(obj: Any) -> Dict[str, Any]:
@@ -63,65 +121,102 @@ def _to_plain_dict(obj: Any) -> Dict[str, Any]:
         return {}
 
 
-def should_ask_suds(message: str, meta: Dict[str, Any]) -> bool:
-    """SUDS 측정 요청 필요 여부 판단
+def should_suggest_eft(message: str, meta: Dict[str, Any]) -> tuple[bool, Dict[str, Any]]:
+    """EFT 제안 필요 여부 및 감정 정보 반환
 
     규칙:
-        1) emotion_analysis.primary_emotion이 부정적 감정이고 intensity >= 0.4 → True
-        2) (백업) message에 부정 감정 키워드 포함 → True
-        3) 그 외 → False
+        1) EmotionAnalyzer의 emotion_analysis가 있으면 우선 사용
+        2) 부정적 감정이고 intensity >= 0.4 → True + 감정 정보
+        3) (백업) 메시지에 부정 감정 키워드 포함 → True + 기본 정보
+        4) 그 외 → False + 빈 정보
 
     Args:
         message: 사용자 메시지
         meta: 메타데이터 (emotion_analysis 포함)
 
     Returns:
-        SUDS 측정 필요 여부
+        (EFT 제안 필요 여부, 감정 정보 딕셔너리)
     """
-    # emotion_analysis를 안전하게 딕셔너리로 변환
-    emotion_analysis = _to_plain_dict(meta.get("emotion_analysis"))
+    emotion_info = {}
 
-    # 감정과 강도 추출 및 정규화
-    primary = normalize_text(emotion_analysis.get("primary_emotion"))
-    intensity = float(emotion_analysis.get("intensity", 0) or 0)
+    # 규칙 1: EmotionAnalyzer 결과 우선 사용
+    emotion_analysis = meta.get("emotion_analysis")
+    if emotion_analysis:
+        # Pydantic 모델인 경우 처리
+        if hasattr(emotion_analysis, 'primary_emotion'):
+            primary_emotion = emotion_analysis.primary_emotion
+            intensity = emotion_analysis.intensity
+            confidence = emotion_analysis.confidence
 
-    # 규칙 1: 부정 감정 + 충분한 강도
-    if primary in NEGATIVE_EMOTIONS and intensity >= 0.4:
-        logger.info(f"✅ SUDS trigger: emotion='{primary}', intensity={intensity:.2f}")
-        return True
+            # 부정적 감정이고 충분한 강도인 경우
+            if primary_emotion in NEGATIVE_EMOTION_TYPES and intensity >= 0.4:
+                # 감정별 맞춤 조언 생성
+                advice_data = EMOTION_ADVICE.get(primary_emotion, {
+                    "emotion_name": str(primary_emotion.value),
+                    "advice": "EFT 탭핑을 통해 감정을 조절할 수 있습니다.",
+                    "focus": "감정 조절"
+                })
 
-    # 규칙 2 (백업): 메시지 자체에 부정 감정 키워드 포함
+                emotion_info = {
+                    "emotion": advice_data["emotion_name"],
+                    "emotion_type": primary_emotion.value,
+                    "intensity": round(intensity, 2),
+                    "confidence": round(confidence, 2),
+                    "advice": advice_data["advice"],
+                    "focus": advice_data["focus"],
+                    "detected_by": "EmotionAnalyzer"
+                }
+
+                logger.info(f"✅ EFT 제안: {emotion_info['emotion']} (강도: {intensity:.2f}, 신뢰도: {confidence:.2f})")
+                return True, emotion_info
+
+    # 규칙 2 (백업): 키워드 매칭
     msg_norm = normalize_text(message)
     for keyword in NEGATIVE_EMOTIONS:
         if keyword in msg_norm:
-            logger.info(f"✅ SUDS trigger (fallback): keyword='{keyword}' in message")
-            return True
+            emotion_info = {
+                "emotion": "부정적 감정",
+                "keyword": keyword,
+                "advice": "감지된 부정적 감정에 대해 EFT 탭핑을 시도해보세요.",
+                "detected_by": "keyword_matching"
+            }
+            logger.info(f"✅ EFT 제안 (백업): keyword='{keyword}' in message")
+            return True, emotion_info
 
-    logger.debug(f"⏭️  SUDS skip: emotion='{primary}', intensity={intensity:.2f}")
-    return False
+    logger.debug(f"⏭️  EFT 제안 스킵: 부정적 감정 감지 안 됨")
+    return False, {}
 
 
 def build_actions(message: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
     """메시지와 메타데이터 기반 액션 리스트 생성
 
     플로우:
-        1. 부정적 감정 감지 → suggest_eft (EFT 제안)
-        2. SUDS 측정은 별도 (_maybe_emit_ask_suds)
+        1. EmotionAnalyzer로 감정 분석
+        2. 부정적 감정 감지 → suggest_eft (감정별 맞춤 조언 포함)
+        3. SUDS 측정은 별도 (_maybe_emit_ask_suds)
 
     Args:
         message: 사용자 메시지
-        meta: 메타데이터
+        meta: 메타데이터 (emotion_analysis 포함)
 
     Returns:
-        액션 리스트
+        액션 리스트 (감정 정보 및 맞춤 조언 포함)
     """
     try:
         logger.info(f"[BuildActions] 호출됨 - message: '{message[:30]}', meta keys: {list(meta.keys())}")
 
-        if should_ask_suds(message, meta):
-            # 부정적 감정 감지 시 EFT 제안
-            logger.info(f"[BuildActions] ✅ suggest_eft 액션 생성!")
-            return [{"type": "suggest_eft", "payload": {"reason": "negative_emotion_detected"}}]
+        # EFT 제안 필요 여부 확인 + 감정 정보 받기
+        should_suggest, emotion_info = should_suggest_eft(message, meta)
+
+        if should_suggest:
+            # 부정적 감정 감지 시 EFT 제안 (감정 정보 포함)
+            payload = {
+                "reason": "negative_emotion_detected",
+                **emotion_info  # 감정 정보 및 맞춤 조언 포함
+            }
+
+            logger.info(f"[BuildActions] ✅ suggest_eft 액션 생성! 감정: {emotion_info.get('emotion', 'N/A')}")
+            return [{"type": "suggest_eft", "payload": payload}]
 
         logger.info(f"[BuildActions] ⚠️ 부정적 감정 감지 안 됨")
         return []
