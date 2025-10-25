@@ -11,6 +11,7 @@ from fastapi import HTTPException, Request
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
 from backend.services.circuit_breaker import get_circuit_breaker, retry_with_exponential_backoff
+from backend.utils.action_builder import build_actions
 
 import os  # ← 추가
 
@@ -205,14 +206,50 @@ class VLLMProxy:
                 else:
                     faster = "none"
 
+                # 메시지 추출 (payload에서)
+                user_message = ""
+                if "messages" in payload and isinstance(payload["messages"], list) and len(payload["messages"]) > 0:
+                    last_msg = payload["messages"][-1]
+                    if isinstance(last_msg, dict) and "content" in last_msg:
+                        user_message = last_msg["content"]
+
+                # 간단한 감정 분석 (키워드 기반)
+                metadata = {}
+                if user_message:
+                    emotion_keywords = {
+                        "불안": ["불안", "걱정", "두려", "무서"],
+                        "스트레스": ["스트레스", "힘들", "지쳐", "피곤"],
+                        "외로움": ["외로", "쓸쓸", "혼자"],
+                        "슬픔": ["슬프", "우울", "눈물"]
+                    }
+
+                    detected_emotion = "중립"
+                    intensity = 0.3
+
+                    msg_lower = user_message.lower()
+                    for emotion, keywords in emotion_keywords.items():
+                        if any(kw in msg_lower for kw in keywords):
+                            detected_emotion = emotion
+                            intensity = 0.6
+                            break
+
+                    metadata["emotion_analysis"] = {
+                        "primary_emotion": detected_emotion,
+                        "intensity": intensity
+                    }
+
+                # 액션 생성
+                actions = build_actions(user_message, metadata) if user_message else []
+
                 result = {
                     "llama3_response": a,
                     "qwen25_response": b,
                     "faster_model": faster,
                     "comparison_time": total_ms,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "actions": actions  # 액션 추가!
                 }
-                logger.info(f"A/B 완료: total={total_ms:.1f}ms a={a_ms:.1f}ms b={b_ms:.1f}ms faster={faster}")
+                logger.info(f"A/B 완료: total={total_ms:.1f}ms a={a_ms:.1f}ms b={b_ms:.1f}ms faster={faster} actions={len(actions)}")
                 return result
 
             except httpx.TimeoutException as e:
