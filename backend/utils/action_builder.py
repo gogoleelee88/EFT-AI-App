@@ -1,43 +1,119 @@
-"""액션 생성 유틸리티"""
+"""액션 생성 유틸리티
+
+부정적 감정 감지 시 SUDS 측정 요청 액션 생성.
+문자열 정규화를 통한 안정적인 감정 매칭.
+"""
+
 from typing import List, Dict, Any
-import re
+import logging
+from .text_norm import normalize_text
+
+logger = logging.getLogger(__name__)
+
+
+# 원본 부정적 감정 목록 (표제어 + 흔한 변형)
+_NEGATIVE_EMOTIONS_RAW = {
+    # 영문
+    "sadness", "anger", "fear", "disgust",
+    "stress", "anxiety", "loneliness", "frustration",
+    # 한글 표제어
+    "슬픔", "분노", "두려움", "혐오",
+    "스트레스", "불안", "외로움", "좌절",
+    # 한글 일상 표현 변형
+    "외롭다", "외로워", "외롭고",
+    "불안함", "불안하다", "불안해",
+    "두렵다", "두려워",
+    "짜증", "짜증남", "짜증나",
+}
+
+# 정규화된 형태로 비교용 세트 구성
+NEGATIVE_EMOTIONS = {normalize_text(e) for e in _NEGATIVE_EMOTIONS_RAW}
+
+# 모듈 로드 확인
+logger.info(f"[ACTION_BUILDER] Loaded with {len(NEGATIVE_EMOTIONS)} normalized negative emotions")
+
+
+def _to_plain_dict(obj: Any) -> Dict[str, Any]:
+    """Pydantic 모델이나 객체를 일반 딕셔너리로 변환
+
+    Args:
+        obj: 변환할 객체 (dict, Pydantic 모델, 기타 객체)
+
+    Returns:
+        평탄화된 딕셔너리
+    """
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+
+    # Pydantic v2
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+
+    # Pydantic v1
+    if hasattr(obj, "dict"):
+        return obj.dict()
+
+    # 최후 수단: 속성 기반 변환
+    try:
+        return {k: getattr(obj, k) for k in dir(obj) if not k.startswith("_")}
+    except Exception:
+        return {}
+
 
 def should_ask_suds(message: str, meta: Dict[str, Any]) -> bool:
-    """SUDS 측정 요청 필요 여부 판단(자연스러운 대화 흐름 반영)"""
-    raw = (message or "").strip()
-    msg = raw.lower()
+    """SUDS 측정 요청 필요 여부 판단
 
-    # 1) 숫자만 입력 (0~10)
-    if re.fullmatch(r"\s*(?:10|[0-9])\s*", msg):
+    규칙:
+        1) emotion_analysis.primary_emotion이 부정적 감정이고 intensity >= 0.4 → True
+        2) (백업) message에 부정 감정 키워드 포함 → True
+        3) 그 외 → False
+
+    Args:
+        message: 사용자 메시지
+        meta: 메타데이터 (emotion_analysis 포함)
+
+    Returns:
+        SUDS 측정 필요 여부
+    """
+    # emotion_analysis를 안전하게 딕셔너리로 변환
+    emotion_analysis = _to_plain_dict(meta.get("emotion_analysis"))
+
+    # 감정과 강도 추출 및 정규화
+    primary = normalize_text(emotion_analysis.get("primary_emotion"))
+    intensity = float(emotion_analysis.get("intensity", 0) or 0)
+
+    # 규칙 1: 부정 감정 + 충분한 강도
+    if primary in NEGATIVE_EMOTIONS and intensity >= 0.4:
+        logger.info(f"✅ SUDS trigger: emotion='{primary}', intensity={intensity:.2f}")
         return True
 
-    # 2) EFT 시작 의사/가이드 요청
-    eft_triggers = ["eft", "탭핑", "두드리기", "시작하고 싶", "시작해보", "해보고 싶", "첫 단계", "어떡게 시작", "안내해줘"]
-    if any(kw in msg for kw in eft_triggers):
-        return True
+    # 규칙 2 (백업): 메시지 자체에 부정 감정 키워드 포함
+    msg_norm = normalize_text(message)
+    for keyword in NEGATIVE_EMOTIONS:
+        if keyword in msg_norm:
+            logger.info(f"✅ SUDS trigger (fallback): keyword='{keyword}' in message")
+            return True
 
-    # 3) 감정 고조 + 도움/가이드 요청 동시
-    emotion_kw = ["불안", "초조", "긴장", "짜증", "화가", "우울", "답답", "막막", "서럽", "눈물", "두근", "공황", "패닉"]
-    help_kw = ["도와줘", "도움", "가라앉히", "진정", "뭐부터", "어떻게 해야", "어떻게 해"]
-    if any(k in raw for k in emotion_kw) and any(k in raw for k in help_kw):
-        return True
-
-    # 4) 기존 SUDS/점수 직접 언급
-    if any(kw in msg for kw in ["suds", "점수", "평가", "몇 점", "기분", "감정"]):
-        return True
-
-    # 5) 메타 플래그
-    if (meta or {}).get("request_suds"):
-        return True
-
+    logger.debug(f"⏭️  SUDS skip: emotion='{primary}', intensity={intensity:.2f}")
     return False
 
+
 def build_actions(message: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """메시지와 메타데이터 기반 액션 리스트 생성"""
-    result: List[Dict[str, Any]] = []
+    """메시지와 메타데이터 기반 액션 리스트 생성
+
+    Args:
+        message: 사용자 메시지
+        meta: 메타데이터
+
+    Returns:
+        액션 리스트
+    """
     try:
         if should_ask_suds(message, meta):
-            result.append({"type": "ask_suds", "payload": {"measurement_type": "check"}})
-    except Exception:
+            return [{"type": "ask_suds", "payload": {"measurement_type": "check"}}]
         return []
-    return result
+    except Exception as e:
+        logger.exception(f"❌ build_actions error: {e}")
+        return []
