@@ -68,6 +68,17 @@ def _looks_negative(message: str) -> bool:
     return any(k in msg for k in NEGATIVE_EMOTIONS)
 
 
+def _build_suggest_eft(*, detected_by: str) -> Dict[str, Any]:
+    return {
+        "type": "suggest_eft",
+        "payload": {
+            "reason": "negative_emotion_detected",
+            "technique": "tapping_points",
+            "detected_by": detected_by,
+        },
+    }
+
+
 def _build_banner_ask_suds(*, detected_by: str) -> Dict[str, Any]:
     return {
         "type": "ask_suds",
@@ -87,16 +98,7 @@ def _build_banner_ask_suds(*, detected_by: str) -> Dict[str, Any]:
 def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     if _looks_negative(message):
-        actions.append(
-            {
-                "type": "suggest_eft",
-                "payload": {
-                    "reason": "negative_emotion_detected",
-                    "technique": "tapping_points",
-                    "detected_by": "final_fallback",
-                },
-            }
-        )
+        actions.append(_build_suggest_eft(detected_by="final_fallback"))
     actions.append(_build_banner_ask_suds(detected_by="final_fallback"))
     return actions
 
@@ -277,15 +279,26 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             except Exception as e:
                 logger.warning("[COMPARE] ask_suds skipped: %r", e)
 
+            has_suggest_eft = any(
+                isinstance(a, dict) and a.get("type") == "suggest_eft" for a in executed_actions
+            )
             has_ask_suds = any(
                 isinstance(a, dict) and a.get("type") == "ask_suds" for a in executed_actions
             )
 
+            negative_hint = _looks_negative(req.message)
+            if not negative_hint and emotion_analysis is not None:
+                primary = getattr(emotion_analysis, "primary_emotion", None)
+                if isinstance(primary, str) and normalize_text(primary) in NEGATIVE_EMOTIONS:
+                    negative_hint = True
+
             if not executed_actions:
                 executed_actions.extend(_final_fallback_build(req.message))
-                has_ask_suds = True
-            elif not has_ask_suds:
-                executed_actions.append(_build_banner_ask_suds(detected_by="compare_guard"))
+            else:
+                if negative_hint and not has_suggest_eft:
+                    executed_actions.insert(0, _build_suggest_eft(detected_by="compare_guard"))
+                if not has_ask_suds:
+                    executed_actions.append(_build_banner_ask_suds(detected_by="compare_guard"))
 
             normalized: List[Dict[str, Any]] = []
             for a in executed_actions:
