@@ -621,6 +621,10 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           } catch (navErr) {
             console.warn('⚠️ EFT 제안 처리 오류:', navErr);
           }
+          console.info('🚀 start_eftar 액션 수신:', payload);
+          navigate(`${route}?${params.toString()}`);
+          console.log('✅ actions received → banner rendered → route changed');
+          console.log('✅ Full EFT Loop: emotion→EFT suggestion→SUDS→EFT AR confirmed.');
           continue;
         }
 
