@@ -764,10 +764,14 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
             response: vllmResponse.choices?.[0]?.message?.content ?? '',
             emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, confidence: 0.5, triggers: [] },
             eft_recommendations: [],
+            suggested_actions: [],
             confidence_score: 0.8,
             processing_time: 0,
+            timestamp: new Date().toISOString(),
+            requires_followup: false,
             emergency_detected: false,
-            professional_referral: false
+            professional_referral: false,
+            response_id: `fallback-${Date.now()}`
           };
         }
 
@@ -776,7 +780,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       }
       
       // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌
-      const actionResults = serverResponse.actions ?? [];
+      const actionResults = serverResponse.suggested_actions ?? [];
       let reply = serverResponse.response ?? '';
 
       // 🎬 액션 토큰 처리 (ask_suds, recommend_eft 등)
