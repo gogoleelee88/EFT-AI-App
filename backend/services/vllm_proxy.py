@@ -126,7 +126,7 @@ class VLLMProxy:
             overall = "healthy" if all(r.get("status") == "healthy" for r in results.values()) else "degraded"
             return {"overall_status": overall, "upstreams": results}
 
-    async def chat_ab_parallel(self, payload: Dict[str, Any], request: Optional[Request] = None) -> Dict[str, Any]:
+    async def chat_ab_parallel(self, payload: Dict[str, Any], request: Optional[Request] = None, message: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Engine A/B 병렬 채팅 요청"""
         payload_a = {**payload, "model": "engine-a"}
         payload_b = {**payload, "model": "engine-b"}
@@ -213,9 +213,13 @@ class VLLMProxy:
                     if isinstance(last_msg, dict) and "content" in last_msg:
                         user_message = last_msg["content"]
 
-                # 간단한 감정 분석 (키워드 기반)
-                metadata = {}
-                if user_message:
+                # metadata가 제공되지 않으면 기본값 사용 (더 빠른 모델의 응답으로 감정 분석)
+                if metadata is None:
+                    metadata = {}
+
+                # 감정 분석이 없으면 간단한 기본 감정 생성 (실제로는 EmotionAnalyzer를 사용해야 하지만 순환 참조 방지)
+                if "emotion_analysis" not in metadata and user_message:
+                    # 간단한 감정 추론 (키워드 기반)
                     emotion_keywords = {
                         "불안": ["불안", "걱정", "두려", "무서"],
                         "스트레스": ["스트레스", "힘들", "지쳐", "피곤"],
