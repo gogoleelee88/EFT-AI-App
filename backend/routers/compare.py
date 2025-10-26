@@ -300,7 +300,7 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             else:
                 if negative_hint and not has_suggest_eft:
                     executed_actions.insert(0, _build_suggest_eft(detected_by="compare_guard"))
-                if not has_ask_suds:
+                if negative_hint and not has_ask_suds:
                     executed_actions.append(_build_banner_ask_suds(detected_by="compare_guard"))
 
             normalized: List[Dict[str, Any]] = []
