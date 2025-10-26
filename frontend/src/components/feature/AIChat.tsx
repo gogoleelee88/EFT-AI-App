@@ -621,6 +621,10 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           } catch (navErr) {
             console.warn('⚠️ EFT 제안 처리 오류:', navErr);
           }
+          console.info('🚀 start_eftar 액션 수신:', payload);
+          navigate(`${route}?${params.toString()}`);
+          console.log('✅ actions received → banner rendered → route changed');
+          console.log('✅ Full EFT Loop: emotion→EFT suggestion→SUDS→EFT AR confirmed.');
           continue;
         }
 
@@ -981,6 +985,28 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     inputRef.current?.focus();
   };
 
+  const submitSudsScore = async (score: number, measurementType: 'pre' | 'post' | 'check') => {
+    const res = await recordSuds({
+      score,
+      source: 'compare',
+    });
+
+    if (!res || !res.ok) {
+      console.warn('⚠️ SUDS 제출 실패', res);
+      return false;
+    }
+
+    console.info('✅ SUDS 제출 성공', { measurementType, res });
+    if (Array.isArray(res.actions) && res.actions.length > 0) {
+      console.log('🎯 suds.record actions:', res.actions);
+      handleActionTokens(res.actions);
+    } else {
+      console.warn('⚠️ suds.record 응답에 actions가 없습니다', res);
+    }
+
+    return true;
+  };
+
   // 🧾 SUDS 배너 제출 핸들러
   const handleSubmitSuds = async () => {
     if (typeof window === 'undefined') return;
@@ -993,31 +1019,16 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
 
     const measurementType = pendingSuds.measurementType ?? 'check';
-    const res = await recordSuds({
-      score: value,
-      source: 'compare',
-    });
-
-    if (!res || !res.ok) {
-      console.warn('⚠️ SUDS 제출 실패', res);
+    const ok = await submitSudsScore(value, measurementType);
+    if (!ok) {
       return;
     }
 
-    console.info('✅ SUDS 제출 성공', { measurementType, res });
-    if (Array.isArray(res.actions) && res.actions.length > 0) {
-      console.log('🎯 suds.record actions:', res.actions);
-      handleActionTokens(res.actions);
-    }
-
-    // 배너 닫기
     setPendingSuds(null);
     setLocalSuds('');
 
-    // 토스트 알림 (SSR 가드)
     if (typeof window !== 'undefined') {
       console.info('📢 SUDS 완료 토스트 표시');
-      // 실제 토스트 UI는 추후 toast 라이브러리 통합 시 구현
-      // 현재는 로그로 대체
     }
   };
 
@@ -1028,11 +1039,15 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     const sessionId = session.sessionId;
     const canPersistToBackend = typeof sessionId === 'string' && sessionId.length > 0;
     const turnId = pendingSuds.turnId ?? `ui_${Date.now()}`;
-    const { measurementType, context } = pendingSuds;
+    const { measurementType = 'check', context } = pendingSuds;
+
+    const ok = await submitSudsScore(score, measurementType);
+    if (!ok) {
+      return;
+    }
 
     try {
       if (canPersistToBackend) {
-        // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
         const sudsUrl = joinUrl(API_BASE_URL, `/api/memory/${sessionId}/suds`);
         const response = await fetch(sudsUrl, {
           method: 'POST',
@@ -1064,15 +1079,12 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         });
       }
 
-      // 인라인 카드 제거
       setPendingSuds(null);
 
-      // EFT 세션 중이었다면 완료 처리
       if (context?.includes('eft_complete')) {
         eftSessionHook.completeEFTSession();
       }
 
-      // 피드백 메시지 추가
       const feedbackMessage: Message = {
         role: 'ai',
         content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
@@ -1081,7 +1093,6 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       };
       setMessages(prev => [...prev, feedbackMessage]);
 
-      // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
       if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
         try {
           const statsUrl = joinUrl(API_BASE_URL, `/api/memory/${sessionId}/stats`);

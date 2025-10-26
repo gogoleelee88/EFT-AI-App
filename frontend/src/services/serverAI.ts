@@ -53,6 +53,14 @@ function headersCompat(
 export type Provider = 'local_vllm' | 'openai' | 'anthropic' | 'qwen';
 const provider: Provider = (import.meta.env.VITE_PROVIDER as Provider) ?? 'local_vllm';
 
+const NEGATIVE_SUDS_KEYWORDS = [
+  '불안', '스트레스', '힘들', '힘들어', '힘들어요', '우울', '우울해', '우울하다',
+  '짜증', '화나', '화나요', '화가', '걱정', '걱정돼', '걱정돼요', '슬퍼', '슬퍼요',
+  '외로워', '외롭다', '외로움', '무서워', '두려워', '답답해', '답답하다', '괴로워',
+  '상처', '서러워', '절망', '힘들었습니다', '지쳤', 'burned out', 'stressed', 'anxious',
+  'depressed', 'sad', 'angry', 'afraid', 'scared', 'lonely', 'frustrated', 'overwhelmed'
+];
+
 // EFT 전문 시스템 프롬프트
 const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사입니다.
 
@@ -425,26 +433,26 @@ class ServerAI {
     const userLower = (userText || '').toLowerCase().trim();
     const aiLower = (aiText || '').toLowerCase().trim();
 
-    // 패턴 1: 사용자가 숫자만 입력 (0-10)
-    if (/^\s*(?:10|[0-9])\s*$/.test(userLower)) {
+    const hasNegativeCue = NEGATIVE_SUDS_KEYWORDS.some((keyword) => userLower.includes(keyword));
+    if (hasNegativeCue) {
       if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-        console.log('[P11 A-option] 패턴 1 매칭: 숫자 입력');
+        console.log('[P11 A-option] 부정 감정 키워드 감지:', userText);
       }
       return true;
     }
 
-    // 패턴 2: AI 응답에 "0~10", "0에서 10", "0-10" 포함
+    // 패턴 1: AI 응답에 "0~10", "0에서 10", "0-10" 포함
     if (/0\s*[-~]\s*10|0에서\s*10|0\s*~\s*10/.test(aiLower)) {
       if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-        console.log('[P11 A-option] 패턴 2 매칭: AI 0~10 유도');
+        console.log('[P11 A-option] 패턴 1 매칭: AI 0~10 유도');
       }
       return true;
     }
 
-    // 패턴 3: 사용자 키워드 - "평가", "점수", "몇 점", "suds"
+    // 패턴 2: 사용자 키워드 - "평가", "점수", "몇 점", "suds"
     if (/(평가|점수|몇\s*점|suds)/.test(userLower)) {
       if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-        console.log('[P11 A-option] 패턴 3 매칭: 평가 키워드');
+        console.log('[P11 A-option] 패턴 2 매칭: 평가 키워드');
       }
       return true;
     }
