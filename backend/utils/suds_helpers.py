@@ -1,20 +1,35 @@
 from __future__ import annotations
+
 import re
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 _PAT_KO_CUE = re.compile(r"(0\s*~\s*10|0\s*-\s*10|점수|평가|수치|몇\s*점)", re.IGNORECASE)
+_PAT_NUMERIC_SUDS = re.compile(r"^\s*(\d{1,2}(?:\.\d+)?)\s*$")
+
+
+def is_suds_numeric_response(text: Optional[str]) -> bool:
+    if not text:
+        return False
+    match = _PAT_NUMERIC_SUDS.match(text)
+    if not match:
+        return False
+    try:
+        value = float(match.group(1))
+    except (TypeError, ValueError):
+        return False
+    return 0.0 <= value <= 10.0
+
 
 def _maybe_emit_ask_suds(*, user_text: str, assistant_text: Optional[str]) -> Optional[Dict[str, Any]]:
-    """
-    AI 응답/사용자 텍스트에 0~10 점수 유도 신호가 보이면 ask_suds 액션을 생성한다.
-    프론트 미구현 상황에서도 안전하게 뜨도록 배너 기본 UI를 포함한다.
-    """
+    """사용자/어시스턴트 텍스트에서 SUDS 측정 유도 신호를 감지하여 배너 액션을 생성."""
     u = (user_text or "").strip()
+    if is_suds_numeric_response(u):
+        return None
     a = (assistant_text or "").strip()
     trigger = (
-        ("0" in a and "10" in a) or
-        bool(_PAT_KO_CUE.search(a)) or
-        bool(_PAT_KO_CUE.search(u))
+        ("0" in a and "10" in a)
+        or bool(_PAT_KO_CUE.search(a))
+        or bool(_PAT_KO_CUE.search(u))
     )
     if not trigger:
         return None

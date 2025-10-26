@@ -15,7 +15,7 @@ from backend.services.emotion_analyzer import get_emotion_analyzer
 from backend.utils.action_builder import NEGATIVE_EMOTIONS, build_actions
 from backend.utils.action_contract import normalize_start_eftar
 from backend.utils.action_guard import guard_actions
-from backend.utils.suds_helpers import _maybe_emit_ask_suds
+from backend.utils.suds_helpers import _maybe_emit_ask_suds, is_suds_numeric_response
 from backend.utils.text_norm import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -96,11 +96,14 @@ def _build_banner_ask_suds(*, detected_by: str) -> Dict[str, Any]:
 
 
 def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
-    actions: List[Dict[str, Any]] = []
-    if _looks_negative(message):
-        actions.append(_build_suggest_eft(detected_by="final_fallback"))
-    actions.append(_build_banner_ask_suds(detected_by="final_fallback"))
-    return actions
+    if is_suds_numeric_response(message):
+        return []
+    if not _looks_negative(message):
+        return []
+    return [
+        _build_suggest_eft(detected_by="final_fallback"),
+        _build_banner_ask_suds(detected_by="final_fallback"),
+    ]
 
 
 @router.post("/compare")
