@@ -288,9 +288,24 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             response.headers["X-Debug-Actions"] = str(len(executed_actions))
             response.headers["Cache-Control"] = "no-store"
 
+            llama3_obj = {
+                "model": ENGINE_A_MODEL,
+                "success": True,
+                "response": response_a_clean,
+                "text": response_a_clean,
+                "raw": response_a_raw,
+            }
+            qwen25_obj = {
+                "model": ENGINE_B_MODEL,
+                "success": True,
+                "response": response_b_clean,
+                "text": response_b_clean,
+                "raw": response_b_raw,
+            }
+
             return {
-                "llama3_response": {"text": response_a_clean, "raw": response_a_raw},
-                "qwen25_response": {"text": response_b_clean, "raw": response_b_raw},
+                "llama3_response": llama3_obj,
+                "qwen25_response": qwen25_obj,
                 "actions": executed_actions,
             }
         except Exception as e:

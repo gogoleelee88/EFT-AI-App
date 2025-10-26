@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 
 class StartEFTARv1(BaseModel):
-    type: str = Field(default="start_eftar", const=True)
+    type: Literal["start_eftar"] = Field(default="start_eftar")
     payload: Dict[str, Any]
 
     @classmethod
