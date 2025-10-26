@@ -12,6 +12,7 @@ from backend.models.action_tokens import TokenParser, TokenProcessor
 from backend.services.emotion_analyzer import get_emotion_analyzer
 from backend.utils.action_builder import NEGATIVE_EMOTIONS, build_actions
 from backend.utils.action_contract import normalize_start_eftar
+from backend.utils.action_guard import guard_actions
 from backend.utils.suds_helpers import _maybe_emit_ask_suds
 from backend.utils.text_norm import normalize_text
 
@@ -65,6 +66,22 @@ def _looks_negative(message: str) -> bool:
     return any(k in msg for k in NEGATIVE_EMOTIONS)
 
 
+def _build_banner_ask_suds(*, detected_by: str) -> Dict[str, Any]:
+    return {
+        "type": "ask_suds",
+        "payload": {
+            "measurement_type": "check",
+            "detected_by": detected_by,
+            "ui": "banner",
+            "title": "지금 느낌을 0~10으로 평가해 볼까요?",
+            "message": "0은 전혀 불편하지 않음, 10은 가장 심함을 뜻해요.",
+            "ctaLabel": "지금 평가하기",
+            "scale_min": 0,
+            "scale_max": 10,
+        },
+    }
+
+
 def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     if _looks_negative(message):
@@ -78,21 +95,7 @@ def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
                 },
             }
         )
-    actions.append(
-        {
-            "type": "ask_suds",
-            "payload": {
-                "measurement_type": "check",
-                "detected_by": "final_fallback",
-                "ui": "banner",
-                "title": "지금 느낌을 0~10으로 평가해 볼까요?",
-                "message": "0은 전혀 불편하지 않음, 10은 가장 심함을 뜻해요.",
-                "ctaLabel": "지금 평가하기",
-                "scale_min": 0,
-                "scale_max": 10,
-            },
-        }
-    )
+    actions.append(_build_banner_ask_suds(detected_by="final_fallback"))
     return actions
 
 
@@ -265,12 +268,20 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                     ask["payload"].setdefault("ctaLabel", "지금 평가하기")
                     ask["payload"].setdefault("scale_min", 0)
                     ask["payload"].setdefault("scale_max", 10)
+                    ask["payload"].setdefault("measurement_type", "check")
                     executed_actions.append(ask)
             except Exception as e:
                 logger.warning("[COMPARE] ask_suds skipped: %r", e)
 
+            has_ask_suds = any(
+                isinstance(a, dict) and a.get("type") == "ask_suds" for a in executed_actions
+            )
+
             if not executed_actions:
                 executed_actions.extend(_final_fallback_build(req.message))
+                has_ask_suds = True
+            elif not has_ask_suds:
+                executed_actions.append(_build_banner_ask_suds(detected_by="compare_guard"))
 
             normalized: List[Dict[str, Any]] = []
             for a in executed_actions:
@@ -286,9 +297,15 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 else:
                     normalized.append(a)
             executed_actions = normalized
+            executed_actions, sha = guard_actions(executed_actions)
 
-            response.headers["Access-Control-Expose-Headers"] = "X-Debug-Actions"
-            response.headers["X-Debug-Actions"] = str(len(executed_actions))
+            types_summary = ",".join(a.get("type", "") for a in executed_actions if isinstance(a, dict)) or "none"
+            response.headers["Access-Control-Expose-Headers"] = (
+                "X-Debug-Actions,X-Actions-Hash,X-Actions-Count"
+            )
+            response.headers["X-Debug-Actions"] = types_summary
+            response.headers["X-Actions-Hash"] = sha
+            response.headers["X-Actions-Count"] = str(len(executed_actions))
             response.headers["Cache-Control"] = "no-store"
 
             llama3_obj = {
