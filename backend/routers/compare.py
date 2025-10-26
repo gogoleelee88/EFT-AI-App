@@ -66,17 +66,19 @@ def _looks_negative(message: str) -> bool:
 
 
 def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
-    if not _looks_negative(message):
-        return []
-    return [
-        {
-            "type": "suggest_eft",
-            "payload": {
-                "reason": "negative_emotion_detected",
-                "technique": "tapping_points",
-                "detected_by": "final_fallback",
-            },
-        },
+    actions: List[Dict[str, Any]] = []
+    if _looks_negative(message):
+        actions.append(
+            {
+                "type": "suggest_eft",
+                "payload": {
+                    "reason": "negative_emotion_detected",
+                    "technique": "tapping_points",
+                    "detected_by": "final_fallback",
+                },
+            }
+        )
+    actions.append(
         {
             "type": "ask_suds",
             "payload": {
@@ -89,8 +91,9 @@ def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
                 "scale_min": 0,
                 "scale_max": 10,
             },
-        },
-    ]
+        }
+    )
+    return actions
 
 
 @router.post("/compare")
