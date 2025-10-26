@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 import logging
 from .text_norm import normalize_text
 from backend.models.chat_models import EmotionType
+from backend.utils.suds_helpers import _maybe_emit_ask_suds
 
 logger = logging.getLogger(__name__)
 
@@ -221,21 +222,35 @@ def build_actions(message: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
     try:
         logger.info(f"[BuildActions] 호출됨 - message: '{message[:30]}', meta keys: {list(meta.keys())}")
 
+        actions: List[Dict[str, Any]] = []
+
         # EFT 제안 필요 여부 확인 + 감정 정보 받기
         should_suggest, emotion_info = should_suggest_eft(message, meta)
 
         if should_suggest:
-            # 부정적 감정 감지 시 EFT 제안 (감정 정보 포함)
             payload = {
                 "reason": "negative_emotion_detected",
-                **emotion_info  # 감정 정보 및 맞춤 조언 포함
+                **emotion_info,
             }
+            logger.info(
+                "[BuildActions] ✅ suggest_eft 액션 생성! 감정: %s",
+                emotion_info.get("emotion", "N/A"),
+            )
+            actions.insert(0, {"type": "suggest_eft", "payload": payload})
+        else:
+            logger.info("[BuildActions] ⚠️ 부정적 감정 감지 안 됨")
 
-            logger.info(f"[BuildActions] ✅ suggest_eft 액션 생성! 감정: {emotion_info.get('emotion', 'N/A')}")
-            return [{"type": "suggest_eft", "payload": payload}]
+        assistant_text = None
+        if isinstance(meta, dict):
+            assistant_text = meta.get("assistant_text")
 
-        logger.info(f"[BuildActions] ⚠️ 부정적 감정 감지 안 됨")
-        return []
+        ask = _maybe_emit_ask_suds(user_text=message, assistant_text=assistant_text)
+        if ask and not any(
+            isinstance(a, dict) and a.get("type") == "ask_suds" for a in actions
+        ):
+            actions.append(ask)
+
+        return actions
     except Exception as e:
         logger.exception(f"❌ build_actions error: {e}")
         return []

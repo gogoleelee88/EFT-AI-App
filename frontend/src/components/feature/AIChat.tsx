@@ -621,10 +621,6 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           } catch (navErr) {
             console.warn('⚠️ EFT 제안 처리 오류:', navErr);
           }
-          console.info('🚀 start_eftar 액션 수신:', payload);
-          navigate(`${route}?${params.toString()}`);
-          console.log('✅ actions received → banner rendered → route changed');
-          console.log('✅ Full EFT Loop: emotion→EFT suggestion→SUDS→EFT AR confirmed.');
           continue;
         }
 
@@ -1027,9 +1023,6 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     setPendingSuds(null);
     setLocalSuds('');
 
-    if (typeof window !== 'undefined') {
-      console.info('📢 SUDS 완료 토스트 표시');
-    }
   };
 
   // 🔥 SUDS 인라인 카드 제출 핸들러
@@ -1084,14 +1077,6 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       if (context?.includes('eft_complete')) {
         eftSessionHook.completeEFTSession();
       }
-
-      const feedbackMessage: Message = {
-        role: 'ai',
-        content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
-        timestamp: Date.now(),
-        metadata: { confidence: 1.0 },
-      };
-      setMessages(prev => [...prev, feedbackMessage]);
 
       if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
         try {

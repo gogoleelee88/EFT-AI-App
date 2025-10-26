@@ -218,6 +218,11 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             else:
                 logger.warning("[P11] 두 엔진 모두 실패 - winner_text 빈 문자열")
 
+            try:
+                winner_clean = TokenParser.remove_tokens(winner_text)
+            except Exception:
+                winner_clean = winner_text or ""
+
             executed_actions: List[Dict[str, Any]] = []
 
             try:
@@ -259,7 +264,7 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 logger.warning("[COMPARE] token pipeline skipped: %r", e)
 
             try:
-                meta = {"session_id": getattr(req, "session_id", None)}
+                meta = {"session_id": getattr(req, "session_id", None), "assistant_text": winner_clean}
                 if emotion_analysis is not None:
                     meta["emotion_analysis"] = emotion_analysis
                 executed_actions.extend(build_actions(req.message, meta) or [])
@@ -267,7 +272,6 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 logger.warning("[COMPARE] builder skipped: %r", e)
 
             try:
-                winner_clean = TokenParser.remove_tokens(winner_text)
                 ask = _maybe_emit_ask_suds(user_text=req.message, assistant_text=winner_clean)
                 if ask:
                     ask.setdefault("payload", {})
@@ -289,18 +293,20 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 isinstance(a, dict) and a.get("type") == "ask_suds" for a in executed_actions
             )
 
-            negative_hint = _looks_negative(req.message)
+            latest_user = req.message or ""
+            numeric_only = is_suds_numeric_response(latest_user)
+            negative_hint = _looks_negative(latest_user)
             if not negative_hint and emotion_analysis is not None:
                 primary = getattr(emotion_analysis, "primary_emotion", None)
                 if isinstance(primary, str) and normalize_text(primary) in NEGATIVE_EMOTIONS:
                     negative_hint = True
 
             if not executed_actions:
-                executed_actions.extend(_final_fallback_build(req.message))
+                executed_actions.extend(_final_fallback_build(latest_user))
             else:
-                if negative_hint and not has_suggest_eft:
+                if negative_hint and not numeric_only and not has_suggest_eft:
                     executed_actions.insert(0, _build_suggest_eft(detected_by="compare_guard"))
-                if negative_hint and not has_ask_suds:
+                if negative_hint and not numeric_only and not has_ask_suds:
                     executed_actions.append(_build_banner_ask_suds(detected_by="compare_guard"))
 
             normalized: List[Dict[str, Any]] = []
