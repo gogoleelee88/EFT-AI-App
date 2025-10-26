@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -102,6 +104,8 @@ def _final_fallback_build(message: str) -> List[Dict[str, Any]]:
 @router.post("/compare")
 async def compare(req: CompareRequest, response: Response, request: Request) -> Dict[str, Any]:
     headers = {"Content-Type": ENGINE_CONTENT_TYPE}
+
+    started_at = time.perf_counter()
 
     async with httpx.AsyncClient() as client:
         try:
@@ -308,25 +312,61 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             response.headers["X-Actions-Count"] = str(len(executed_actions))
             response.headers["Cache-Control"] = "no-store"
 
+            def _elapsed_seconds(res: httpx.Response) -> Optional[float]:
+                try:
+                    elapsed = getattr(res, "elapsed", None)
+                    if elapsed is None:
+                        return None
+                    if hasattr(elapsed, "total_seconds"):
+                        return float(elapsed.total_seconds())
+                    return float(elapsed)
+                except Exception:
+                    return None
+
+            elapsed_a = _elapsed_seconds(res_a)
+            elapsed_b = _elapsed_seconds(res_b)
+            success_a = res_a.status_code == 200
+            success_b = res_b.status_code == 200
+            error_a = None if success_a else data_a
+            error_b = None if success_b else data_b
+
             llama3_obj = {
                 "model": ENGINE_A_MODEL,
-                "success": True,
+                "success": success_a,
+                "processing_time": round(elapsed_a, 3) if elapsed_a is not None else None,
+                "error": error_a,
                 "response": response_a_clean,
                 "text": response_a_clean,
                 "raw": response_a_raw,
             }
             qwen25_obj = {
                 "model": ENGINE_B_MODEL,
-                "success": True,
+                "success": success_b,
+                "processing_time": round(elapsed_b, 3) if elapsed_b is not None else None,
+                "error": error_b,
                 "response": response_b_clean,
                 "text": response_b_clean,
                 "raw": response_b_raw,
             }
 
+            if success_a and success_b and elapsed_a is not None and elapsed_b is not None:
+                faster = "llama3" if elapsed_a <= elapsed_b else "qwen25"
+            elif success_a:
+                faster = "llama3"
+            elif success_b:
+                faster = "qwen25"
+            else:
+                faster = "none"
+
+            comparison_time = round(time.perf_counter() - started_at, 3)
+
             return {
                 "llama3_response": llama3_obj,
                 "qwen25_response": qwen25_obj,
                 "actions": executed_actions,
+                "comparison_time": comparison_time,
+                "faster_model": faster,
+                "timestamp": datetime.utcnow().isoformat(),
             }
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Engine connection failed: {str(e)}")
