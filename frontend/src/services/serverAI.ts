@@ -116,7 +116,7 @@ function toChatResponseFromComparison(comp: any): ChatResponse {
     },
     // ChatResponse 인터페이스 필수 필드 (복수형 배열)
     eft_recommendations: [],
-    suggested_actions: [],
+    suggested_actions: Array.isArray(comp?.actions) ? comp.actions : [],
 
     // ChatResponse 인터페이스 필수 메타 필드 (평탄화)
     confidence_score: typeof comp?.confidence_score === 'number'
@@ -359,28 +359,37 @@ class ServerAI {
         }
       }
 
-      // SUDS 배너 이벤트 발송 (중복 방지 가드)
+      // 액션 이벤트 발송 (중복 방지 가드)
       const seen = new Set<string>();
       for (const action of actions) {
-        if (action.type === 'ask_suds') {
-          // 중복 방지: 동일한 action은 한 번만 처리
-          const key = JSON.stringify(action);
-          if (seen.has(key)) {
-            if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-              console.warn('⚠️ 중복 SUDS 액션 스킵:', action);
-            }
-            continue;
-          }
-          seen.add(key);
-
+        // 중복 방지: 동일한 action은 한 번만 처리
+        const key = JSON.stringify(action);
+        if (seen.has(key)) {
           if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-            console.log('🎬 액션 토큰 수신(or 합성):', action);
+            console.warn('⚠️ 중복 액션 스킵:', action);
           }
+          continue;
+        }
+        seen.add(key);
 
-          if (typeof window !== 'undefined') {
+        if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
+          console.log('🎬 액션 토큰 수신:', action);
+        }
+
+        if (typeof window !== 'undefined') {
+          // SUDS 측정 요청
+          if (action.type === 'ask_suds') {
             window.dispatchEvent(
               new CustomEvent('show-suds-banner', {
                 detail: action.payload || { measurement_type: 'check' }
+              })
+            );
+          }
+          // EFT 제안
+          else if (action.type === 'suggest_eft') {
+            window.dispatchEvent(
+              new CustomEvent('show-eft-suggestion', {
+                detail: action.payload || {}
               })
             );
           }
