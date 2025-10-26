@@ -17,7 +17,7 @@
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 
-import type { ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
+import type { ActionItem, ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
 import { API_CONFIG, ENDPOINTS } from '../config/api';
 import { createApiHeaders, apiFetch } from './http';
 
@@ -52,6 +52,14 @@ function headersCompat(
 // Provider 타입 및 설정
 export type Provider = 'local_vllm' | 'openai' | 'anthropic' | 'qwen';
 const provider: Provider = (import.meta.env.VITE_PROVIDER as Provider) ?? 'local_vllm';
+
+const NEGATIVE_SUDS_KEYWORDS = [
+  '불안', '스트레스', '힘들', '힘들어', '힘들어요', '우울', '우울해', '우울하다',
+  '짜증', '화나', '화나요', '화가', '걱정', '걱정돼', '걱정돼요', '슬퍼', '슬퍼요',
+  '외로워', '외롭다', '외로움', '무서워', '두려워', '답답해', '답답하다', '괴로워',
+  '상처', '서러워', '절망', '힘들었습니다', '지쳤', 'burned out', 'stressed', 'anxious',
+  'depressed', 'sad', 'angry', 'afraid', 'scared', 'lonely', 'frustrated', 'overwhelmed'
+];
 
 // EFT 전문 시스템 프롬프트
 const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사입니다.
@@ -188,7 +196,7 @@ interface ComparisonResponse {
   comparison_time: number;
   faster_model: 'llama3' | 'qwen25' | 'none';
   timestamp: string;
-  actions?: Array<{ type: string; payload?: any }>;  // P11 휴리스틱 액션 (ask_suds 등)
+  actions?: ActionItem[];  // 표준 액션 배열
 }
 
 interface ServerStatus {
@@ -336,32 +344,45 @@ class ServerAI {
       }
 
       // 🎬 P11 휴리스틱: actions 처리 + A-option 폴백
-      // Runtime guard: ensure actions is array
-      const actions = Array.isArray(data.actions) ? data.actions : [];
+      const rawActions = Array.isArray(data.actions) ? data.actions : [];
+      const normalizedActions: ActionItem[] = rawActions
+        .filter((action: any) => action && typeof action.type === 'string' && action.type.trim().length > 0)
+        .map((action: any) => ({
+          type: action.type.trim(),
+          payload: action.payload ?? {},
+        }));
+
+      const debugActions = response.headers.get('X-Debug-Actions');
+      const debugHash = response.headers.get('X-Actions-Hash');
+      if (debugActions) {
+        console.log('[actions] server types:', debugActions);
+      }
+      if (debugHash) {
+        console.log('[actions] server hash:', debugHash);
+      }
 
       // A-option 폴백: 백엔드에서 actions가 없으면 프론트에서 휴리스틱 적용
       const enableFallback = (import.meta.env.VITE_ENABLE_SUDS_FALLBACK ?? 'true') === 'true';
-      if (actions.length === 0 && enableFallback) {
+      if (normalizedActions.length === 0 && enableFallback) {
         const winnerText = comparisonResponse.faster_model === 'llama3'
           ? comparisonResponse.llama3_response.response
           : comparisonResponse.qwen25_response.response;
 
-        // 클라이언트 측 휴리스틱 (테스트용)
         const shouldEmitSuds = this.checkSudsHeuristic(userMessage, winnerText);
         if (shouldEmitSuds) {
           if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
             console.log('🎬 A-option 폴백: 클라이언트에서 ask_suds 합성');
           }
-          actions.push({
+          normalizedActions.push({
             type: 'ask_suds',
-            payload: { measurement_type: 'check' }
+            payload: { measurement_type: 'check' },
           });
         }
       }
 
       // SUDS 배너 이벤트 발송 (중복 방지 가드)
       const seen = new Set<string>();
-      for (const action of actions) {
+      for (const action of normalizedActions) {
         if (action.type === 'ask_suds') {
           // 중복 방지: 동일한 action은 한 번만 처리
           const key = JSON.stringify(action);
@@ -392,10 +413,11 @@ class ServerAI {
         llama3_time: comparisonResponse.llama3_response.processing_time,
         qwen25_time: comparisonResponse.qwen25_response.processing_time,
         total_time: comparisonResponse.comparison_time,
-        actions_count: actions.length
+        actions_count: normalizedActions.length,
+        actions_types: normalizedActions.map((a) => a.type)
       });
 
-      return comparisonResponse;
+      return { ...comparisonResponse, actions: normalizedActions };
 
     } catch (error) {
       console.error('❌ 병렬 비교 실패:', error);
@@ -411,26 +433,26 @@ class ServerAI {
     const userLower = (userText || '').toLowerCase().trim();
     const aiLower = (aiText || '').toLowerCase().trim();
 
-    // 패턴 1: 사용자가 숫자만 입력 (0-10)
-    if (/^\s*(?:10|[0-9])\s*$/.test(userLower)) {
+    const hasNegativeCue = NEGATIVE_SUDS_KEYWORDS.some((keyword) => userLower.includes(keyword));
+    if (hasNegativeCue) {
       if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-        console.log('[P11 A-option] 패턴 1 매칭: 숫자 입력');
+        console.log('[P11 A-option] 부정 감정 키워드 감지:', userText);
       }
       return true;
     }
 
-    // 패턴 2: AI 응답에 "0~10", "0에서 10", "0-10" 포함
+    // 패턴 1: AI 응답에 "0~10", "0에서 10", "0-10" 포함
     if (/0\s*[-~]\s*10|0에서\s*10|0\s*~\s*10/.test(aiLower)) {
       if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-        console.log('[P11 A-option] 패턴 2 매칭: AI 0~10 유도');
+        console.log('[P11 A-option] 패턴 1 매칭: AI 0~10 유도');
       }
       return true;
     }
 
-    // 패턴 3: 사용자 키워드 - "평가", "점수", "몇 점", "suds"
+    // 패턴 2: 사용자 키워드 - "평가", "점수", "몇 점", "suds"
     if (/(평가|점수|몇\s*점|suds)/.test(userLower)) {
       if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-        console.log('[P11 A-option] 패턴 3 매칭: 평가 키워드');
+        console.log('[P11 A-option] 패턴 2 매칭: 평가 키워드');
       }
       return true;
     }
@@ -460,6 +482,10 @@ class ServerAI {
         maxTokens: options.maxTokens,
         temperature: options.temperature
       });
+
+      const comparisonActions = Array.isArray(comparisonResult.actions)
+        ? comparisonResult.actions
+        : [];
 
       // 병렬 비교 결과를 ChatResponse 형태로 변환
       const winnerResponse = comparisonResult.faster_model === 'llama3' 
@@ -491,7 +517,8 @@ class ServerAI {
         requires_followup: false,
         emergency_detected: false,
         professional_referral: false,
-        response_id: `ab_${Date.now()}`
+        response_id: `ab_${Date.now()}`,
+        actions: comparisonActions
       };
 
       console.log('✅ Engine A/B 병렬 응답 완료:', {
@@ -503,7 +530,8 @@ class ServerAI {
       });
 
       // 외부 반환 직전 model_version 제거
-      return toPublicChatResponse(chatResponse);
+      const publicResponse = toPublicChatResponse(chatResponse);
+      return { ...publicResponse, actions: comparisonActions };
 
     } catch (error) {
       console.error('❌ Engine A/B 병렬 비교 실패:', error);
@@ -1050,27 +1078,26 @@ export class EnhancedServerAI extends ServerAI {
 
 /**
  * SUDS 점수 기록 함수
- * 백엔드 /api/memory/{sessionId}/suds 엔드포인트 호출
+ * 백엔드 /api/suds/record 엔드포인트 호출
  *
  * 중복 제출 방지: 동일 세션에서 동시에 여러 요청 방지
  */
 let sudsSubmitting = false;
 
 export async function recordSuds(
-  sessionId: string,
   payload: {
-    measurementType: string;
-    sudsValue: number;
-    turnId?: string;
+    score: number;
+    source?: string;
+    emotion?: string;
   }
-): Promise<{ ok: boolean; error?: string }> {
-  // Debounce guard: 이미 제출 중이면 스킵
+): Promise<{ ok: boolean; actions: ActionItem[]; error?: string }> {
   if (sudsSubmitting) {
     if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
       console.warn('⚠️ SUDS 제출 중복 방지: 이미 제출 중입니다');
     }
     return {
       ok: false,
+      actions: [],
       error: 'Already submitting SUDS score'
     };
   }
@@ -1078,39 +1105,57 @@ export async function recordSuds(
   sudsSubmitting = true;
 
   try {
-    const response = await fetch(`/api/memory/${sessionId}/suds`, {
+    const body: Record<string, any> = {
+      score: payload.score,
+      source: payload.source ?? 'compare',
+    };
+    if (payload.emotion) {
+      body.emotion = payload.emotion;
+    }
+
+    const response = await fetch('/api/suds/record', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        measurement_type: payload.measurementType,
-        suds_value: payload.sudsValue,
-        turn_id: payload.turnId
-      })
+      body: JSON.stringify(body)
     });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
+    const json = await response.json().catch(() => ({}));
+    const actions: ActionItem[] = Array.isArray(json?.actions)
+      ? json.actions
+          .filter((action: any) => action && typeof action.type === 'string' && action.type.trim().length > 0)
+          .map((action: any) => ({
+            type: action.type.trim(),
+            payload: action.payload ?? {},
+          }))
+      : [];
+
+    if (!response.ok || json?.ok === false) {
+      const errorText = json?.error || (await response.text().catch(() => '')) || `HTTP ${response.status}`;
       return {
         ok: false,
-        error: `HTTP ${response.status}: ${errorText}`
+        actions,
+        error: errorText
       };
     }
 
     if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
-      console.log('✅ SUDS 기록 성공:', payload);
+      console.log('✅ SUDS 기록 성공:', { score: payload.score, actions });
     }
 
-    return { ok: true };
+    return {
+      ok: true,
+      actions,
+    };
   } catch (error) {
     console.error('SUDS 기록 실패:', error);
     return {
       ok: false,
+      actions: [],
       error: error instanceof Error ? error.message : String(error)
     };
   } finally {
-    // 요청 완료 후 플래그 해제
     sudsSubmitting = false;
   }
 }

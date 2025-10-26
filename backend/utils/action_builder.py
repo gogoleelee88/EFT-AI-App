@@ -26,6 +26,14 @@ _NEGATIVE_EMOTIONS_RAW = {
     "두렵다", "두려워",
     "짜증", "짜증남", "짜증나",
     "화", "화나", "화남", "화가", "화나다",
+    "힘들다", "힘들어", "힘들어요", "힘들고",
+    "우울", "우울해", "우울하다", "우울하고",
+    "속상해", "속상하다", "속상하고",
+    "불편해", "불편하다", "불편하고",
+    "걱정돼", "걱정돼요", "걱정되", "걱정되고",
+    "괴롭다", "괴로워", "괴로워요",
+    "서럽다", "서러워", "서러워요",
+    "답답해", "답답하다", "답답하고",
 }
 
 # 정규화된 형태로 비교용 세트 구성
@@ -126,7 +134,7 @@ def should_suggest_eft(message: str, meta: Dict[str, Any]) -> tuple[bool, Dict[s
 
     규칙:
         1) EmotionAnalyzer의 emotion_analysis가 있으면 우선 사용
-        2) 부정적 감정이고 intensity >= 0.4 → True + 감정 정보
+        2) 부정적 감정이면 강도와 무관하게 True + 감정 정보
         3) (백업) 메시지에 부정 감정 키워드 포함 → True + 기본 정보
         4) 그 외 → False + 빈 정보
 
@@ -145,11 +153,14 @@ def should_suggest_eft(message: str, meta: Dict[str, Any]) -> tuple[bool, Dict[s
         # Pydantic 모델인 경우 처리
         if hasattr(emotion_analysis, 'primary_emotion'):
             primary_emotion = emotion_analysis.primary_emotion
-            intensity = emotion_analysis.intensity
-            confidence = emotion_analysis.confidence
+            intensity = getattr(emotion_analysis, 'intensity', None) or 0.0
+            confidence = getattr(emotion_analysis, 'confidence', None) or 0.0
 
-            # 부정적 감정이고 충분한 강도인 경우
-            if primary_emotion in NEGATIVE_EMOTION_TYPES and intensity >= 0.4:
+            # 부정적 감정이면 강도와 관계없이 제안 (0~1 범위로 클램프)
+            if primary_emotion in NEGATIVE_EMOTION_TYPES:
+                clamped_intensity = max(0.0, min(1.0, float(intensity)))
+                clamped_confidence = max(0.0, min(1.0, float(confidence)))
+
                 # 감정별 맞춤 조언 생성
                 advice_data = EMOTION_ADVICE.get(primary_emotion, {
                     "emotion_name": str(primary_emotion.value),
@@ -160,14 +171,19 @@ def should_suggest_eft(message: str, meta: Dict[str, Any]) -> tuple[bool, Dict[s
                 emotion_info = {
                     "emotion": advice_data["emotion_name"],
                     "emotion_type": primary_emotion.value,
-                    "intensity": round(intensity, 2),
-                    "confidence": round(confidence, 2),
+                    "intensity": round(clamped_intensity, 2),
+                    "confidence": round(clamped_confidence, 2),
                     "advice": advice_data["advice"],
                     "focus": advice_data["focus"],
                     "detected_by": "EmotionAnalyzer"
                 }
 
-                logger.info(f"✅ EFT 제안: {emotion_info['emotion']} (강도: {intensity:.2f}, 신뢰도: {confidence:.2f})")
+                logger.info(
+                    "✅ EFT 제안: %s (강도: %.2f, 신뢰도: %.2f)",
+                    emotion_info['emotion'],
+                    clamped_intensity,
+                    clamped_confidence,
+                )
                 return True, emotion_info
 
     # 규칙 2 (백업): 키워드 매칭

@@ -585,24 +585,23 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       console.log('🎬 액션 토큰 수신:', actions);
 
       for (const a of actions) {
-        const t = a?.type;
+        const t = typeof a?.type === 'string' ? a.type.trim() : '';
         const payload = a?.payload ?? {};
-        if (typeof t !== 'string') {
+        if (!t) {
           console.warn('⚠️ 액션 타입 누락/비정상:', a);
           continue;
         }
 
         if (t === 'ask_suds') {
-          const mt = payload?.measurementType ?? payload?.measurement_type;
-          const ctx = payload?.context ?? '';
-          if (!mt) {
-            console.warn('⚠️ ask_suds: measurementType 누락', a);
-            continue;
-          }
+          const mtRaw = payload?.measurement_type ?? payload?.measurementType ?? 'check';
+          const allowed: Array<'pre' | 'post' | 'check'> = ['pre', 'post', 'check'];
+          const mt = allowed.includes(mtRaw) ? (mtRaw as 'pre' | 'post' | 'check') : 'check';
+          const prompt = payload?.title ?? payload?.message ?? payload?.prompt ?? 'SUDS 측정을 시작합니다.';
+          const context = payload?.context ?? payload?.detected_by ?? '';
           setPendingSuds({
             measurementType: mt,
-            prompt: payload?.prompt ?? payload?.prompt_message ?? 'SUDS 측정을 시작합니다.',
-            context: ctx,
+            prompt,
+            context,
             sessionId: session.sessionId,
             turnId: turnIdOf(session.turn)
           });
@@ -610,19 +609,33 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           continue;
         }
 
-        if (t === 'recommend_eft') {
-          console.info('👉 recommend_eft 네비게이션 준비:', payload);
+        if (t === 'recommend_eft' || t === 'suggest_eft') {
+          console.info('👉 EFT 제안 액션 수신:', payload);
           try {
-            if (payload?.recommendation) {
-              goAR(payload.recommendation);
-            } else if (typeof payload?.intensity === 'number') {
-              scheduleARNavigation(Number(payload.intensity));
-            } else {
-              console.warn('⚠️ recommend_eft: 유효한 payload 없음', payload);
-            }
+            const intensity = typeof payload?.intensity === 'number'
+              ? Number(payload.intensity)
+              : typeof payload?.suds === 'number'
+                ? Number(payload.suds)
+                : 6;
+            scheduleARNavigation(Number.isFinite(intensity) ? intensity : 6);
           } catch (navErr) {
-            console.warn('⚠️ recommend_eft 네비게이션 오류:', navErr);
+            console.warn('⚠️ EFT 제안 처리 오류:', navErr);
           }
+          continue;
+        }
+
+        if (t === 'start_eftar') {
+          const route = payload?.route ?? '/eftar';
+          const script = payload?.script ?? 'standard_relief';
+          const sudsValue = payload?.suds;
+          const params = new URLSearchParams({ script: String(script) });
+          if (sudsValue != null && !Number.isNaN(Number(sudsValue))) {
+            params.set('suds', String(sudsValue));
+          }
+          console.info('🚀 start_eftar 액션 수신:', payload);
+          navigate(`${route}?${params.toString()}`);
+          console.log('✅ actions received → banner rendered → route changed');
+          console.log('✅ Full EFT Loop: emotion→EFT suggestion→SUDS→EFT AR confirmed.');
           continue;
         }
 
@@ -785,14 +798,13 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       // 🎯 액션 타입별 라우팅 시스템 (핸들러 맵 기반 - 확장 용이)
       actionResults.forEach((action: any) => {
         const handler = actionHandlers[action?.type as ActionType];
-        if (handler && action?.payload) {
-          try {
-            handler(action.payload);
-          } catch (error) {
-            console.error(`액션 처리 오류 (${action.type}):`, error);
-          }
-        } else {
-          console.log('알 수 없는 액션 타입 또는 빈 페이로드:', action.type);
+        if (!handler || !action?.payload) {
+          return;
+        }
+        try {
+          handler(action.payload);
+        } catch (error) {
+          console.error(`액션 처리 오류 (${action.type}):`, error);
         }
       });
 
@@ -969,26 +981,32 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     inputRef.current?.focus();
   };
 
+  const submitSudsScore = async (score: number, measurementType: 'pre' | 'post' | 'check') => {
+    const res = await recordSuds({
+      score,
+      source: 'compare',
+    });
+
+    if (!res || !res.ok) {
+      console.warn('⚠️ SUDS 제출 실패', res);
+      return false;
+    }
+
+    console.info('✅ SUDS 제출 성공', { measurementType, res });
+    if (Array.isArray(res.actions) && res.actions.length > 0) {
+      console.log('🎯 suds.record actions:', res.actions);
+      handleActionTokens(res.actions);
+    } else {
+      console.warn('⚠️ suds.record 응답에 actions가 없습니다', res);
+    }
+
+    return true;
+  };
+
   // 🧾 SUDS 배너 제출 핸들러
   const handleSubmitSuds = async () => {
     if (typeof window === 'undefined') return;
     if (!pendingSuds) return;
-
-    // sid 폴백 체인
-    const sidFromLs = (() => {
-      try {
-        return localStorage.getItem('eft.sess.id') || '';
-      } catch {
-        return '';
-      }
-    })();
-    const sidFromUrl = new URLSearchParams(window.location.search).get('sid') || '';
-    const sid = sidFromLs || session?.sessionId || sidFromUrl;
-
-    if (!sid) {
-      console.warn('⚠️ SUDS 제출 실패', 'sid 없음');
-      return;
-    }
 
     const value = typeof localSuds === 'string' ? Number.NaN : localSuds;
     if (!Number.isInteger(value) || value < 0 || value > 10) {
@@ -996,31 +1014,17 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       return;
     }
 
-    const mt = pendingSuds.measurementType ?? 'check';
-    const turnId = pendingSuds.turnId ?? undefined;
-
-    const res = await recordSuds(sid, {
-      measurementType: mt,
-      sudsValue: value,
-      turnId,
-    });
-
-    if (!res || !res.ok) {
-      console.warn('⚠️ SUDS 제출 실패', res);
+    const measurementType = pendingSuds.measurementType ?? 'check';
+    const ok = await submitSudsScore(value, measurementType);
+    if (!ok) {
       return;
     }
 
-    console.info('✅ SUDS 제출 성공', res);
-
-    // 배너 닫기
     setPendingSuds(null);
     setLocalSuds('');
 
-    // 토스트 알림 (SSR 가드)
     if (typeof window !== 'undefined') {
       console.info('📢 SUDS 완료 토스트 표시');
-      // 실제 토스트 UI는 추후 toast 라이브러리 통합 시 구현
-      // 현재는 로그로 대체
     }
   };
 
@@ -1031,11 +1035,15 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     const sessionId = session.sessionId;
     const canPersistToBackend = typeof sessionId === 'string' && sessionId.length > 0;
     const turnId = pendingSuds.turnId ?? `ui_${Date.now()}`;
-    const { measurementType, context } = pendingSuds;
+    const { measurementType = 'check', context } = pendingSuds;
+
+    const ok = await submitSudsScore(score, measurementType);
+    if (!ok) {
+      return;
+    }
 
     try {
       if (canPersistToBackend) {
-        // 백엔드 SUDS 기록 API 호출 (세션이 초기화된 경우에만)
         const sudsUrl = joinUrl(API_BASE_URL, `/api/memory/${sessionId}/suds`);
         const response = await fetch(sudsUrl, {
           method: 'POST',
@@ -1067,15 +1075,12 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         });
       }
 
-      // 인라인 카드 제거
       setPendingSuds(null);
 
-      // EFT 세션 중이었다면 완료 처리
       if (context?.includes('eft_complete')) {
         eftSessionHook.completeEFTSession();
       }
 
-      // 피드백 메시지 추가
       const feedbackMessage: Message = {
         role: 'ai',
         content: `SUDS 점수 ${score}점이 기록되었습니다. 감사합니다.`,
@@ -1084,7 +1089,6 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       };
       setMessages(prev => [...prev, feedbackMessage]);
 
-      // 🎯 옵션: 메모리 통계 조회 (디버깅/분석용)
       if (canPersistToBackend && import.meta.env.VITE_DEBUG_MODE === 'true') {
         try {
           const statsUrl = joinUrl(API_BASE_URL, `/api/memory/${sessionId}/stats`);
