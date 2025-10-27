@@ -3,13 +3,13 @@
   "private": false,
   "version": "1.0.0",
   "type": "module",
-  "description": "EFT 기반 AI 심리관리 앱 - AI와 함께하는 마음 여행",
+  "description": "EFT \uae30\ubc18 AI \uc2ec\ub9ac\uad00\ub9ac \uc571 - AI\uc640 \ud568\uaed8\ud558\ub294 \ub9c8\uc74c \uc5ec\ud589",
   "keywords": [
     "EFT",
     "AI",
-    "심리관리",
-    "마음챙김",
-    "감정관리",
+    "\uc2ec\ub9ac\uad00\ub9ac",
+    "\ub9c8\uc74c\ucc59\uae40",
+    "\uac10\uc815\uad00\ub9ac",
     "PWA",
     "React",
     "Transformers.js"
@@ -25,6 +25,8 @@
     "url": "https://github.com/eft-ai-team/eft-ai-app/issues"
   },
   "scripts": {
+    "preinstall": "node ./scripts/preinstall.cjs",
+    "postinstall": "node ./scripts/postinstall.cjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:ci": "vite build --mode production --logLevel warn",

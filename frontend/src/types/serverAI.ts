@@ -152,6 +152,11 @@ export interface ChatRequest {
 }
 
 // 채팅 응답 (서버 → 클라이언트)
+export interface ActionItem {
+  type: string;
+  payload?: Record<string, any>;
+}
+
 export interface ChatResponse {
   response: string;
   emotion_analysis: EmotionAnalysis;
@@ -173,6 +178,7 @@ export interface ChatResponse {
   // 세션 관리
   session_id?: string;
   response_id: string;
+  actions?: ActionItem[];
 }
 
 // 스트리밍 응답 청크
