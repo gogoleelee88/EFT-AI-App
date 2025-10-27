@@ -1110,6 +1110,7 @@ export async function recordSuds(
   try {
     const url = '/api/suds/record';
     const requestBody: Record<string, any> = {
+      value: payload.score,
       score: payload.score,
       source: payload.source ?? 'compare',
     };
