@@ -1489,7 +1489,7 @@ if __name__ == "__main__":
 
 app.include_router(health_router)  # health endpoints first-class
 app.include_router(compare_router)
-app.include_router(suds_router, prefix="/api")
+app.include_router(suds_router)
 
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)

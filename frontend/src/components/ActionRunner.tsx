@@ -32,7 +32,7 @@ export function ActionRunner({ actions }: { actions: any[] }) {
     const res = await fetch("/api/suds/record", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ score, source: "compare" }),
+      body: JSON.stringify({ value: score, score, source: "compare" }),
     });
     const data = await res.json();
     const next = parseActions(data.actions || [])
