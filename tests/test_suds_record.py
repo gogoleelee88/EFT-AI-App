@@ -17,3 +17,12 @@ def test_suds_record_returns_start_eftar():
     data = response.json()
     assert data["ok"] is True
     assert any(action.get("type") == "start_eftar" for action in data.get("actions", []))
+
+
+def test_suds_record_get_fallback():
+    client = TestClient(app)
+    response = client.get("/api/suds/record", params={"value": 6})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert any(action.get("type") == "start_eftar" for action in data.get("actions", []))

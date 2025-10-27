@@ -1157,12 +1157,59 @@ export async function recordSuds(
       body: json ?? rawText,
     });
 
-    if (!response.ok) {
+    let effectiveJson: any = json;
+
+    if (!response.ok && response.status === 405) {
+      console.warn('⚠️ POST /api/suds/record blocked (405). Retrying with GET fallback.');
+      const fallbackParams = new URLSearchParams({ value: String(payload.score) });
+      if (typeof requestBody.context_id === 'string') {
+        fallbackParams.set('context_id', requestBody.context_id);
+      }
+      if (payload.source) {
+        fallbackParams.set('source', payload.source);
+      }
+      if (payload.emotion) {
+        fallbackParams.set('emotion', payload.emotion);
+      }
+      const fallbackUrl = `/api/suds/record?${fallbackParams.toString()}`;
+      const fallbackResponse = await fetch(fallbackUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        credentials: 'include',
+        cache: 'no-store',
+        redirect: 'follow',
+        signal: payload.signal,
+      });
+      const fallbackText = await fallbackResponse.text();
+      let fallbackJson: any = null;
+      try {
+        fallbackJson = fallbackText ? JSON.parse(fallbackText) : null;
+      } catch (fallbackError) {
+        console.debug('[recordSuds] GET fallback JSON parse failed, returning raw text');
+      }
+      console.debug('[recordSuds] fallback request', {
+        method: 'GET',
+        url: fallbackUrl,
+      });
+      console.debug('[recordSuds] fallback response', {
+        status: fallbackResponse.status,
+        ok: fallbackResponse.ok,
+        body: fallbackJson ?? fallbackText,
+      });
+      effectiveJson = fallbackJson ?? fallbackText;
+      if (!fallbackResponse.ok) {
+        throw new Error(`SUDS record fallback failed: HTTP ${fallbackResponse.status} ${fallbackResponse.statusText}`);
+      }
+    } else if (!response.ok) {
       throw new Error(`SUDS record failed: HTTP ${response.status} ${response.statusText}`);
     }
 
-    const actions: ActionItem[] = Array.isArray((json ?? {})?.actions)
-      ? json.actions
+    const parsedJson = typeof effectiveJson === 'string' ? null : effectiveJson;
+
+    const actions: ActionItem[] = Array.isArray((parsedJson ?? {})?.actions)
+      ? parsedJson.actions
           .filter((action: any) => action && typeof action.type === 'string' && action.type.trim().length > 0)
           .map((action: any) => ({
             type: action.type.trim(),
@@ -1170,11 +1217,11 @@ export async function recordSuds(
           }))
       : [];
 
-    if (json?.ok === false) {
+    if (parsedJson?.ok === false) {
       return {
         ok: false,
         actions,
-        error: typeof json.error === 'string' ? json.error : undefined,
+        error: typeof parsedJson.error === 'string' ? parsedJson.error : undefined,
       };
     }
 

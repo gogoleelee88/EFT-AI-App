@@ -24,8 +24,8 @@ def _build_response(value: int) -> Dict[str, Any]:
 
 def _cors_headers(origin: Optional[str], requested_headers: Optional[str]) -> Dict[str, str]:
     headers = {
-        "Allow": "POST, OPTIONS",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Allow": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
         "Access-Control-Allow-Headers": requested_headers or "Authorization, Content-Type",
         "Access-Control-Allow-Credentials": "true",
     }
@@ -37,6 +37,12 @@ def _cors_headers(origin: Optional[str], requested_headers: Optional[str]) -> Di
 @router.post("/api/suds/record")
 async def record_suds(payload: SUDSRecord) -> Dict[str, Any]:
     return _build_response(payload.value)
+
+
+@router.get("/api/suds/record")
+async def record_suds_get(value: int) -> Dict[str, Any]:
+    """Fallback GET handler for environments where POST is blocked upstream."""
+    return _build_response(value)
 
 
 @router.options("/api/suds/record")
