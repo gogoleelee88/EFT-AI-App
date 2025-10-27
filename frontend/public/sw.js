@@ -1,7 +1,7 @@
 // EFT AI 앱 Service Worker
-const CACHE_NAME = 'eft-ai-app-v1.0.0';
-const STATIC_CACHE_NAME = 'eft-ai-static-v1';
-const DYNAMIC_CACHE_NAME = 'eft-ai-dynamic-v1';
+const CACHE_NAME = 'eft-ai-app-v1.0.1';
+const STATIC_CACHE_NAME = 'eft-ai-static-v1.0.1';
+const DYNAMIC_CACHE_NAME = 'eft-ai-dynamic-v1.0.1';
 
 // 캐시할 정적 리소스
 const STATIC_ASSETS = [
@@ -22,8 +22,6 @@ const AI_ASSETS = [
 const CACHE_STRATEGIES = {
   // 정적 파일: Cache First
   static: ['/static/', '/assets/', '/icons/'],
-  // API 호출: Network First
-  api: ['/api/', 'https://api.'],
   // AI 모델: Cache First (큰 파일)
   aiModels: ['huggingface.co', 'cdn.jsdelivr.net'],
   // 페이지: Network First with Cache Fallback
@@ -104,13 +102,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // API 요청은 항상 네트워크로 우회 (캐시/메서드 변경 금지)
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+  
   // 적절한 캐시 전략 선택
   if (isStaticAsset(url.pathname)) {
     event.respondWith(cacheFirstStrategy(request));
   } else if (isAIModel(url.href)) {
     event.respondWith(cacheFirstWithUpdateStrategy(request));
-  } else if (isAPICall(url.href)) {
-    event.respondWith(networkFirstStrategy(request));
   } else {
     event.respondWith(networkFirstWithCacheFallback(request));
   }
@@ -392,9 +393,14 @@ function urlBase64ToUint8Array(base64) {
   return out;
 }
 
-// ==================== 메시지 리스너 (VAPID 키 수신) ====================
+// ==================== 메시지 리스너 ====================
 
 self.addEventListener('message', (event) => {
+  if (event?.data?.type === 'SKIP_WAITING') {
+    console.log('⏭️ Service Worker skipWaiting triggered');
+    self.skipWaiting();
+    return;
+  }
   if (event?.data?.type === 'SET_VAPID' && event.data.key) {
     self.APP_VAPID_KEY = event.data.key;
     console.log('🔑 VAPID 공개키 수신');

@@ -37,7 +37,19 @@ requestAnimationFrame(() => requestAnimationFrame(signalAppHydrated));
 // 개발 모드에서 Service Worker 자동 정리 (재발 방지)
 if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {
-    navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      console.log('🛠️ Service Worker registered:', registration.scope);
+      registration.update();
+      if (registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        console.log('🔄 Service Worker controller changed, reloading...');
+        window.location.reload();
+      });
+    }).catch(error => {
+      console.error('Service Worker registration failed:', error);
+    });
   } else {
     // DEV: 혹시 남아 있던 SW를 전부 제거
     navigator.serviceWorker.getRegistrations().then(registrations => {
