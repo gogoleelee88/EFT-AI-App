@@ -471,9 +471,10 @@ app.add_middleware(ABRouteMiddleware)
 
 # CORS 설정 (PWA 클라이언트 연결용)
 if settings.DEBUG:  # 개발 환경
+    debug_origins = list(dict.fromkeys(settings.ALLOWED_ORIGINS))
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # 개발 환경에서 모든 origin 허용
+        allow_origins=debug_origins,
         allow_methods=["*"],
         allow_headers=["*"],
         allow_credentials=True,
