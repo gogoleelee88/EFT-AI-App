@@ -480,6 +480,7 @@ if settings.DEBUG:  # 개발 환경
         allow_credentials=True,
     )
 else:  # 운영 환경
+    # ✅ CORS allow-list 확인: https://www.moodtalk.app 포함, POST/OPTIONS 허용
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,

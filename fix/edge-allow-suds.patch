@@ -1,0 +1,84 @@
+# Patch to permit POST/OPTIONS on /api/suds/record upstream.
+# Apply with: patch -p1 < fix/edge-allow-suds.patch (after backing up live config).
+# Adjust file paths if your deployment uses different locations.
+
+diff --git a/etc/envoy/envoy.yaml b/etc/envoy/envoy.yaml
+--- a/etc/envoy/envoy.yaml
++++ b/etc/envoy/envoy.yaml
+@@ -40,6 +40,18 @@ static_resources:
+                   virtual_hosts:
+                     - name: backend
+                       domains: ["*"]
++                      cors:
++                        allow_origin_string_match:
++                          - prefix: "https://www.moodtalk.app"
++                        allow_methods: "GET,POST,OPTIONS"
++                        allow_headers: "content-type,authorization"
++                        expose_headers: "x-actions-hash,x-debug-actions"
++                        allow_credentials: true
+                       routes:
+                         - match:
+                             prefix: "/api/suds/record"
++                          typed_per_filter_config:
++                            envoy.filters.http.cors:
++                              "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
++                              allow_origin_string_match:
++                                - prefix: "https://www.moodtalk.app"
++                              allow_methods: "GET,POST,OPTIONS"
++                              allow_headers: "content-type,authorization"
++                              expose_headers: "x-actions-hash,x-debug-actions"
++                              allow_credentials: true
+                           route:
+                             cluster: backend_fastapi
+                         - match:
+@@ -90,6 +102,14 @@ static_resources:
+ # optional RBAC filter example. ensure POST/OPTIONS allowed if RBAC enabled
+ # typed_per_filter_config:
+ #   envoy.filters.http.rbac:
++#     "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
++#     rules:
++#       action: ALLOW
++#       policies:
++#         allow_api_methods:
++#           permissions:
++#             - any: true
++#           principals:
++#             - any: true
+
+ # Ensure health check and admin interface remain unchanged
+
+
+# Nginx fallback (if using Nginx instead of Envoy)
+diff --git a/etc/nginx/conf.d/moodtalk.conf b/etc/nginx/conf.d/moodtalk.conf
+--- a/etc/nginx/conf.d/moodtalk.conf
++++ b/etc/nginx/conf.d/moodtalk.conf
+@@ -10,7 +10,31 @@ server {
+ 
+     location /api/ {
+-        proxy_pass http://127.0.0.1:8000;
++        proxy_pass http://127.0.0.1:8000$request_uri;
+         proxy_set_header Host $host;
+         proxy_set_header X-Real-IP $remote_addr;
+         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+         proxy_set_header X-Forwarded-Proto $scheme;
++
++        # allow POST/OPTIONS without rewrite
++        limit_except GET POST OPTIONS {
++            deny all;
++        }
++
++        if ($request_method = OPTIONS) {
++            add_header Access-Control-Allow-Origin "https://www.moodtalk.app" always;
++            add_header Access-Control-Allow-Credentials "true" always;
++            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
++            add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
++            add_header Content-Length 0;
++            add_header Content-Type text/plain;
++            return 204;
++        }
++
++        proxy_no_cache 1;
++        proxy_cache_bypass 1;
++        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+     }
+ }
