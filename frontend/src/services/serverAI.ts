@@ -1089,6 +1089,9 @@ export async function recordSuds(
     score: number;
     source?: string;
     emotion?: string;
+    contextId?: string;
+    context_id?: string;
+    signal?: AbortSignal;
   }
 ): Promise<{ ok: boolean; actions: ActionItem[]; error?: string }> {
   if (sudsSubmitting) {
@@ -1105,24 +1108,59 @@ export async function recordSuds(
   sudsSubmitting = true;
 
   try {
-    const body: Record<string, any> = {
+    const url = '/api/suds/record';
+    const requestBody: Record<string, any> = {
       score: payload.score,
       source: payload.source ?? 'compare',
     };
     if (payload.emotion) {
-      body.emotion = payload.emotion;
+      requestBody.emotion = payload.emotion;
+    }
+    const contextIdentifier = payload.contextId ?? payload.context_id;
+    if (typeof contextIdentifier === 'string' && contextIdentifier.length > 0) {
+      requestBody.context_id = contextIdentifier;
     }
 
-    const response = await fetch('/api/suds/record', {
+    const bodyString = JSON.stringify(requestBody);
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: JSON.stringify(body)
+      body: bodyString,
+      credentials: 'include',
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: payload.signal,
     });
 
-    const json = await response.json().catch(() => ({}));
-    const actions: ActionItem[] = Array.isArray(json?.actions)
+    const rawText = await response.text();
+    let json: any = null;
+    try {
+      json = rawText ? JSON.parse(rawText) : null;
+    } catch (parseError) {
+      console.debug('[recordSuds] JSON parse failed, returning raw text');
+    }
+
+    console.debug('[recordSuds] request', {
+      method: 'POST',
+      url,
+      contentType: 'application/json',
+      bodyLength: bodyString.length,
+    });
+    console.debug('[recordSuds] response', {
+      status: response.status,
+      ok: response.ok,
+      body: json ?? rawText,
+    });
+
+    if (!response.ok) {
+      throw new Error(`SUDS record failed: HTTP ${response.status} ${response.statusText}`);
+    }
+
+    const actions: ActionItem[] = Array.isArray((json ?? {})?.actions)
       ? json.actions
           .filter((action: any) => action && typeof action.type === 'string' && action.type.trim().length > 0)
           .map((action: any) => ({
@@ -1131,12 +1169,11 @@ export async function recordSuds(
           }))
       : [];
 
-    if (!response.ok || json?.ok === false) {
-      const errorText = json?.error || (await response.text().catch(() => '')) || `HTTP ${response.status}`;
+    if (json?.ok === false) {
       return {
         ok: false,
         actions,
-        error: errorText
+        error: typeof json.error === 'string' ? json.error : undefined,
       };
     }
 
