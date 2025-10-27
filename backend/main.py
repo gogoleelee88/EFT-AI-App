@@ -7,12 +7,11 @@ EFT AI 서버 - FastAPI 메인 애플리케이션
 심리상담 특화 Llama 3 기반 AI 서버
 """
 
+from backend.routers.compare import router as compare_router
 from backend.routers.health import router as health_router
+from backend.routers.suds import router as suds_router
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
-from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send, Message
 from starlette.requests import Request as StarletteRequest
 from starlette.concurrency import run_in_threadpool
+from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
 import asyncio
@@ -471,14 +471,16 @@ app.add_middleware(ABRouteMiddleware)
 
 # CORS 설정 (PWA 클라이언트 연결용)
 if settings.DEBUG:  # 개발 환경
+    debug_origins = list(dict.fromkeys(settings.ALLOWED_ORIGINS))
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # 개발 환경에서 모든 origin 허용
+        allow_origins=debug_origins,
         allow_methods=["*"],
         allow_headers=["*"],
         allow_credentials=True,
     )
 else:  # 운영 환경
+    # ✅ CORS allow-list 확인: https://www.moodtalk.app 포함, POST/OPTIONS 허용
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
@@ -1487,17 +1489,16 @@ if __name__ == "__main__":
     )
 
 app.include_router(health_router)  # health endpoints first-class
+app.include_router(compare_router)
+app.include_router(suds_router)
 
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
 # 프론트엔드 별도 배포 시 디렉터리가 없을 수 있으므로 존재할 때만 마운트
-static_dir = Path("backend/static-frontend")
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
-    logger.info(f"📂 StaticFiles 마운트 완료: {static_dir}")
+STATIC_DIR = Path("backend/static-frontend")
+if STATIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+    logger.info(f"📂 StaticFiles 마운트 완료: {STATIC_DIR}")
 else:
-    logger.info(f"📂 StaticFiles 마운트 스킵: {static_dir} 디렉터리 없음 (프론트엔드 별도 배포 시 정상)")
-
-from backend.routers.compare import router as compare_router
-app.include_router(compare_router)
+    logger.info(f"📂 StaticFiles 마운트 스킵: {STATIC_DIR} 디렉터리 없음 (프론트엔드 별도 배포 시 정상)")

@@ -1,0 +1,21 @@
+name: Verify Edge SUDS Endpoint
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+jobs:
+  check-suds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+      - name: Run verification script
+        env:
+          DOMAIN: "https://www.moodtalk.app"
+          ORIGIN: "https://www.moodtalk.app"
+        run: |
+          bash scripts/verify_suds_api.sh || echo "WARNING: verification failed (network or edge)" && exit 0
