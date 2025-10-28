@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { SUDSBanner } from "./SUDSBanner";
 import { parseActions, Action } from "@/lib/parseActions";
 import { normalizeAction } from "@/lib/normalizeAction";
+import { recordSuds } from "@/services/serverAI";
 
 export function ActionRunner({ actions }: { actions: any[] }) {
   const nav = useNavigate();
@@ -29,13 +30,14 @@ export function ActionRunner({ actions }: { actions: any[] }) {
   }, [acts, nav]);
 
   async function sendSuds(score: number) {
-    const res = await fetch("/api/suds/record", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: score, score, source: "compare" }),
-    });
-    const data = await res.json();
-    const next = parseActions(data.actions || [])
+    const result = await recordSuds({ score, source: "compare" });
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("[suds] failed to record SUDS", result.error);
+      return;
+    }
+
+    const next = parseActions(result.actions || [])
       .map(normalizeAction)
       .find((a) => a.type === "start_eftar");
     if (next) {
@@ -50,7 +52,7 @@ export function ActionRunner({ actions }: { actions: any[] }) {
       );
     } else {
       // eslint-disable-next-line no-console
-      console.warn("[suds] no start_eftar in response", data);
+      console.warn("[suds] no start_eftar in response", result);
     }
   }
 
