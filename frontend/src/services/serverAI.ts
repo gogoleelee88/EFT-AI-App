@@ -1078,15 +1078,17 @@ export class EnhancedServerAI extends ServerAI {
 
 /**
  * SUDS 점수 기록 함수
- * 백엔드 /api/suds/record 엔드포인트 호출
+ * 백엔드 /suds 엔드포인트 호출 (레거시 /api/suds/record 1회 폴백 포함)
  *
  * 중복 제출 방지: 동일 세션에서 동시에 여러 요청 방지
  */
 let sudsSubmitting = false;
+const LEGACY_FALLBACK_STATUS_CODES = new Set([404, 405, 308]);
 
 export async function recordSuds(
   payload: {
     score: number;
+    type?: 'manual' | 'auto' | 'system';
     source?: string;
     emotion?: string;
     contextId?: string;
@@ -1108,19 +1110,11 @@ export async function recordSuds(
   sudsSubmitting = true;
 
   try {
-    const url = '/api/suds/record';
-    const requestBody: Record<string, any> = {
-      value: payload.score,
+    const url = '/suds';
+    const requestBody = {
+      type: payload.type ?? 'manual',
       score: payload.score,
-      source: payload.source ?? 'compare',
     };
-    if (payload.emotion) {
-      requestBody.emotion = payload.emotion;
-    }
-    const contextIdentifier = payload.contextId ?? payload.context_id;
-    if (typeof contextIdentifier === 'string' && contextIdentifier.length > 0) {
-      requestBody.context_id = contextIdentifier;
-    }
 
     const bodyString = JSON.stringify(requestBody);
 
@@ -1157,56 +1151,79 @@ export async function recordSuds(
       body: json ?? rawText,
     });
 
-    let effectiveJson: any = json;
+    let effectiveBody: any = json ?? rawText;
 
-    if (!response.ok && response.status === 405) {
-      console.warn('⚠️ POST /api/suds/record blocked (405). Retrying with GET fallback.');
-      const fallbackParams = new URLSearchParams({ value: String(payload.score) });
-      if (typeof requestBody.context_id === 'string') {
-        fallbackParams.set('context_id', requestBody.context_id);
-      }
-      if (payload.source) {
-        fallbackParams.set('source', payload.source);
-      }
+    const shouldAttemptLegacy = !response.ok && LEGACY_FALLBACK_STATUS_CODES.has(response.status);
+
+    if (shouldAttemptLegacy) {
+      console.warn(
+        `⚠️ POST /suds unavailable (status ${response.status}). Retrying with legacy endpoint once.`,
+      );
+      const legacyUrl = '/api/suds/record';
+      const legacyRequestBody: Record<string, any> = {
+        value: payload.score,
+        score: payload.score,
+        source: payload.source ?? 'compare',
+      };
       if (payload.emotion) {
-        fallbackParams.set('emotion', payload.emotion);
+        legacyRequestBody.emotion = payload.emotion;
       }
-      const fallbackUrl = `/api/suds/record?${fallbackParams.toString()}`;
-      const fallbackResponse = await fetch(fallbackUrl, {
-        method: 'GET',
+      const contextIdentifier = payload.contextId ?? payload.context_id;
+      if (typeof contextIdentifier === 'string' && contextIdentifier.length > 0) {
+        legacyRequestBody.context_id = contextIdentifier;
+      }
+
+      const legacyBodyString = JSON.stringify(legacyRequestBody);
+      const legacyResponse = await fetch(legacyUrl, {
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        body: legacyBodyString,
         credentials: 'include',
         cache: 'no-store',
         redirect: 'follow',
         signal: payload.signal,
       });
-      const fallbackText = await fallbackResponse.text();
-      let fallbackJson: any = null;
+      const legacyText = await legacyResponse.text();
+      let legacyJson: any = null;
       try {
-        fallbackJson = fallbackText ? JSON.parse(fallbackText) : null;
+        legacyJson = legacyText ? JSON.parse(legacyText) : null;
       } catch (fallbackError) {
-        console.debug('[recordSuds] GET fallback JSON parse failed, returning raw text');
+        console.debug('[recordSuds] legacy fallback JSON parse failed, returning raw text');
       }
       console.debug('[recordSuds] fallback request', {
-        method: 'GET',
-        url: fallbackUrl,
+        method: 'POST',
+        url: legacyUrl,
+        contentType: 'application/json',
+        bodyLength: legacyBodyString.length,
       });
       console.debug('[recordSuds] fallback response', {
-        status: fallbackResponse.status,
-        ok: fallbackResponse.ok,
-        body: fallbackJson ?? fallbackText,
+        status: legacyResponse.status,
+        ok: legacyResponse.ok,
+        body: legacyJson ?? legacyText,
       });
-      effectiveJson = fallbackJson ?? fallbackText;
-      if (!fallbackResponse.ok) {
-        throw new Error(`SUDS record fallback failed: HTTP ${fallbackResponse.status} ${fallbackResponse.statusText}`);
+      // TODO(migration): remove legacy fallback after 2024-11-07 once all clients use /suds.
+      if (!legacyResponse.ok) {
+        const legacyErrorDetailRaw = legacyJson ?? legacyText ?? legacyResponse.statusText;
+        const legacyErrorDetail =
+          typeof legacyErrorDetailRaw === 'string'
+            ? legacyErrorDetailRaw
+            : JSON.stringify(legacyErrorDetailRaw);
+        throw new Error(
+          `Legacy SUDS record fallback failed: HTTP ${legacyResponse.status} ${legacyErrorDetail}`,
+        );
       }
+      effectiveBody = legacyJson ?? legacyText;
     } else if (!response.ok) {
-      throw new Error(`SUDS record failed: HTTP ${response.status} ${response.statusText}`);
+      const errorDetailRaw = json ?? rawText ?? response.statusText;
+      const errorDetail =
+        typeof errorDetailRaw === 'string' ? errorDetailRaw : JSON.stringify(errorDetailRaw);
+      throw new Error(`SUDS record failed: HTTP ${response.status} ${errorDetail}`);
     }
 
-    const parsedJson = typeof effectiveJson === 'string' ? null : effectiveJson;
+    const parsedJson = typeof effectiveBody === 'string' ? null : effectiveBody;
 
     const actions: ActionItem[] = Array.isArray((parsedJson ?? {})?.actions)
       ? parsedJson.actions
