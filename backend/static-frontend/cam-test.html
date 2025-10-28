@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8">
+<title>Cam Test</title>
+<video id="v" autoplay playsinline muted style="width:100%;background:#000"></video>
+<script>
+(async () => {
+  const v = document.getElementById('v');
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' }, audio: false });
+    v.srcObject = s;
+    await v.play().catch(()=>{});
+    console.log('OK');
+  } catch(e){ console.error(e.name, e.message); }
+})();
+</script>
