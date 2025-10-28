@@ -1,10 +1,17 @@
+from datetime import datetime, timezone
+from uuid import uuid4
+import logging
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 from backend.utils.action_contract import StartEFTARv1
+from backend.models.suds import SUDSEntry
+from backend.services.suds_logger import append_suds
 
 router = APIRouter(tags=["suds"])
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_EFTAR_ROUTE = "/eftar"
@@ -21,26 +28,55 @@ class SUDSRequest(BaseModel):
         description="Origin of the SUDS score submission"
     )
     score: int = Field(description="SUDS score (expected 0-10 scale)", ge=0, le=10)
+    session_id: Optional[str] = Field(
+        default=None, description="Optional session identifier associated with the score"
+    )
+    user_id: Optional[str] = Field(
+        default=None, description="Optional user identifier associated with the score"
+    )
 
 
 class SUDSResponse(BaseModel):
     ok: bool = True
     actions: list[StartEFTARv1] = Field(default_factory=list)
     error: Optional[str] = None
+    trace_id: Optional[str] = None
+    saved_at: Optional[str] = None
 
 
-def _build_response(score: int) -> SUDSResponse:
+def _build_response(score: int, *, trace_id: Optional[str], saved_at: Optional[str]) -> SUDSResponse:
     start = StartEFTARv1.build(
         script="standard_relief",
         suds=score,
         route=DEFAULT_EFTAR_ROUTE,
         params=DEFAULT_EFTAR_PARAMS,
     )
-    return SUDSResponse(ok=True, actions=[start])
+    return SUDSResponse(ok=True, actions=[start], trace_id=trace_id, saved_at=saved_at)
+
+
+def _persist_suds(request: SUDSRequest) -> Tuple[str, str]:
+    trace_id = uuid4().hex
+    saved_at = datetime.now(timezone.utc).isoformat()
+    entry = SUDSEntry(
+        trace_id=trace_id,
+        type=request.type,  # type: ignore[arg-type]
+        score=request.score,
+        session_id=request.session_id,
+        user_id=request.user_id,
+        saved_at=saved_at,
+        timestamp=saved_at,
+    )
+    try:
+        append_suds(entry)
+    except Exception:
+        logger.exception("Failed to persist SUDS entry", extra={"trace_id": trace_id})
+        raise HTTPException(status_code=500, detail="Failed to persist SUDS entry") from None
+    return trace_id, saved_at
 
 
 async def save_suds(request: SUDSRequest) -> SUDSResponse:
-    return _build_response(request.score)
+    trace_id, saved_at = _persist_suds(request)
+    return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
 
 def _cors_headers(origin: Optional[str], requested_headers: Optional[str]) -> Dict[str, str]:
@@ -62,6 +98,11 @@ async def options_suds(request: Request) -> Response:
     requested_headers = request.headers.get("access-control-request-headers")
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
 
+@router.post("/api/suds/record", response_model=SUDSResponse)
+async def record_suds_legacy(
+    payload: Dict[str, Any], request: Request, response: Response
+) -> SUDSResponse:
+    normalized = _normalize_legacy_payload(payload)
 
 @router.post("/suds", response_model=SUDSResponse)
 async def record_suds(payload: SUDSRequest, request: Request, response: Response) -> SUDSResponse:
@@ -82,7 +123,15 @@ def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
         raise HTTPException(status_code=422, detail="Invalid score") from None
 
     legacy_type = payload.get("type") or ("manual" if payload.get("source") else "manual")
-    return SUDSRequest.model_validate({"type": legacy_type, "score": score})
+    normalized_payload: Dict[str, Any] = {
+        "type": legacy_type,
+        "score": score,
+    }
+    for legacy_key, target_key in (("session_id", "session_id"), ("sessionId", "session_id"), ("user_id", "user_id"), ("userId", "user_id")):
+        value = payload.get(legacy_key)
+        if value is not None and target_key not in normalized_payload:
+            normalized_payload[target_key] = value
+    return SUDSRequest.model_validate(normalized_payload)
 
 
 @router.post("/api/suds/record", response_model=SUDSResponse)

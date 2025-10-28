@@ -51,8 +51,6 @@ from backend.services.memory_system import (
 from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType
 from backend.utils.action_builder import build_actions
 from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
-from backend.models.suds import SUDSType, SUDSEntry, SUDSRequest, SUDSResponse
-from backend.services.suds_logger import append_suds
 from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
 # Premium router removed - using only free tier /api/chat endpoint
@@ -64,7 +62,6 @@ logger = get_logger(__name__)
 # --- 데이터 파일 경로 준비 ---
 DATA_DIR = Path(__file__).resolve().parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-SUDS_FILE = DATA_DIR / "suds_events.jsonl"
 NOTICES_FILE = DATA_DIR / "notices.json"
 
 def _now_iso() -> str:
@@ -745,50 +742,6 @@ async def health_engines_v1(request: Request):
         "schema_version": "1.0"
     }
 
-@app.post("/suds", response_model=SUDSResponse, tags=["suds"])
-async def save_suds(req: SUDSRequest):
-    """SUDS 저장 엔드포인트"""
-    trace_id = str(uuid4())
-    now = _now_iso()
-
-    entry = SUDSEntry(
-        trace_id=trace_id,
-        type=req.type,
-        score=req.score,
-        session_id=req.session_id,
-        user_id=req.user_id,
-        saved_at=now,
-        timestamp=now,
-    )
-    try:
-        append_suds(entry)
-    except Exception as e:
-        logger.exception(f"SUDS save failed: {trace_id}")
-        raise HTTPException(status_code=500, detail="SUDS 저장 실패")
-
-    # 구조적 로깅
-    logger.info("SUDS saved", extra={
-        "event": "suds_saved",
-        "trace_id": trace_id,
-        "session_id": req.session_id,
-        "user_id": req.user_id,
-        "score": req.score,
-        "type": req.type,
-        "saved_at": now,
-    })
-
-    return SUDSResponse(
-        ok=True,
-        trace_id=trace_id,
-        saved_at=now,
-    )
-
-@app.get("/suds/by-session/{session_id}", response_model=List[SUDSEntry], tags=["suds"])
-async def list_suds_by_session(session_id: str):
-    """세션별 SUDS 조회 엔드포인트"""
-    items = read_suds_by_session(session_id)
-    return items
-
 @app.post("/api/memory/{session_id}/suds", tags=["memory"])
 async def record_suds_memory(session_id: str, payload: dict):
     """
@@ -1336,29 +1289,6 @@ class ComparisonResponse(BaseModel):
     timestamp: str = Field(..., description="응답 시간")
 
 # SUDS 모델들은 models.suds에서 임포트됨
-
-def append_suds(entry: SUDSEntry) -> None:
-    # JSON Lines로 한 줄씩 누적 저장
-    with SUDS_FILE.open("a", encoding="utf-8") as f:
-        f.write(entry.json(ensure_ascii=False) + "\n")
-
-def read_suds_by_session(session_id: str) -> List[SUDSEntry]:
-    results: List[SUDSEntry] = []
-    if not SUDS_FILE.exists():
-        return results
-    with SUDS_FILE.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                obj = json.loads(line)
-                if obj.get("session_id") == session_id:
-                    results.append(SUDSEntry(**obj))
-            except Exception:
-                # 손상된 라인은 무시(로그만)
-                logger.warning(f"Malformed SUDS line: {line[:120]}")
-                pass
-    return results
 
 # 폴백 로직을 위한 도우미 함수
 def other_engine_key(cur_key: str) -> Optional[str]:
