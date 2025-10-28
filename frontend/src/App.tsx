@@ -76,6 +76,8 @@ const App: React.FC = () => {
           />
           {/* 방어적 리다이렉트: /eft-guide → /ar-holistic */}
           <Route path="/eft-guide" element={<Navigate to="/ar-holistic" replace />} />
+          {/* EFT AR 경로: /eftar → /ar-holistic */}
+          <Route path="/eftar" element={<Navigate to="/ar-holistic" replace />} />
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

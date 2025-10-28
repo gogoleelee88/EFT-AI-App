@@ -611,6 +611,15 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
         if (t === 'recommend_eft' || t === 'suggest_eft') {
           console.info('👉 EFT 제안 액션 수신:', payload);
+
+          // 🔍 ask_suds가 있는지 확인 - SUDS 측정이 필요하면 AR 이동 보류
+          const hasAskSuds = actions.some(a => a?.type === 'ask_suds');
+
+          if (hasAskSuds) {
+            console.info('⏸️ ask_suds가 있어서 AR 이동 보류 (SUDS 측정 후 start_eftar로 이동)');
+            continue;
+          }
+
           try {
             const intensity = typeof payload?.intensity === 'number'
               ? Number(payload.intensity)
