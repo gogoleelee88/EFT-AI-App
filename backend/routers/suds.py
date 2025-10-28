@@ -98,12 +98,6 @@ async def options_suds(request: Request) -> Response:
     requested_headers = request.headers.get("access-control-request-headers")
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
 
-@router.post("/api/suds/record", response_model=SUDSResponse)
-async def record_suds_legacy(
-    payload: Dict[str, Any], request: Request, response: Response
-) -> SUDSResponse:
-    normalized = _normalize_legacy_payload(payload)
-
 @router.post("/suds", response_model=SUDSResponse)
 async def record_suds(payload: SUDSRequest, request: Request, response: Response) -> SUDSResponse:
     origin = request.headers.get("origin")
