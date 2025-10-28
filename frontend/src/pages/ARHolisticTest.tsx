@@ -116,9 +116,16 @@ const PRESETS: Record<string, EFTCode[]> = {
 };
 
 function parseARParams(sp: URLSearchParams): ARParams {
+  // SUDS 값이 있으면 우선 사용 (SUDS 배너에서 입력한 값)
+  const sudsRaw = sp.get("suds");
+  const sudsValue = sudsRaw != null ? Number(sudsRaw) : null;
+  const intensityValue = (sudsValue !== null && Number.isFinite(sudsValue))
+    ? clamp(sudsValue, 0, 10)
+    : getNum(sp, "intensity", DEFAULT_PARAMS.intensity, 0, 10);
+
   const base: ARParams = {
     emotion:     parseEmotion(sp, DEFAULT_PARAMS.emotion),
-    intensity:   getNum(sp, "intensity",  DEFAULT_PARAMS.intensity, 0, 10),
+    intensity:   intensityValue,
     points:      parsePoints(sp, DEFAULT_PARAMS.points),
     durationSec: getNum(sp, "duration",   DEFAULT_PARAMS.durationSec, 15, 600),
     rounds:      getNum(sp, "rounds",     DEFAULT_PARAMS.rounds, 1, 20),
