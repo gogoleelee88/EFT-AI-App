@@ -16,7 +16,8 @@
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
     "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
     "start:backend": "cd backend && npm start",
-    "start:frontend": "cd frontend && npm run preview"
+    "start:frontend": "cd frontend && npm run preview",
+    "test": "npm run --workspace frontend test --"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
