@@ -71,19 +71,19 @@ export const handlers = [
     const sc = getScenario();
 
     if (sc === 'breath') {
-      const body = `좋아요. 빠른 진정이 먼저네요.
+      const body = `빠르게 진정이 필요해 보여요.
 [NOTION_RECORD_JSON]
 {
   "emotion_primary": "불안",
-  "trigger": "미상",
+  "trigger": "시간 압박",
   "thought_pattern": "미상",
   "body_signals": "가슴 두근",
   "behavior_response": "미상",
-  "context_detail": "급한 상황",
+  "context_detail": "급함",
   "SUDS_before": 7,
-  "preferred_modality": "미상",
+  "preferred_modality": "BREATH",
   "plan_modality": "BREATH",
-  "rationale": "시간 제약 5분 이내 + 즉각 진정 필요",
+  "rationale": "시간 제약 5분 → 호흡",
   "session_notes": "세션 실행은 프론트에서 진행",
   "cbt_action_steps": ["3초 들숨","3초 멈춤","6초 날숨"],
   "user_feedback": "미상",
@@ -96,12 +96,9 @@ export const handlers = [
   "action": "start_breath_page",
   "route": "/tri-modal",
   "suds": 7,
-  "rationale": "시간 제약 5분 이내 + 막연한 불안"
+  "rationale": "시간 제약 5분"
 }`;
-      const actions = [
-        { type: 'start_breath_page', payload: { suds: 7, route: '/tri-modal' } }
-      ];
-      return HttpResponse.json(mkReply(body, actions));
+      return HttpResponse.json({ response: body, actions: [] });
     }
 
     // 기본(EFT)
@@ -132,10 +129,7 @@ export const handlers = [
   "suds": 8,
   "rationale": "특정 신념 고정"
 }`;
-    const actions = [
-      { type: 'start_eftar', payload: { suds: 8, route: '/eftar', script: 'standard_relief' } }
-    ];
-    return HttpResponse.json(mkReply(body, actions));
+    return HttpResponse.json({ response: body, actions: [] });
   }),
 
   // SUDS 기록 직후에 백엔드가 분기 액션을 돌려준다고 가정 (레거시)
@@ -170,7 +164,8 @@ export const handlers = [
   "suds": 7,
   "rationale": "시간 제약 5분 이내 + 막연한 불안"
 }`;
-      return HttpResponse.json(mkReply(body));
+      // UI_ACTION_JSON만 사용하도록 actions 배열 제거
+      return HttpResponse.json(mkReply(body, []));
     }
 
     // 기본(EFT)
@@ -201,6 +196,7 @@ export const handlers = [
   "suds": 8,
   "rationale": "특정 신념 고정"
 }`;
-    return HttpResponse.json(mkReply(body));
+    // UI_ACTION_JSON만 사용하도록 actions 배열 제거
+    return HttpResponse.json(mkReply(body, []));
   }),
 ];

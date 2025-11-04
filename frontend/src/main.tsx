@@ -11,6 +11,22 @@ console.info('BUILD', __BUILD_ID__, __BUILD_TIME__)
 // Force bundle content change to eliminate old route cache
 console.log('🔄 Bundle regeneration timestamp:', Date.now())
 
+// 🧪 MSW 모킹 활성화 (개발 모드 전용)
+// 💡 localStorage.setItem('DISABLE_MSW','1') → 새로고침하면 실서버 직접 확인 가능
+if (import.meta.env.DEV && !localStorage.getItem('DISABLE_MSW')) {
+  import('./mocks/browser').then(({ worker }) => {
+    worker.start({
+      onUnhandledRequest: 'bypass', // 모킹되지 않은 요청은 그대로 통과
+    });
+    console.log('🧪 MSW mocking enabled (DEV mode)');
+  });
+
+  // 시나리오 토글 유틸 로드
+  import('./utils/testScenario');
+} else if (import.meta.env.DEV) {
+  console.log('🔇 MSW mocking disabled (DISABLE_MSW=1)');
+}
+
 const root = createRoot(document.getElementById('root')!)
 
 root.render(
