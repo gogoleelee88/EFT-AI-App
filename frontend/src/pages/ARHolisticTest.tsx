@@ -511,23 +511,30 @@ export default function ARHolisticTest() {
     const startCameraOnce = async () => {
       if (startedRef.current) return;
 
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: "user" },
-        audio: false,
-      });
-
-      const v = videoRef.current!;
-      if (v.srcObject !== stream) v.srcObject = stream;
-
       try {
-        await v.play();
-        setNeedsTap(false);
-      } catch (e) {
-        console.warn("autoplay blocked; show start button");
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" },
+          audio: false,
+        });
+
+        const v = videoRef.current!;
+        if (v.srcObject !== stream) v.srcObject = stream;
+
+        try {
+          await v.play();
+          setNeedsTap(false);
+        } catch (e) {
+          console.warn("autoplay blocked; show start button");
+          setNeedsTap(true);
+          return;
+        }
+        startedRef.current = true;
+      } catch (err: any) {
+        console.error("Camera permission denied:", err);
+        setError("카메라 권한이 필요합니다. 브라우저 설정에서 카메라 접근을 허용해주세요.");
         setNeedsTap(true);
-        return;
+        throw err;
       }
-      startedRef.current = true;
     };
 
     const setup = async () => {
@@ -535,8 +542,9 @@ export default function ARHolisticTest() {
         setError(null);
         stoppedRef.current = false;
 
-        // 1) 카메라 (중복 방지)
-        await startCameraOnce();
+        // 1) 카메라 권한 요청 (사용자 클릭 후에만 실행되도록 대기)
+        // ⚠️ 페이지 로드 즉시 실행하지 않고 버튼 클릭 시 실행
+        // await startCameraOnce(); // ← 주석 처리
 
         // 2) Mediapipe
         holistic = new Holistic({
@@ -1062,6 +1070,7 @@ export default function ARHolisticTest() {
 
         // 시작 단추 노출을 위해 window에 붙여두고 컴포넌트 언마운트 시 정리
         (window as any).__startEFTGuide = startGuide;
+        (window as any).__startCamera = startCameraOnce;
 
       } catch (e: any) {
         console.error(e);
@@ -1175,10 +1184,12 @@ export default function ARHolisticTest() {
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               onClick={async () => {
                 try {
-                  await videoRef.current?.play();
+                  // ✅ 사용자 클릭 시 카메라 권한 요청
+                  await (window as any).__startCamera?.();
                   setNeedsTap(false);
-                } catch (e) {
-                  console.warn("play failed", e);
+                } catch (e: any) {
+                  console.error("Camera start failed", e);
+                  setError(e?.message || "카메라 시작 실패");
                 }
               }}
             >
