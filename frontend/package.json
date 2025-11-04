@@ -3,13 +3,13 @@
   "private": false,
   "version": "1.0.0",
   "type": "module",
-  "description": "EFT \uae30\ubc18 AI \uc2ec\ub9ac\uad00\ub9ac \uc571 - AI\uc640 \ud568\uaed8\ud558\ub294 \ub9c8\uc74c \uc5ec\ud589",
+  "description": "EFT 기반 AI 심리관리 앱 - AI와 함께하는 마음 여행",
   "keywords": [
     "EFT",
     "AI",
-    "\uc2ec\ub9ac\uad00\ub9ac",
-    "\ub9c8\uc74c\ucc59\uae40",
-    "\uac10\uc815\uad00\ub9ac",
+    "심리관리",
+    "마음챙김",
+    "감정관리",
     "PWA",
     "React",
     "Transformers.js"
@@ -56,6 +56,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.8.1",
+    "recharts": "^3.3.0",
     "three": "^0.179.1"
   },
   "devDependencies": {
@@ -74,6 +75,7 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
     "jsdom": "^27.0.0",
+    "msw": "^2.11.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
@@ -81,5 +83,10 @@
     "vite-plugin-pwa": "^1.0.2",
     "vitest": "^3.2.4",
     "workbox-window": "^7.3.0"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }

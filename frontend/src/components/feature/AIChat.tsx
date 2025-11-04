@@ -648,6 +648,21 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           continue;
         }
 
+        if (t === 'start_breath_page' || t === 'start_breath_meditation') {
+          const route = payload?.route ?? '/tri-modal';
+          const sudsValue = payload?.suds;
+          const rationale = payload?.rationale ?? '';
+          const params = new URLSearchParams();
+          if (sudsValue != null && !Number.isNaN(Number(sudsValue))) {
+            params.set('suds', String(sudsValue));
+          }
+          console.info('🧘 start_breath_page 액션 수신:', payload);
+          console.log('📊 분기 근거:', rationale);
+          navigate(`${route}${params.toString() ? '?' + params.toString() : ''}`);
+          console.log('✅ Breath Meditation Loop: emotion→SUDS→Breath Meditation confirmed.');
+          continue;
+        }
+
         console.log('ℹ️ 미지원 액션 타입:', t);
       }
     } catch (err) {
@@ -797,9 +812,70 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
         shadowFireAndForget(trimmed, serverResponse);
       }
       
-      // 🔥 3) 백엔드가 이미 토큰 제거 & 액션 포함해 줌
-      const actionResults = serverResponse.actions ?? [];
+      // 🔥 3) 백엔드 응답 파싱 (Intake JSON, Notion Record JSON, UI Action JSON 추출)
       let reply = serverResponse.response ?? '';
+
+      // 🎯 새로운 5단계 시스템: JSON 파싱
+      const intakeMatch = reply.match(/\[?INTAKE[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+      const notionMatch = reply.match(/\[?NOTION[_\s]RECORD[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+      const uiActionMatch = reply.match(/\[?UI[_\s]ACTION[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+
+      let intakeData = null;
+      let notionRecordData = null;
+      let uiActionData = null;
+
+      // Intake JSON 추출
+      if (intakeMatch) {
+        try {
+          intakeData = JSON.parse(intakeMatch[1]);
+          console.log('📊 Intake JSON 추출:', intakeData);
+          reply = reply.replace(intakeMatch[0], '').trim();
+        } catch (e) {
+          console.warn('⚠️ Intake JSON 파싱 실패:', e);
+        }
+      }
+
+      // Notion Record JSON 추출
+      if (notionMatch) {
+        try {
+          notionRecordData = JSON.parse(notionMatch[1]);
+          console.log('📝 Notion Record JSON 추출:', notionRecordData);
+          reply = reply.replace(notionMatch[0], '').trim();
+          // TODO: Notion API로 전송
+        } catch (e) {
+          console.warn('⚠️ Notion Record JSON 파싱 실패:', e);
+        }
+      }
+
+      // UI Action JSON 추출 및 즉시 실행
+      if (uiActionMatch) {
+        try {
+          uiActionData = JSON.parse(uiActionMatch[1]);
+          console.log('🚀 UI Action JSON 추출:', uiActionData);
+          reply = reply.replace(uiActionMatch[0], '').trim();
+
+          // 즉시 라우팅 실행
+          const { action, route, suds, rationale } = uiActionData;
+          if (action === 'start_eftar') {
+            const params = new URLSearchParams({ script: 'standard_relief' });
+            if (suds != null) params.set('suds', String(suds));
+            console.info('🚀 start_eftar 액션 수신:', { suds, rationale });
+            navigate(`${route}?${params.toString()}`);
+            console.log('✅ EFT Loop: emotion→SUDS→EFT AR confirmed.');
+          } else if (action === 'start_breath_page') {
+            const params = new URLSearchParams();
+            if (suds != null) params.set('suds', String(suds));
+            console.info('🧘 start_breath_page 액션 수신:', { suds, rationale });
+            navigate(`${route}${params.toString() ? '?' + params.toString() : ''}`);
+            console.log('✅ Breath Meditation Loop: emotion→SUDS→Breath confirmed.');
+          }
+        } catch (e) {
+          console.warn('⚠️ UI Action JSON 파싱 실패:', e);
+        }
+      }
+
+      // 기존 액션 시스템 (백엔드가 actions 배열로 보낼 경우 호환성 유지)
+      const actionResults = serverResponse.actions ?? [];
 
       // 🎬 액션 토큰 처리 (ask_suds, recommend_eft 등)
       handleActionTokens(actionResults);
