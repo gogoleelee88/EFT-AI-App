@@ -1052,42 +1052,44 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     console.info('✅ SUDS 제출 성공', { measurementType, res });
 
     // (신규) /suds 응답 본문에서 S4 JSON(Record/Action) 파싱 → 즉시 라우팅
-    try {
-      const raw =
-        (typeof res?.response === 'string' && res.response) ||
-        (res?.body || res?.text || '');
-      if (raw) {
-        const intakeMatch   = raw.match(/\[?INTAKE[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
-        const notionMatch   = raw.match(/\[?NOTION[_\s]RECORD[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
-        const uiActionMatch = raw.match(/\[?UI[_\s]ACTION[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+    // 🛡️ 방어 코드: 여러 필드 후보 탐색
+    const reply =
+      res?.response ??         // 표준
+      res?.res?.response ??    // 래핑
+      res?.body ??             // 혹시 body
+      res?.text ??             // 혹시 text
+      '';
+
+    if (!reply) {
+      console.warn('⚠️ /suds 응답에 response 본문이 없습니다:', res);
+    } else {
+      try {
+        const notionMatch   = reply.match(/\[?NOTION[_\s]RECORD[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+        const uiActionMatch = reply.match(/\[?UI[_\s]ACTION[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
 
         if (notionMatch) {
-          const nr = JSON.parse(notionMatch[1]);
-          console.log('📝 (SUDS) Notion Record JSON 추출:', nr);
-          // TODO: 필요 시 노션 API 전송
+          const record = JSON.parse(notionMatch[1]);
+          console.log('📝 (SUDS) Notion Record JSON 추출:', record);
+          // TODO: 필요 시 Notion 전송
         }
+
         if (uiActionMatch) {
-          const act = JSON.parse(uiActionMatch[1]);
-          console.log('🚀 (SUDS) UI Action JSON 추출:', act);
-          const { action, route, suds, rationale } = act || {};
-          if (action === 'start_eftar') {
-            const params = new URLSearchParams({ script: 'standard_relief' });
-            if (suds != null) params.set('suds', String(suds));
-            console.info('🚀 start_eftar (from /suds):', { suds, rationale });
-            navigate(`${route}?${params.toString()}`);
-            return true;
-          }
-          if (action === 'start_breath_page') {
-            const params = new URLSearchParams();
-            if (suds != null) params.set('suds', String(suds));
-            console.info('🧘 start_breath_page (from /suds):', { suds, rationale });
-            navigate(`${route}${params.toString() ? '?' + params.toString() : ''}`);
-            return true;
-          }
+          const actionObj = JSON.parse(uiActionMatch[1]);
+          console.log('🚀 (SUDS) UI Action JSON 추출:', actionObj);
+
+          const { action, route, suds, rationale } = actionObj;
+          const params = new URLSearchParams();
+          if (suds != null) params.set('suds', String(suds));
+          if (action === 'start_eftar') params.set('script', 'standard_relief');
+
+          navigate(`${route}${params.toString() ? `?${params.toString()}` : ''}`);
+          return true; // ✅ UI_ACTION_JSON 처리 성공 시, actions[]는 스킵
+        } else {
+          console.warn('⚠️ (SUDS) UI_ACTION_JSON 블록이 없습니다. reply=', reply);
         }
+      } catch (e) {
+        console.warn('⚠️ (SUDS) JSON 파싱 실패:', e, 'reply=', reply);
       }
-    } catch (e) {
-      console.warn('⚠️ (SUDS) S4 JSON 파싱 실패:', e);
     }
 
     // 기존 actions 배열 처리 (UI_ACTION_JSON이 없을 때 폴백)
