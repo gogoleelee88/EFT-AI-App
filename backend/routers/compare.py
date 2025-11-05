@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from backend.config.settings import get_settings
 from backend.models.action_tokens import TokenParser, TokenProcessor
 from backend.services.emotion_analyzer import get_emotion_analyzer
+from backend.services.prompt_manager import EFTPromptManager
 from backend.utils.action_builder import NEGATIVE_EMOTIONS, build_actions
 from backend.utils.action_contract import normalize_start_eftar
 from backend.utils.action_guard import guard_actions
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["compare"])
 
 settings = get_settings()
+prompt_manager = EFTPromptManager()
 
 
 def _normalize_api_base(url: str) -> str:
@@ -50,12 +52,17 @@ class CompareRequest(BaseModel):
     max_tokens: Optional[int] = 512
     session_id: Optional[str] = None
     user_id: Optional[str] = None
+    turn_count: Optional[int] = 0  # Slice 1 시스템: 턴 수 추적
 
 
-def _chat_payload(model: str, req: CompareRequest) -> Dict[str, Any]:
+def _chat_payload(model: str, req: CompareRequest, system_prompt: str) -> Dict[str, Any]:
+    """vLLM 엔진 요청 페이로드 생성 (시스템 프롬프트 포함)"""
     return {
         "model": model,
-        "messages": [{"role": "user", "content": req.message}],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": req.message}
+        ],
         "temperature": req.temperature,
         "top_p": req.top_p,
         "max_tokens": req.max_tokens,
@@ -112,18 +119,55 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
 
     started_at = time.perf_counter()
 
+    # 🎯 Step 1: 감정 분석 먼저 수행 (프롬프트 생성용)
+    try:
+        analyzer = get_emotion_analyzer()
+        emotion_analysis = await analyzer.analyze(req.message)
+        logger.info(
+            "[COMPARE] 감정 분석 완료: %s (강도: %.2f, 신뢰도: %.2f)",
+            emotion_analysis.primary_emotion,
+            emotion_analysis.intensity,
+            emotion_analysis.confidence,
+        )
+    except Exception as e:
+        emotion_analysis = None
+        logger.warning("[COMPARE] 감정 분석 실패: %r", e)
+
+    # 🎯 Step 2: 시스템 프롬프트 생성 (조언 3 반영: 예외 처리 강화)
+    try:
+        if emotion_analysis:
+            system_prompt = prompt_manager.build_eft_prompt(
+                user_message=req.message,
+                emotion_state=emotion_analysis,
+                conversation_history=[],  # TODO: 세션 관리 시 히스토리 전달
+                user_profile=None,
+                tier="free"
+            )
+            logger.info("[COMPARE] 시스템 프롬프트 생성 완료 (감정 기반)")
+            logger.info("[COMPARE] 프롬프트 내용 (처음 300자): %s...", system_prompt[:300])
+        else:
+            # 감정 분석 실패 시 기본 프롬프트 사용 (폴백)
+            system_prompt = prompt_manager.base_system_prompt
+            logger.info("[COMPARE] 기본 시스템 프롬프트 사용 (감정 분석 실패)")
+            logger.info("[COMPARE] 프롬프트 내용 (처음 300자): %s...", system_prompt[:300])
+    except Exception as e:
+        # 프롬프트 생성 실패 시에도 기본 프롬프트로 폴백
+        logger.error("[COMPARE] 프롬프트 생성 실패, 기본 프롬프트 사용: %r", e)
+        system_prompt = prompt_manager.base_system_prompt
+
+    # 🎯 Step 3: Engine A/B 병렬 호출 (시스템 프롬프트 포함)
     async with httpx.AsyncClient() as client:
         try:
             res_a, res_b = await asyncio.gather(
                 client.post(
                     ENGINE_A_URL,
-                    json=_chat_payload(ENGINE_A_MODEL, req),
+                    json=_chat_payload(ENGINE_A_MODEL, req, system_prompt),
                     headers=headers,
                     timeout=ENGINE_HTTP_TIMEOUT,
                 ),
                 client.post(
                     ENGINE_B_URL,
-                    json=_chat_payload(ENGINE_B_MODEL, req),
+                    json=_chat_payload(ENGINE_B_MODEL, req, system_prompt),
                     headers=headers,
                     timeout=ENGINE_HTTP_TIMEOUT,
                 ),
@@ -225,18 +269,8 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
 
             executed_actions: List[Dict[str, Any]] = []
 
-            try:
-                analyzer = get_emotion_analyzer()
-                emotion_analysis = await analyzer.analyze(req.message)
-                logger.info(
-                    "[EmotionAnalyzer] 감정: %s, 강도: %.2f, 신뢰도: %.2f",
-                    emotion_analysis.primary_emotion,
-                    emotion_analysis.intensity,
-                    emotion_analysis.confidence,
-                )
-            except Exception as e:
-                emotion_analysis = None
-                logger.warning("[EmotionAnalyzer] 감정 분석 실패: %r", e)
+            # 🎯 감정 분석 결과는 함수 시작 부분에서 이미 수행됨 (line 123-134)
+            # 여기서는 기존 emotion_analysis 변수를 재사용
 
             try:
                 tokens_a = TokenParser.extract_tokens(response_a_raw)
@@ -272,7 +306,14 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 logger.warning("[COMPARE] builder skipped: %r", e)
 
             try:
-                ask = _maybe_emit_ask_suds(user_text=req.message, assistant_text=winner_clean)
+                # Slice 1 시스템: 요청에서 턴 수 추출
+                turn_count = req.turn_count or 0
+
+                ask = _maybe_emit_ask_suds(
+                    user_text=req.message,
+                    assistant_text=winner_clean,
+                    turn_count=turn_count
+                )
                 if ask:
                     ask.setdefault("payload", {})
                     ask["payload"].setdefault("ui", "banner")
