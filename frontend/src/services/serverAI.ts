@@ -1094,7 +1094,7 @@ export async function recordSuds(
     context_id?: string;
     signal?: AbortSignal;
   }
-): Promise<{ ok: boolean; actions: ActionItem[]; error?: string }> {
+): Promise<{ ok: boolean; actions: ActionItem[]; response?: string; error?: string }> {
   if (sudsSubmitting) {
     if (import.meta.env.DEV || import.meta.env.VITE_DEBUG === 'true') {
       console.warn('⚠️ SUDS 제출 중복 방지: 이미 제출 중입니다');
@@ -1186,6 +1186,7 @@ export async function recordSuds(
     return {
       ok: true,
       actions,
+      response: typeof parsedJson?.response === 'string' ? parsedJson.response : undefined,
     };
   } catch (error) {
     console.error('SUDS 기록 실패:', error);

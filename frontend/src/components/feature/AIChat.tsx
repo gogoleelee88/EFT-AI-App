@@ -21,6 +21,7 @@ import type {
 import { recToARParams } from '../../lib/eftAdapter';
 import { EftRecButton } from '../eft';
 import { recordSuds } from '@/services/serverAI';
+import { parseReplyForJson } from './AIChat.utils';
 import { 
   createSession,
   onUserMessage,
@@ -813,7 +814,40 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
       }
       
       // 🔥 3) 백엔드 응답 파싱 (Intake JSON, Notion Record JSON, UI Action JSON 추출)
-      let reply = serverResponse.response ?? '';
+      const originalReply = serverResponse.response ?? '';
+
+      // 🎯 새로운 5단계 시스템: JSON 파싱 (유틸 함수 사용)
+      const { intake: intakeData, notion: notionRecordData, action: uiActionData, cleanedReply } = parseReplyForJson(originalReply);
+      let reply = cleanedReply;
+
+      // Notion Record JSON 처리 (추후 Notion API 전송)
+      if (notionRecordData) {
+        // TODO: Notion API로 전송
+        console.log('📝 Notion Record 준비됨:', notionRecordData);
+      }
+
+      // ✅ 우선순위 역전: UI_ACTION_JSON이 있으면 즉시 실행하고 종료
+      if (uiActionData) {
+        const { action, route, suds, rationale } = uiActionData;
+        if (action === 'start_eftar') {
+          const params = new URLSearchParams({ script: 'standard_relief' });
+          if (suds != null) params.set('suds', String(suds));
+          console.info('🚀 start_eftar(우선 실행):', { suds, rationale });
+          navigate(`${route}?${params.toString()}`);
+          console.log('✅ EFT Loop: emotion→SUDS→EFT AR (UI_ACTION_JSON 우선)');
+          return; // ← actions[] 처리 스킵
+        } else if (action === 'start_breath_page') {
+          const params = new URLSearchParams();
+          if (suds != null) params.set('suds', String(suds));
+          console.info('🧘 start_breath_page(우선 실행):', { suds, rationale });
+          navigate(`${route}${params.toString() ? '?' + params.toString() : ''}`);
+          console.log('✅ Breath Loop: emotion→SUDS→Breath (UI_ACTION_JSON 우선)');
+          return; // ← actions[] 처리 스킵
+        }
+      }
+
+      // ⬇️ UI_ACTION_JSON이 없을 때만 MSW/백엔드 actions[] 후순위로 처리
+      const actionResults = serverResponse.actions ?? [];
 
       // 🎯 새로운 5단계 시스템: JSON 파싱
       const intakeMatch = reply.match(/\[?INTAKE[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
@@ -1078,11 +1112,52 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
 
     console.info('✅ SUDS 제출 성공', { measurementType, res });
+
+    // (신규) /suds 응답 본문에서 S4 JSON(Record/Action) 파싱 → 즉시 라우팅
+    // 🛡️ 방어 코드: 여러 필드 후보 탐색
+    const reply =
+      res?.response ??         // 표준
+      res?.res?.response ??    // 래핑
+      res?.body ??             // 혹시 body
+      res?.text ??             // 혹시 text
+      '';
+
+    if (!reply) {
+      console.warn('⚠️ /suds 응답에 response 본문이 없습니다:', res);
+    } else {
+      try {
+        const notionMatch   = reply.match(/\[?NOTION[_\s]RECORD[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+        const uiActionMatch = reply.match(/\[?UI[_\s]ACTION[_\s]JSON\]?\s*(\{[\s\S]*?\})/i);
+
+        if (notionMatch) {
+          const record = JSON.parse(notionMatch[1]);
+          console.log('📝 (SUDS) Notion Record JSON 추출:', record);
+          // TODO: 필요 시 Notion 전송
+        }
+
+        if (uiActionMatch) {
+          const actionObj = JSON.parse(uiActionMatch[1]);
+          console.log('🚀 (SUDS) UI Action JSON 추출:', actionObj);
+
+          const { action, route, suds, rationale } = actionObj;
+          const params = new URLSearchParams();
+          if (suds != null) params.set('suds', String(suds));
+          if (action === 'start_eftar') params.set('script', 'standard_relief');
+
+          navigate(`${route}${params.toString() ? `?${params.toString()}` : ''}`);
+          return true; // ✅ UI_ACTION_JSON 처리 성공 시, actions[]는 스킵
+        } else {
+          console.warn('⚠️ (SUDS) UI_ACTION_JSON 블록이 없습니다. reply=', reply);
+        }
+      } catch (e) {
+        console.warn('⚠️ (SUDS) JSON 파싱 실패:', e, 'reply=', reply);
+      }
+    }
+
+    // 기존 actions 배열 처리 (UI_ACTION_JSON이 없을 때 폴백)
     if (Array.isArray(res.actions) && res.actions.length > 0) {
       console.log('🎯 suds.record actions:', res.actions);
       handleActionTokens(res.actions);
-    } else {
-      console.warn('⚠️ suds.record 응답에 actions가 없습니다', res);
     }
 
     return true;

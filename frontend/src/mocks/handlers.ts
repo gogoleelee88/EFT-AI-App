@@ -67,75 +67,46 @@ export const handlers = [
   }),
 
   // SUDS 엔드포인트 (신규 API)
-  http.post('/suds', async () => {
-    const sc = getScenario();
+  http.post('/suds', async ({ request }) => {
+    const { score = 0 } = await request.json().catch(() => ({ score: 0 }));
+    const n = Number(score) || 0;
 
-    if (sc === 'breath') {
-      const body = `좋아요. 빠른 진정이 먼저네요.
+    const body = `
 [NOTION_RECORD_JSON]
 {
   "emotion_primary": "불안",
-  "trigger": "미상",
+  "trigger": "시간 압박",
   "thought_pattern": "미상",
-  "body_signals": "가슴 두근",
+  "body_signals": "가슴 두근거림",
   "behavior_response": "미상",
-  "context_detail": "급한 상황",
-  "SUDS_before": 7,
+  "context_detail": "로컬 모킹",
+  "SUDS_before": ${n},
   "preferred_modality": "미상",
-  "plan_modality": "BREATH",
-  "rationale": "시간 제약 5분 이내 + 즉각 진정 필요",
+  "plan_modality": ${n >= 7 ? "\"EFT\"" : "\"BREATH\""},
+  "rationale": ${n >= 7 ? "\"구체 트리거 및 시간 여유\"" : "\"시간 제약/신체 각성\""},
   "session_notes": "세션 실행은 프론트에서 진행",
-  "cbt_action_steps": ["3초 들숨","3초 멈춤","6초 날숨"],
+  "cbt_action_steps": ["단계1","단계2","단계3"],
   "user_feedback": "미상",
   "timestamp_start": "미상",
   "timestamp_end": "미상",
   "duration": 0
 }
-[UI_ACTION_JSON]
-{
-  "action": "start_breath_page",
-  "route": "/tri-modal",
-  "suds": 7,
-  "rationale": "시간 제약 5분 이내 + 막연한 불안"
-}`;
-      const actions = [
-        { type: 'start_breath_page', payload: { suds: 7, route: '/tri-modal' } }
-      ];
-      return HttpResponse.json(mkReply(body, actions));
-    }
 
-    // 기본(EFT)
-    const body = `특정 신념을 EFT로 다루는 게 적절해 보여요.
-[NOTION_RECORD_JSON]
-{
-  "emotion_primary": "분노",
-  "trigger": "상사의 무시",
-  "thought_pattern": "나는 인정받지 못한다",
-  "body_signals": "가슴 답답",
-  "behavior_response": "회피",
-  "context_detail": "회의 중 의견 무시",
-  "SUDS_before": 8,
-  "preferred_modality": "미상",
-  "plan_modality": "EFT",
-  "rationale": "특정 신념 고정 - 재구조화 필요",
-  "session_notes": "세션 실행은 프론트에서 진행",
-  "cbt_action_steps": ["탭핑 포인트 확인","셋업 구문 반복","SUDS 재측정"],
-  "user_feedback": "미상",
-  "timestamp_start": "미상",
-  "timestamp_end": "미상",
-  "duration": 0
-}
 [UI_ACTION_JSON]
 {
-  "action": "start_eftar",
-  "route": "/eftar",
-  "suds": 8,
-  "rationale": "특정 신념 고정"
-}`;
-    const actions = [
-      { type: 'start_eftar', payload: { suds: 8, route: '/eftar', script: 'standard_relief' } }
-    ];
-    return HttpResponse.json(mkReply(body, actions));
+  "action": ${n >= 7 ? "\"start_eftar\"" : "\"start_breath_page\""},
+  "route": ${n >= 7 ? "\"/eftar\"" : "\"/tri-modal\""},
+  "suds": ${n},
+  "rationale": ${n >= 7 ? "\"특정 신념/사건\"" : "\"시간 제약 또는 신체 각성\""}
+}
+`.trim();
+
+    return HttpResponse.json({
+      ok: true,
+      score: n,
+      response: body,   // 🔴 반드시 이 필드로 본문을 내려보내기
+      actions: []       // UI_ACTION_JSON 우선 파싱 위해 비움
+    });
   }),
 
   // SUDS 기록 직후에 백엔드가 분기 액션을 돌려준다고 가정 (레거시)
@@ -170,7 +141,8 @@ export const handlers = [
   "suds": 7,
   "rationale": "시간 제약 5분 이내 + 막연한 불안"
 }`;
-      return HttpResponse.json(mkReply(body));
+      // UI_ACTION_JSON만 사용하도록 actions 배열 제거
+      return HttpResponse.json(mkReply(body, []));
     }
 
     // 기본(EFT)
@@ -201,6 +173,7 @@ export const handlers = [
   "suds": 8,
   "rationale": "특정 신념 고정"
 }`;
-    return HttpResponse.json(mkReply(body));
+    // UI_ACTION_JSON만 사용하도록 actions 배열 제거
+    return HttpResponse.json(mkReply(body, []));
   }),
 ];
