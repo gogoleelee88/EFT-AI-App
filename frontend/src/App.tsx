@@ -12,6 +12,7 @@ import ArCalibrationPage from './pages/ArCalibrationPage';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 import AppHeader from './components/layout/AppHeader';
 import PWAInstallHintIOS from './components/PWAInstallHintIOS';
+import TriModalMeditation from './components/meditation/TriModalMeditation';
 
 const App: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth();
@@ -78,6 +79,7 @@ const App: React.FC = () => {
           <Route path="/eft-guide" element={<Navigate to="/ar-holistic" replace />} />
           {/* EFT AR 경로: /eftar → /ar-holistic */}
           <Route path="/eftar" element={<Navigate to="/ar-holistic" replace />} />
+          <Route path="/tri-modal" element={<TriModalMeditation />} />
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
