@@ -38,20 +38,47 @@ class SUDSRequest(BaseModel):
 
 class SUDSResponse(BaseModel):
     ok: bool = True
-    actions: list[StartEFTARv1] = Field(default_factory=list)
+    actions: list[Dict[str, Any]] = Field(default_factory=list)
     error: Optional[str] = None
     trace_id: Optional[str] = None
     saved_at: Optional[str] = None
 
 
+class StartBreathV1(BaseModel):
+    type: str = "start_breath_page"
+    payload: Dict[str, Any]
+
+    @classmethod
+    def build(cls, *, suds: int, route: str = "/tri-modal", params: Optional[Dict[str, Any]] = None) -> "StartBreathV1":
+        payload = {
+            "action": "start_breath_page",
+            "route": route,
+            "suds": suds,
+            "rationale": "breathing_for_moderate_suds"
+        }
+        if params:
+            payload.update(params)
+        return cls(type="start_breath_page", payload=payload)
+
+
 def _build_response(score: int, *, trace_id: Optional[str], saved_at: Optional[str]) -> SUDSResponse:
-    start = StartEFTARv1.build(
+    eft_action = StartEFTARv1.build(
         script="standard_relief",
         suds=score,
         route=DEFAULT_EFTAR_ROUTE,
         params=DEFAULT_EFTAR_PARAMS,
     )
-    return SUDSResponse(ok=True, actions=[start], trace_id=trace_id, saved_at=saved_at)
+    
+    breath_action = StartBreathV1.build(
+        suds=score
+    )
+
+    if score >= 7:
+        # 7점 이상: EFT 우선 추천
+        return SUDSResponse(ok=True, actions=[eft_action.model_dump(), breath_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
+    else:  # 6점 이하
+        # 6점 이하: 호흡법 우선 추천
+        return SUDSResponse(ok=True, actions=[breath_action.model_dump(), eft_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
 
 
 def _persist_suds(request: SUDSRequest) -> Tuple[str, str]:
