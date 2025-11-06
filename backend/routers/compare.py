@@ -16,7 +16,6 @@ from backend.services.emotion_analyzer import get_emotion_analyzer
 from backend.utils.action_builder import build_actions
 
 logger = logging.getLogger(__name__)
-logger.critical("✅✅✅ [V3 DEBUG] Context-Aware compare.py is running! ✅✅✅")
 router = APIRouter(prefix="/api/chat", tags=["compare"])
 
 settings = get_settings()
@@ -208,7 +207,7 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 "comparison_time": round(time.perf_counter() - started_at, 3),
                 "faster_model": "llama3" if _elapsed_seconds(res_a) is not None and _elapsed_seconds(res_b) is not None and _elapsed_seconds(res_a) <= _elapsed_seconds(res_b) else "qwen25",
                 "timestamp": datetime.utcnow().isoformat(),
-                "response": winner_clean, # The actual winner text for the frontend to display
+                "response": "[V4 TEST] " + winner_clean, # The actual winner text for the frontend to display
             }
             if executed_actions:
                 result["actions"] = executed_actions
