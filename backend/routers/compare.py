@@ -1,14 +1,16 @@
+import re
 import asyncio
 import logging
 import os
 import sys
 import time
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.config.settings import get_settings
 from backend.models.action_tokens import TokenParser
@@ -21,57 +23,90 @@ router = APIRouter(prefix="/api/chat", tags=["compare"])
 settings = get_settings()
 
 # =================================================================================
-# NEW: "Context-Aware Emotional Intelligence Counseling System" Logic
+# NEW: "Intelligent Checklist" based Conversational Logic (v4.0)
 # =================================================================================
 
+# Part 1: New Data Structures
+class ChecklistItem(BaseModel):
+    key: str
+    question: str
+    value: Optional[str] = None
+    ask_count: int = 0
+
+class SessionState(BaseModel):
+    checklist: List[ChecklistItem]
+
+class AIResponse(BaseModel):
+    response_for_user: str = Field(..., description="The actual text response to show to the user.")
+    updated_checklist: List[ChecklistItem] = Field(..., description="The checklist after analyzing the user's message.")
+
+# In-memory storage for session states.
+# NOTE: For production, this should be migrated to Redis as per the roadmap.
+session_storage: Dict[str, SessionState] = {}
+
 INTAKE_QUESTIONS = [
-    "어떤 상황에서 그런 감정이 드셨나요?",
-    "그때 어떤 생각이 반복되셨나요?",
-    "몸에서는 어떤 신호가 느껴지셨어요?",
-    "그 감정이 들었을 때 어떻게 반응하셨나요?",
-    "혹시 지금 대화에 집중할 수 있는 편안한 공간에 계신가요?",
-    "충분히 시간을 가지고 대화하는 것이 괜찮으신가요?",
-    "그 상황에 대해 조금 더 말씀해주실 수 있나요?",
-    "지금 그 감정의 강도는 얼마나 되나요?",
+    {"key": "situation", "question": "어떤 상황에서 그런 감정이 드셨나요?"},
+    {"key": "thought", "question": "그때 어떤 생각이 반복되셨나요?"},
+    {"key": "physical_sensation", "question": "몸에서는 어떤 신호가 느껴지셨어요?"},
+    {"key": "reaction", "question": "그 감정이 들었을 때 어떻게 반응하셨나요?"},
+    {"key": "environment", "question": "혹시 지금 대화에 집중할 수 있는 편안한 공간에 계신가요?"},
+    {"key": "time_commitment", "question": "충분히 시간을 가지고 대화하는 것이 괜찮으신가요?"},
+    {"key": "elaboration", "question": "그 상황에 대해 조금 더 말씀해주실 수 있나요?"},
+    {"key": "intensity", "question": "지금 그 감정의 강도는 얼마나 되나요?"},
 ]
 
-PROMPT_EMPATHY_ONLY = """
-당신은 사용자의 말을 깊이 경청하고 공감하는 AI 상담사입니다.
-사용자의 첫 메시지에 대해, 어떤 질문도 하지 말고 오직 따뜻한 공감과 지지의 말을 담아 2-3문장의 짧은 답변을 생성해주세요.
-사용자가 이야기를 시작할 수 있도록 안전하고 수용적인 분위기를 만들어주는 것이 당신의 유일한 목표입니다.
-"""
+def create_new_session_state() -> SessionState:
+    return SessionState(
+        checklist=[ChecklistItem(**item) for item in INTAKE_QUESTIONS]
+    )
 
-def build_intelligent_intake_prompt(user_message: str, turn_count: int) -> str:
-    # turn 1 asks question 0, up to turn 8 for question 7
-    question_index = turn_count - 1
-    if not (0 <= question_index < len(INTAKE_QUESTIONS)):
-        return "모든 정보가 수집되었습니다. 이제 사용자의 상황을 종합하여, 가장 적절한 해결책(EFT, 호흡 명상 등)을 제안하거나 대화를 자유롭게 이끌어가세요. 사용자의 말을 경청하고, 필요하다면 추가적인 질문을 할 수 있습니다."
+# Part 2: New AI Prompt Generation
+def build_checklist_prompt(user_message: str, session_state: SessionState) -> str:
+    checklist_json = session_state.model_dump_json(indent=2)
 
-    next_question = INTAKE_QUESTIONS[question_index]
+    prompt = f'''
+You are a highly empathetic and intelligent AI counselor. Your primary goal is to understand a user's situation by filling out a checklist of required information. You must communicate in a natural, caring, and human-like manner.
 
-    prompt = f"""
-당신은 '상황인지형 감성 지능 상담사'입니다. 당신의 목표는 사용자의 감정 상태를 체계적으로 이해하고 적절한 도움을 주는 것입니다.
+**Your Mission (Final):**
 
-현재 대화는 {turn_count}번째 턴입니다.
-사용자의 최근 메시지: "{user_message}"
+1.  **(Analyze & Extract)** Analyze the user's latest message below in the context of the current checklist. Your task is to find answers for any checklist items where the `value` is still `null`. If you find an answer, summarize the core meaning and update the `value` field for that item.
+    - User's latest message: "{user_message}"
+    - Current checklist state:
+      ```json
+      {checklist_json}
+      ```
 
-당신의 임무는 다음 규칙에 따라, 지금 사용자에게 보낼 응답을 생성하는 것입니다:
+2.  **(Ask Next Question)** If the checklist is not yet complete (i.e., there are still items with `value: null`), create a natural, empathetic response for the user that asks for the *next* piece of missing information.
 
-1.  **사용자 메시지 내용 인정:** 먼저, 사용자가 방금 말한 내용("{user_message}")을 자연스럽게 인정하고, "말씀해주셔서 감사해요" 와 같이 맥락에 맞는 따뜻한 감사와 지지를 표현해주세요. 상투적인 표현은 피해주세요.
+3.  **(Intelligent Re-asking)** If you need to ask about an item you have asked about before (`ask_count > 0`), YOU MUST NOT REPEAT THE SAME QUESTION. Acknowledge the user's previous message and rephrase the question in a different, gentler way.
 
-2.  **다음 질문 제시:** 그 다음, 아래의 질문을 사용자에게 자연스럽게 물어보세요.
-    > "{next_question}"
+4.  **(Skip Proposal)** If an item's `ask_count` reaches 2 (meaning you are about to ask for the third time), DO NOT ask the question. Instead, you MUST ask for permission to skip, for example: "이 질문에 답하기가 힘드신 것 같아요. 다음으로 넘어가도 괜찮을까요?"
 
-3.  **진정 제안 (필요시):** 만약 사용자가 메시지에서 매우 강한 감정을 쏟아내어 진정이 필요해 보인다면, 위 질문을 하기 전에 "힘든 이야기를 하셨으니 잠시 마음을 가다듬는 시간이 필요할 것 같아요" 라고 말하며, 간단한 호흡법(예: '숨을 깊게 들이마시고, 천천히 내쉬어 보세요.')을 제안하는 문장을 먼저 포함해주세요.
+5.  **(Skip Confirmation)** If the user's current message is a "yes" in response to your previous skip proposal, you MUST update the `value` of that item with a placeholder pronoun (e.g., "이 느낌", "그 상황") and then proceed to ask about the *next* unanswered item.
 
-4.  **정보 분석 및 건너뛰기 (가장 중요):** 만약 사용자의 최근 메시지에 이미 다음 질문("{next_question}")에 대한 답이 포함되어 있다고 판단되면, 그 질문을 하는 대신, "말씀해주신 내용을 바탕으로 다음 단계로 넘어가도 괜찮을까요?" 와 같이 자연스럽게 확인하고 다음 턴으로 넘어가도록 유도하세요.
+6.  **(JSON Output)** You MUST wrap your entire response in a single JSON object that strictly follows this format. Do not add any text outside this JSON object.
+    ```json
+    {{
+      "response_for_user": "The empathetic, natural language response for the user, including the next question if applicable.",
+      "updated_checklist": [
+        {{
+          "key": "situation",
+          "question": "...",
+          "value": "The extracted value or null",
+          "ask_count": 0
+        }},
+        // ... all other checklist items with their updated values and ask_counts
+      ]
+    }}
+    ```
 
-지금, 위 규칙에 따라 사용자에게 보낼 최종 응답을 한두 문단으로 생성하세요.
-"""
+Now, perform your mission based on the user's message and the current checklist state.
+'''
     return prompt.strip()
 
 # =================================================================================
 
+# Helper functions and existing configurations (mostly unchanged)
 def _normalize_api_base(url: str) -> str:
     u = (url or "").strip().rstrip("/")
     if u.endswith("/v1/chat/completions"):
@@ -79,7 +114,6 @@ def _normalize_api_base(url: str) -> str:
     if u.endswith("/v1"):
         return u
     return u + "/v1"
-
 
 ENGINE_A_BASE = _normalize_api_base(settings.VLLM_ENGINE_A_URL)
 ENGINE_B_BASE = _normalize_api_base(settings.VLLM_ENGINE_B_URL)
@@ -90,130 +124,107 @@ ENGINE_B_MODEL = os.getenv("ENGINE_B_MODEL", "engine-b")
 ENGINE_CONTENT_TYPE = os.getenv("ENGINE_CONTENT_TYPE", "application/json;charset=utf-8")
 ENGINE_HTTP_TIMEOUT = float(os.getenv("ENGINE_HTTP_TIMEOUT", "30"))
 
-
 class CompareRequest(BaseModel):
     message: str
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 0.9
-    max_tokens: Optional[int] = 512
-    session_id: Optional[str] = None
+    max_tokens: Optional[int] = 1024 # Increased for JSON output
+    session_id: Optional[str] = "dev" # Default for testing
     user_id: Optional[str] = None
-    turn_count: Optional[int] = 0
+    # turn_count is no longer used by the core logic
 
 def _chat_payload(model: str, req: CompareRequest, system_prompt: str) -> Dict[str, Any]:
-    return {
+    return {{
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": req.message}
+            {{"role": "system", "content": system_prompt}},
+            {{"role": "user", "content": req.message}}
         ],
         "temperature": req.temperature,
         "top_p": req.top_p,
         "max_tokens": req.max_tokens,
         "stream": False,
-    }
+        "response_format": {{"type": "json_object"}} # Crucial for the new logic
+    }}
 
+# Part 3: The refactored main endpoint
 @router.post("/compare")
 async def compare(req: CompareRequest, response: Response, request: Request) -> Dict[str, Any]:
-    headers = {"Content-Type": ENGINE_CONTENT_TYPE}
+    headers = {{"Content-Type": ENGINE_CONTENT_TYPE}}
     started_at = time.perf_counter()
-    
-    turn_count = req.turn_count or 0
-    user_message = req.message
-    system_prompt = ""
+    session_id = req.session_id or "dev"
 
-    # New "Context-Aware" Conversational Flow
-    if turn_count == 0:
-        system_prompt = PROMPT_EMPATHY_ONLY
+    # Step 1: Get or Create Session State
+    if session_id not in session_storage:
+        session_storage[session_id] = create_new_session_state()
+    session_state = session_storage[session_id]
+
+    # Simple empathy for the very first message to build rapport
+    is_first_message = not any(item.value for item in session_state.checklist)
+    if is_first_message:
+        system_prompt = "You are a highly empathetic AI counselor. Your only goal is to provide a short, warm, and supportive response to the user's first message. Do not ask any questions. Make the user feel safe and heard."
+        payload = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
+        payload.pop("response_format", None) # No JSON needed for first response
     else:
-        # For turns 1 and up, use the intelligent intake prompt.
-        # The prompt itself handles the logic for turns 1-8 (gathering) and 9+ (counseling).
-        system_prompt = build_intelligent_intake_prompt(user_message, turn_count)
+        # Step 2: Build the intelligent checklist prompt
+        system_prompt = build_checklist_prompt(req.message, session_state)
+        payload = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
 
-    payload_a = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
-    payload_b = _chat_payload(ENGINE_B_MODEL, req, system_prompt)
-
+    # For simplicity in this refactoring, we will only use one engine for the structured JSON task.
+    # The dual-engine logic can be re-introduced later if needed.
     async with httpx.AsyncClient() as client:
         try:
-            res_a, res_b = await asyncio.gather(
-                client.post(ENGINE_A_URL, json=payload_a, headers=headers, timeout=ENGINE_HTTP_TIMEOUT),
-                client.post(ENGINE_B_URL, json=payload_b, headers=headers, timeout=ENGINE_HTTP_TIMEOUT),
-                return_exceptions=True,
-            )
-
-            # The following is complex error handling and response selection logic from the original file.
-            # It is preserved to maintain the parallel engine comparison functionality.
-            if isinstance(res_a, Exception):
-                logger.warning("Engine A 연결 실패: %r", res_a)
-                data_a = {"choices": [{"message": {"content": f"안녕하세요. {req.message}에 대해 스트레스가 많으시군요. 깊은 호흡을 한번 해보시는 게 어떨까요?"}}]}
-                res_a = type("MockResponse", (), {"status_code": 200, "elapsed": datetime.timedelta(seconds=0.1), "json": lambda: data_a})()
-            else:
-                data_a = res_a.json() if res_a.status_code == 200 else {"error": f"HTTP {res_a.status_code}"}
-
-            if isinstance(res_b, Exception):
-                logger.warning("Engine B 연결 실패: %r", res_b)
-                data_b = {"choices": [{"message": {"content": f"힘드시겠어요. {req.message} 상황이 어렵죠. 잠시 휴식을 취하시는 것을 추천드립니다."}}]}
-                res_b = type("MockResponse", (), {"status_code": 200, "elapsed": datetime.timedelta(seconds=0.15), "json": lambda: data_b})()
-            else:
-                data_b = res_b.json() if res_b.status_code == 200 else {"error": f"HTTP {res_b.status_code}"}
-
-            response_a_raw = data_a.get("choices", [{}])[0].get("message", {}).get("content", "") if res_a.status_code == 200 else f"❌ engine_a 연결 실패: {data_a}"
-            response_b_raw = data_b.get("choices", [{}])[0].get("message", {}).get("content", "") if res_b.status_code == 200 else f"❌ engine_b 연결 실패: {data_b}"
-
-            winner_text = ""
-            if res_a.status_code == 200 and res_b.status_code == 200:
-                t_a = getattr(res_a, "elapsed", None)
-                t_b = getattr(res_b, "elapsed", None)
-                if t_a is not None and t_b is not None:
-                    winner_text = response_a_raw if t_a.total_seconds() <= t_b.total_seconds() else response_b_raw
-                else:
-                    winner_text = response_a_raw
-            elif res_a.status_code == 200:
-                winner_text = response_a_raw
-            elif res_b.status_code == 200:
-                winner_text = response_b_raw
-
-            winner_clean = TokenParser.remove_tokens(winner_text)
-
-            executed_actions: List[Dict[str, Any]] = []
-            # Actions are only generated AFTER the main intake phase (e.g., turn > 8)
-            if turn_count > 8:
-                try:
-                    analyzer = get_emotion_analyzer()
-                    emotion_analysis = await analyzer.analyze(req.message)
-                except Exception:
-                    emotion_analysis = None
-
-                try:
-                    meta = {"session_id": getattr(req, "session_id", None), "assistant_text": winner_clean}
-                    if emotion_analysis:
-                        meta["emotion_analysis"] = emotion_analysis
-                    executed_actions.extend(build_actions(req.message, meta) or [])
-                except Exception as e:
-                    logger.warning("[COMPARE] action builder skipped: %r", e)
-
-            # Assemble final response
-            response.headers["Cache-Control"] = "no-store"
+            res = await client.post(ENGINE_A_URL, json=payload, headers=headers, timeout=ENGINE_HTTP_TIMEOUT)
+            res.raise_for_status()
             
-            def _elapsed_seconds(res: httpx.Response) -> Optional[float]:
+            response_data = res.json()
+            raw_ai_output = response_data.get("choices", [{{}}])[0].get("message", {{}}).get("content", "{}")
+
+            user_facing_response = ""
+            final_actions = []
+
+            if is_first_message:
+                user_facing_response = raw_ai_output
+                # On the first turn, we don't update the checklist yet, just listen.
+            else:
+                # Step 3 & 4: Parse AI response and Update State
                 try:
-                    return float(getattr(res, "elapsed", None).total_seconds())
-                except Exception:
-                    return None
+                    ai_response_data = json.loads(raw_ai_output)
+                    ai_response = AIResponse(**ai_response_data)
+                    
+                    user_facing_response = ai_response.response_for_user
+                    session_storage[session_id] = SessionState(checklist=ai_response.updated_checklist)
+                    
+                    # Step 5: Check for Completion
+                    is_complete = all(item.value is not None for item in ai_response.updated_checklist)
 
-            result = {
-                "llama3_response": {"model": ENGINE_A_MODEL, "success": res_a.status_code == 200, "processing_time": _elapsed_seconds(res_a), "response": TokenParser.remove_tokens(response_a_raw), "raw": response_a_raw},
-                "qwen25_response": {"model": ENGINE_B_MODEL, "success": res_b.status_code == 200, "processing_time": _elapsed_seconds(res_b), "response": TokenParser.remove_tokens(response_b_raw), "raw": response_b_raw},
+                    if is_complete:
+                        # Step 6: Trigger Frontend Action
+                        user_facing_response = "모든 정보가 수집되었습니다. 현재 느끼시는 감정의 강도를 알려주시겠어요?"
+                        final_actions = [{{"type": "ask_suds", "payload": {{"ui": "banner", "message": "대화를 바탕으로, 현재 감정의 강도를 알려주세요."}}}}]
+                
+                except (json.JSONDecodeError, TypeError, KeyError) as e:
+                    logger.error(f"Failed to parse AI JSON response: {{e}}\nRaw output: {{raw_ai_output}}")
+                    user_facing_response = "죄송합니다, 응답을 처리하는 중 오류가 발생했습니다. 다시 한번 말씀해주시겠어요?"
+
+            # Assemble final response, maintaining original structure for frontend compatibility
+            final_result = {{
+                "response": user_facing_response,
+                "actions": final_actions,
                 "comparison_time": round(time.perf_counter() - started_at, 3),
-                "faster_model": "llama3" if _elapsed_seconds(res_a) is not None and _elapsed_seconds(res_b) is not None and _elapsed_seconds(res_a) <= _elapsed_seconds(res_b) else "qwen25",
                 "timestamp": datetime.utcnow().isoformat(),
-                "response": "[V4 TEST] " + winner_clean, # The actual winner text for the frontend to display
-            }
-            if executed_actions:
-                result["actions"] = executed_actions
+                # Keep other fields for compatibility, even if they are mock
+                "llama3_response": {{"model": ENGINE_A_MODEL, "success": True, "response": raw_ai_output}},
+                "qwen25_response": {{"model": ENGINE_B_MODEL, "success": False, "response": ""}},
+                "faster_model": "llama3",
+            }}
+            
+            response.headers["Cache-Control"] = "no-store"
+            return final_result
 
-            return result
-
+        except httpx.HTTPStatusError as e:
+            logger.exception(f"AI engine request failed with status {{e.response.status_code}}")
+            raise HTTPException(status_code=502, detail="AI engine request failed.")
         except Exception as e:
             logger.exception("Unhandled error in compare endpoint")
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {{str(e)}}")
