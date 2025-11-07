@@ -151,7 +151,7 @@ def _chat_payload(model: str, req: CompareRequest, system_prompt: str) -> Dict[s
 # Part 3: The refactored main endpoint
 @router.post("/compare")
 async def compare(req: CompareRequest, response: Response, request: Request) -> Dict[str, Any]:
-    headers = {{"Content-Type": ENGINE_CONTENT_TYPE}}
+    headers = {"Content-Type": ENGINE_CONTENT_TYPE}
     started_at = time.perf_counter()
     session_id = req.session_id or "dev"
 
