@@ -1,3 +1,4 @@
+
 import re
 import asyncio
 import logging
@@ -148,9 +149,15 @@ def _chat_payload(model: str, req: CompareRequest, system_prompt: str) -> Dict[s
         "response_format": {"type": "json_object"} # Crucial for the new logic
     }
 
+def _get_val(item):
+    # 객체면 .value, dict면 ["value"] 안전 접근
+    return getattr(item, "value", item.get("value") if isinstance(item, dict) else None)
+
+
 # Part 3: The refactored main endpoint
 @router.post("/compare")
 async def compare(req: CompareRequest, response: Response, request: Request) -> Dict[str, Any]:
+    # 필요한 import: asyncio, json, time, datetime (이미 상단에 있음)
     headers = {"Content-Type": ENGINE_CONTENT_TYPE}
     started_at = time.perf_counter()
     session_id = req.session_id or "dev"
@@ -160,72 +167,117 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
         session_storage[session_id] = create_new_session_state()
     session_state = session_storage[session_id]
 
-    # Simple empathy for the very first message to build rapport
-    is_first_message = not any(item.value for item in session_state.checklist)
+    # 첫 메시지 여부 판정 (안전 접근)
+    is_first_message = not any(_get_val(item) for item in session_state.checklist)
+
+    # A/B 공감/체크리스트 프롬프트 & 페이로드 준비
     if is_first_message:
-        system_prompt = "You are a highly empathetic AI counselor. Your only goal is to provide a short, warm, and supportive response to the user's first message. Do not ask any questions. Make the user feel safe and heard."
-        payload = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
-        payload.pop("response_format", None) # No JSON needed for first response
+        # 아주 간단한 공감 응답(비 JSON)
+        system_prompt = (
+            "You are a highly empathetic AI counselor. "
+            "Give a short, warm, supportive reply to the user's first message. "
+            "Do not ask questions."
+        )
+        payload_a = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
+        payload_b = _chat_payload(ENGINE_B_MODEL, req, system_prompt)
+        # 첫 응답은 json_object 강제 안 함
+        payload_a.pop("response_format", None)
+        payload_b.pop("response_format", None)
     else:
-        # Step 2: Build the intelligent checklist prompt
+        # 체크리스트 기반 지능형 프롬프트(JSON 응답 기대)
         system_prompt = build_checklist_prompt(req.message, session_state)
-        payload = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
+        payload_a = _chat_payload(ENGINE_A_MODEL, req, system_prompt)
+        payload_b = _chat_payload(ENGINE_B_MODEL, req, system_prompt)
 
-    # For simplicity in this refactoring, we will only use one engine for the structured JSON task.
-    # The dual-engine logic can be re-introduced later if needed.
-    async with httpx.AsyncClient() as client:
-        try:
-            res = await client.post(ENGINE_A_URL, json=payload, headers=headers, timeout=ENGINE_HTTP_TIMEOUT)
-            res.raise_for_status()
-            
-            response_data = res.json()
-            raw_ai_output = response_data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+    try:
+        # --- A/B 병렬 호출 ---
+        async with httpx.AsyncClient(timeout=ENGINE_HTTP_TIMEOUT) as client:
+            req_a = client.post(ENGINE_A_URL, headers=headers, json=payload_a)
+            req_b = client.post(ENGINE_B_URL, headers=headers, json=payload_b)
+            resp_a, resp_b = await asyncio.gather(req_a, req_b, return_exceptions=True)
 
-            user_facing_response = ""
-            final_actions = []
+        # A 처리
+        a_success, a_text = False, ""
+        if isinstance(resp_a, Exception):
+            logger.exception("Engine A request failed", exc_info=resp_a)
+        else:
+            try:
+                resp_a.raise_for_status()
+                data_a = resp_a.json()
+                a_text = data_a.get("choices", [{}])[0].get("message", {}).get("content", "")
+                a_success = True
+            except Exception as e:
+                logger.exception("Engine A parse failed", exc_info=e)
 
-            if is_first_message:
-                user_facing_response = raw_ai_output
-                # On the first turn, we don't update the checklist yet, just listen.
-            else:
-                # Step 3 & 4: Parse AI response and Update State
-                try:
-                    ai_response_data = json.loads(raw_ai_output)
-                    ai_response = AIResponse(**ai_response_data)
-                    
-                    user_facing_response = ai_response.response_for_user
-                    session_storage[session_id] = SessionState(checklist=ai_response.updated_checklist)
-                    
-                    # Step 5: Check for Completion
-                    is_complete = all(item.value is not None for item in ai_response.updated_checklist)
+        # B 처리
+        b_success, b_text = False, ""
+        if isinstance(resp_b, Exception):
+            logger.exception("Engine B request failed", exc_info=resp_b)
+        else:
+            try:
+                resp_b.raise_for_status()
+                data_b = resp_b.json()
+                b_text = data_b.get("choices", [{}])[0].get("message", {}).get("content", "")
+                b_success = True
+            except Exception as e:
+                logger.exception("Engine B parse failed", exc_info=e)
 
-                    if is_complete:
-                        # Step 6: Trigger Frontend Action
-                        user_facing_response = "모든 정보가 수집되었습니다. 현재 느끼시는 감정의 강도를 알려주시겠어요?"
-                        final_actions = [{"type": "ask_suds", "payload": {"ui": "banner", "message": "대화를 바탕으로, 현재 감정의 강도를 알려주세요."}}]
-                
-                except (json.JSONDecodeError, TypeError, KeyError) as e:
-                    logger.error(f"Failed to parse AI JSON response: {e}\nRaw output: {raw_ai_output}")
-                    user_facing_response = "죄송합니다, 응답을 처리하는 중 오류가 발생했습니다. 다시 한번 말씀해주시겠어요?"
+        # 우선 응답 선택
+        raw_ai_output = a_text if a_success else b_text
+        faster_model = "llama3" if a_success else ("qwen25" if b_success else "none")
 
-            # Assemble final response, maintaining original structure for frontend compatibility
-            final_result = {
-                "response": user_facing_response,
-                "actions": final_actions,
-                "comparison_time": round(time.perf_counter() - started_at, 3),
-                "timestamp": datetime.utcnow().isoformat(),
-                # Keep other fields for compatibility, even if they are mock
-                "llama3_response": {"model": ENGINE_A_MODEL, "success": True, "response": raw_ai_output},
-                "qwen25_response": {"model": ENGINE_B_MODEL, "success": False, "response": ""},
-                "faster_model": "llama3",
-            }
-            
-            response.headers["Cache-Control"] = "no-store"
-            return final_result
+        # --- 체크리스트 처리 ---
+        user_facing_response: str = ""
+        final_actions: List[Dict[str, Any]] = []
 
-        except httpx.HTTPStatusError as e:
-            logger.exception(f"AI engine request failed with status {e.response.status_code}")
-            raise HTTPException(status_code=502, detail="AI engine request failed.")
-        except Exception as e:
-            logger.exception("Unhandled error in compare endpoint")
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+        if not raw_ai_output:
+            user_facing_response = "죄송해요. 지금은 응답을 만들 수 없어요."
+        elif is_first_message:
+            # 첫 메시지는 공감문 그대로 출력
+            user_facing_response = raw_ai_output
+        else:
+            # 두 번째 턴부터는 JSON 파싱 후 상태 갱신
+            try:
+                ai_response_data = json.loads(raw_ai_output)
+                ai_response = AIResponse(**ai_response_data)
+
+                # 사용자에게 보여줄 다음 질문/응답
+                user_facing_response = ai_response.response_for_user
+
+                # 체크리스트 업데이트
+                session_storage[session_id] = SessionState(checklist=ai_response.updated_checklist)
+
+                # 완료 여부 검사
+                is_complete = all(_get_val(item) is not None for item in ai_response.updated_checklist)
+                if is_complete:
+                    user_facing_response = "모든 정보가 수집되었습니다. 현재 느끼시는 감정의 강도를 알려주시겠어요?"
+                    final_actions = [{
+                        "type": "ask_suds",
+                        "payload": {"ui": "banner", "message": "대화를 바탕으로, 현재 감정의 강도를 알려주세요."}
+                    }]
+
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                logger.error(f"Failed to parse AI JSON response: {e}\nRaw output: {raw_ai_output}")
+                user_facing_response = "죄송합니다, 응답을 처리하는 중 오류가 발생했습니다. 다시 한번 말씀해주시겠어요?"
+
+        # 프론트 하위 호환 JSON (response + actions 배열 유지)
+        final_result = {
+            "response": user_facing_response,
+            "actions": final_actions,
+            "comparison_time": round(time.perf_counter() - started_at, 3),
+            "timestamp": datetime.utcnow().isoformat(),
+            "llama3_response": {"model": ENGINE_A_MODEL, "success": a_success, "response": a_text},
+            "qwen25_response": {"model": ENGINE_B_MODEL, "success": b_success, "response": b_text},
+            "faster_model": faster_model,
+        }
+
+        response.headers["Cache-Control"] = "no-store"
+        return final_result
+
+    except httpx.HTTPStatusError as e:
+        logger.exception(f"AI engine request failed with status {e.response.status_code}")
+        raise HTTPException(status_code=502, detail="Upstream model error")
+    except Exception as e:
+        logger.exception("Unhandled error in compare endpoint")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
