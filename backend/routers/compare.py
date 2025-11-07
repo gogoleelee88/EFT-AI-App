@@ -87,18 +87,18 @@ You are a highly empathetic and intelligent AI counselor. Your primary goal is t
 
 6.  **(JSON Output)** You MUST wrap your entire response in a single JSON object that strictly follows this format. Do not add any text outside this JSON object.
     ```json
-    {{
+    {
       "response_for_user": "The empathetic, natural language response for the user, including the next question if applicable.",
       "updated_checklist": [
-        {{
+        {
           "key": "situation",
           "question": "...",
           "value": "The extracted value or null",
           "ask_count": 0
-        }},
+        },
         // ... all other checklist items with their updated values and ask_counts
       ]
-    }}
+    }
     ```
 
 Now, perform your mission based on the user's message and the current checklist state.
@@ -135,18 +135,18 @@ class CompareRequest(BaseModel):
     # turn_count is no longer used by the core logic
 
 def _chat_payload(model: str, req: CompareRequest, system_prompt: str) -> Dict[str, Any]:
-    return {{
+    return {
         "model": model,
         "messages": [
-            {{"role": "system", "content": system_prompt}},
-            {{"role": "user", "content": req.message}}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": req.message}
         ],
         "temperature": req.temperature,
         "top_p": req.top_p,
         "max_tokens": req.max_tokens,
         "stream": False,
-        "response_format": {{"type": "json_object"}} # Crucial for the new logic
-    }}
+        "response_format": {"type": "json_object"} # Crucial for the new logic
+    }
 
 # Part 3: The refactored main endpoint
 @router.post("/compare")
@@ -179,7 +179,7 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             res.raise_for_status()
             
             response_data = res.json()
-            raw_ai_output = response_data.get("choices", [{{}}])[0].get("message", {{}}).get("content", "{}")
+            raw_ai_output = response_data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
 
             user_facing_response = ""
             final_actions = []
@@ -202,30 +202,30 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                     if is_complete:
                         # Step 6: Trigger Frontend Action
                         user_facing_response = "모든 정보가 수집되었습니다. 현재 느끼시는 감정의 강도를 알려주시겠어요?"
-                        final_actions = [{{"type": "ask_suds", "payload": {{"ui": "banner", "message": "대화를 바탕으로, 현재 감정의 강도를 알려주세요."}}}}]
+                        final_actions = [{"type": "ask_suds", "payload": {"ui": "banner", "message": "대화를 바탕으로, 현재 감정의 강도를 알려주세요."}}]
                 
                 except (json.JSONDecodeError, TypeError, KeyError) as e:
-                    logger.error(f"Failed to parse AI JSON response: {{e}}\nRaw output: {{raw_ai_output}}")
+                    logger.error(f"Failed to parse AI JSON response: {e}\nRaw output: {raw_ai_output}")
                     user_facing_response = "죄송합니다, 응답을 처리하는 중 오류가 발생했습니다. 다시 한번 말씀해주시겠어요?"
 
             # Assemble final response, maintaining original structure for frontend compatibility
-            final_result = {{
+            final_result = {
                 "response": user_facing_response,
                 "actions": final_actions,
                 "comparison_time": round(time.perf_counter() - started_at, 3),
                 "timestamp": datetime.utcnow().isoformat(),
                 # Keep other fields for compatibility, even if they are mock
-                "llama3_response": {{"model": ENGINE_A_MODEL, "success": True, "response": raw_ai_output}},
-                "qwen25_response": {{"model": ENGINE_B_MODEL, "success": False, "response": ""}},
+                "llama3_response": {"model": ENGINE_A_MODEL, "success": True, "response": raw_ai_output},
+                "qwen25_response": {"model": ENGINE_B_MODEL, "success": False, "response": ""},
                 "faster_model": "llama3",
-            }}
+            }
             
             response.headers["Cache-Control"] = "no-store"
             return final_result
 
         except httpx.HTTPStatusError as e:
-            logger.exception(f"AI engine request failed with status {{e.response.status_code}}")
+            logger.exception(f"AI engine request failed with status {e.response.status_code}")
             raise HTTPException(status_code=502, detail="AI engine request failed.")
         except Exception as e:
             logger.exception("Unhandled error in compare endpoint")
-            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {{str(e)}}")
+            raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
