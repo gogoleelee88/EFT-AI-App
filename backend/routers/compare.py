@@ -18,6 +18,7 @@ from backend.services.emotion_analyzer import get_emotion_analyzer
 from backend.utils.action_builder import build_actions
 
 logger = logging.getLogger(__name__)
+logger.critical("✅✅✅ [V3 DEBUG] Context-Aware compare.py is running! ✅✅✅")
 router = APIRouter(prefix="/api/chat", tags=["compare"])
 
 settings = get_settings()
