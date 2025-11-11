@@ -298,6 +298,7 @@ def _fallback_ask_next(session_state: SessionState) -> str:
 # ==============================
 @router.post("/compare")
 async def compare(req: CompareRequest, response: Response, request: Request) -> Dict[str, Any]:
+    # 필요한 import: asyncio, json, time, datetime (이미 상단에 있음)
     headers = {"Content-Type": ENGINE_CONTENT_TYPE}
     started_at = time.perf_counter()
     session_id = req.session_id or "dev"
