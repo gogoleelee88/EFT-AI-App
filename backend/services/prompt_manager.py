@@ -26,6 +26,27 @@ class PromptStyle(str, Enum):
 
 class EFTPromptManager:
     """EFT 전문 프롬프트 관리자"""
+    #==========이거 정석대로 수정필요 임시조치임 이후 공개 API 재정의 + 호출부 마이그레이션로 교체 필요========
+    def get_system_prompt(self, *args, **kwargs):
+        """
+        Backward-compat shim for legacy callers.
+        기존 호출부의 get_system_prompt(...)를 새 구조로 연결한다.
+        - tier 인자가 넘어오면 사용, 없으면 self.default_tier 또는 'free'
+        - 내부 구현인 _get_tier_system_prompt(tier)로 위임
+        """
+        tier = kwargs.get("tier", None)
+        if tier is None:
+            tier = getattr(self, "default_tier", "free")
+
+        if hasattr(self, "_get_tier_system_prompt") and callable(self._get_tier_system_prompt):
+            try:
+                return self._get_tier_system_prompt(tier)
+            except TypeError:
+                return self._get_tier_system_prompt()
+
+        # 최후의 안전장치
+        return "You are MoodTalk EFT assistant. Keep responses concise and safe."
+    #==========이거 정석대로 수정필요 임시조치임========
     
     def __init__(self):
         """EFT 프롬프트 매니저 초기화"""

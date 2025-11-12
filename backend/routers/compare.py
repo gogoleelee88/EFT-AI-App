@@ -15,6 +15,19 @@ from backend.models.action_tokens import TokenParser  # keep
 from backend.services.emotion_analyzer import get_emotion_analyzer  # keep
 from backend.utils.action_builder import build_actions  # keep
 
+#==== 공개 API 재정의 + 호출부 마이그레이션 시 이거 삭제 필요 
+
+def _build_system_prompt_for_compare(user_message, session_state, tier: str | None = None) -> str:
+    """[임시 강제] vLLM 테스트/안정화: 항상 내부 빌더(14키 스키마)만 사용"""
+    try:
+        return build_checklist_prompt(user_message, session_state)
+    except Exception as e:
+        logger.error(f"Internal prompt build failed, falling back: {e}")
+        return "You are MoodTalk EFT assistant. Keep responses concise and safe."
+
+
+#====공개 API 재정의 + 호출부 마이그레이션 시 이거 삭제 필요====
+
 logger = logging.getLogger(__name__)
 logger.critical("✅✅✅ [V4 DEBUG] Context-Aware compare.py is running! ✅✅✅")
 router = APIRouter(prefix="/api/chat", tags=["compare"])
@@ -333,7 +346,16 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
     # 2) 프롬프트/페이로드
     # FIX: 들여쓰기 8칸 → 4칸 (IndentationError 예방)
     # (첫 턴 공감 전용 분기 제거: 항상 체크리스트 JSON 경로 사용)
-    system_prompt = build_checklist_prompt(req.message, session_state)  # FIX
+    #system_prompt = build_checklist_prompt(req.message, session_state)  # FIX 아래로 대체 
+
+    system_prompt = _build_system_prompt_for_compare(
+        req.message,
+        session_state,
+        tier=os.getenv("PROMPT_TIER", "free")
+    )
+
+    #======공개 API 재정의 + 호출부 마이그레이션 시 이거 삭제 필요========
+    
     payload_a = _chat_payload(ENGINE_A_MODEL, req, system_prompt, force_json=True)  # FIX
     payload_b = _chat_payload(ENGINE_B_MODEL, req, system_prompt, force_json=True)  # FIX
 
