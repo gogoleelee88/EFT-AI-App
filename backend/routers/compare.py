@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
+import redis
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
@@ -53,6 +54,22 @@ class AIResponse(BaseModel):
 
 # In-memory session storage (prod→Redis)
 session_storage: Dict[str, SessionState] = {}
+# In-memory session storage (prod→Redis)
+
+
+# Redis 클라이언트 초기화
+try:
+    # 'decode_responses=True'는 Redis에서 받은 데이터를 자동으로 string(utf-8)으로 변환해줍니다.
+    redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    redis_client.ping()
+    logger.info("✅ Redis session storage connected.")
+except Exception as e:
+    logger.error(f"❌ Redis connection failed: {e}. Falling back to in-memory dict.")
+    # Redis 연결 실패 시, 기존처럼 1회용 메모리 딕셔너리로 비상 동작합니다.
+    redis_client = None
+    session_storage_fallback = {} # 비상용 딕셔너리
+
+ # ==== CHECKLIST CONSTANTS (for upgraded checklist) ====
 
 # ==== CHECKLIST CONSTANTS (for upgraded checklist) ====
 
@@ -256,7 +273,7 @@ def _chat_payload(model: str, req: CompareRequest, system_prompt: str, force_jso
         ],
         "temperature": req.temperature,
         "top_p": req.top_p,
-        "max_tokens": req.max_tokens,
+        "max_tokens": 2048, # 1024에서 2048로 늘려서 JSON 잘림 방지
         "stream": False,
     }
     if force_json:
@@ -315,11 +332,19 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
     headers = {"Content-Type": ENGINE_CONTENT_TYPE}
     started_at = time.perf_counter()
     session_id = req.session_id or "dev"
+    session_key = f"session:compare:{session_id}" # Redis 키 이름 정의
 
-    # 0) 세션 로드
-    if session_id not in session_storage:
-        session_storage[session_id] = create_new_session_state()
-    session_state = session_storage[session_id]
+    if redis_client:
+        session_data = redis_client.get(session_key)
+        if not session_data:
+            session_state = create_new_session_state()
+        else:
+            # Redis에서 가져온 JSON 문자열을 Pydantic 모델 객체로 복원
+            session_state = SessionState(**json.loads(session_data))
+    else: # Redis 연결 실패 시 비상용 딕셔너리 사용
+        if session_id not in session_storage_fallback:
+            session_storage_fallback[session_id] = create_new_session_state()
+        session_state = session_storage_fallback[session_id]
 
     # 0.1) 사용자 텍스트에서 선-채움 (>>>> 처리)
     kv_user = _extract_kv_from_text(req.message)
@@ -336,8 +361,17 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             and i.key not in AI_ONLY_KEYS
         }
         if REQUIRED_KEYS.issubset(present):
-            session_state.first_turn_done = True
-        session_storage[session_id] = session_state
+             session_state.first_turn_done = True
+        
+        # kv_user 처리 후 세션 저장 (Redis)
+        if redis_client:
+            # Pydantic 모델을 JSON 문자열로 변환하여 Redis에 저장 (ex=3600 -> 1시간 뒤 자동 삭제)
+            redis_client.set(session_key, session_state.model_dump_json(), ex=3600)
+        else:
+            session_storage_fallback[session_id] = session_state
+
+
+     # 1) 첫 턴 여부
 
 
     # 1) 첫 턴 여부
@@ -499,33 +533,43 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
                 final_actions = [next_action]
 
                 # persist merged values
-                persist_keys = list({*USER_KEYS, *AI_ONLY_KEYS})
-                session_storage[session_id] = SessionState(
-                    checklist=[
-                        ChecklistItem(key=k, question="", value=str(ck.get(k) or ""), ask_count=1)
-                        for k in persist_keys
-                    ],
-                    first_turn_done=True,
-        )
+                 persist_keys = list({*USER_KEYS, *AI_ONLY_KEYS})
+                session_state_to_persist = SessionState(
+                     checklist=[
+                         ChecklistItem(key=k, question="", value=str(ck.get(k) or ""), ask_count=1)
+                         for k in persist_keys
+                     ],
+                     first_turn_done=True,
+                )
+                if redis_client:
+                    redis_client.set(session_key, session_state_to_persist.model_dump_json(), ex=3600)
+                else:
+                    session_storage_fallback[session_id] = session_state_to_persist
 
 
-                parsed_ok = True
+                 parsed_ok = True
 
             if not parsed_ok:
                 # 일반 경로(질문 지속)
                 parsed_ok = True
                 user_facing_response = ai_response.response_for_user
                 
-                persist_keys = list({*USER_KEYS, *AI_ONLY_KEYS})
-                session_storage[session_id] = SessionState(
-                    checklist=[
-                        ChecklistItem(key=k, question="", value=str(ck.get(k) or ""), ask_count=1)
-                        for k in persist_keys
-                    ],
-                    first_turn_done=True,
-            )
+                user_facing_response = ai_response.response_for_user
+                 
+                 persist_keys = list({*USER_KEYS, *AI_ONLY_KEYS})
+                session_state_to_persist = SessionState(
+                     checklist=[
+                         ChecklistItem(key=k, question="", value=str(ck.get(k) or ""), ask_count=1)
+                         for k in persist_keys
+                   _],
+                     first_turn_done=True,
+                )
+                if redis_client:
+                    redis_client.set(session_key, session_state_to_persist.model_dump_json(), ex=3600)
+                else:
+                    session_storage_fallback[session_id] = session_state_to_persist
 
-                is_complete = all(_safe_get_val(item) is not None for item in ai_response.updated_checklist)
+                 is_complete = all(_safe_get_val(item) is not None for item in ai_response.updated_checklist)
                 if is_complete:
                     # 여기서는 intensity가 비었을 때만 묻도록 보정
                     if not _filled(ck.get("intensity")):
@@ -538,11 +582,16 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
             parsed_ok = False
 
         if not parsed_ok:
-            user_facing_response = _fallback_ask_next(session_state)
-            session_state.first_turn_done = True
-            session_storage[session_id] = session_state
+             user_facing_response = _fallback_ask_next(session_state)
+             session_state.first_turn_done = True
+            
+            # JSON 파싱 실패 시에도 현재 세션 상태를 Redis에 저장 (누적 보호)
+            if redis_client:
+                redis_client.set(session_key, session_state.model_dump_json(), ex=3600)
+            else:
+                session_storage_fallback[session_id] = session_state
 
-    final_result = {
+     final_result = {
         "response": user_facing_response,
         "actions": final_actions,
         "comparison_time": round(time.perf_counter() - started_at, 3),
