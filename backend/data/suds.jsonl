@@ -1,1 +1,12 @@
 {"trace_id": "dev-smoke-test", "type": "system", "score": 4, "session_id": "sess-abc", "user_id": "user-xyz", "saved_at": "2025-09-21T17:11:51.074950+00:00", "timestamp": "2025-09-21T17:11:51.074950+00:00"}
+{"trace_id": "a35d3fd131854400bece41008329b800", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-13T03:48:24.777098+00:00", "timestamp": "2025-11-13T03:48:24.777098+00:00"}
+{"trace_id": "7798f012351646b79938d5933857a558", "type": "manual", "score": 6, "session_id": null, "user_id": null, "saved_at": "2025-11-13T04:06:28.980371+00:00", "timestamp": "2025-11-13T04:06:28.980371+00:00"}
+{"trace_id": "5503ae3a175c4eb99e15eb25bcd3a156", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-14T03:46:34.416354+00:00", "timestamp": "2025-11-14T03:46:34.416354+00:00"}
+{"trace_id": "7b3cc052fe27453eaece2c2f99660272", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-15T03:40:35.255635+00:00", "timestamp": "2025-11-15T03:40:35.255635+00:00"}
+{"trace_id": "89c4e43208c2447bae737ea2bd623f82", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-16T03:49:51.698426+00:00", "timestamp": "2025-11-16T03:49:51.698426+00:00"}
+{"trace_id": "4b23a12d1e0644f3ac7568adaa38f160", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-17T03:50:23.259063+00:00", "timestamp": "2025-11-17T03:50:23.259063+00:00"}
+{"trace_id": "a28b14dc8a8e41e4bcc06bb7a554f481", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-18T03:46:27.185548+00:00", "timestamp": "2025-11-18T03:46:27.185548+00:00"}
+{"trace_id": "d920cce1fb4641d7a04661065a7c94ec", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-19T03:45:26.635165+00:00", "timestamp": "2025-11-19T03:45:26.635165+00:00"}
+{"trace_id": "8b2d2623f9ab4a9cbb97d30e2af0cec7", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-20T03:44:52.743619+00:00", "timestamp": "2025-11-20T03:44:52.743619+00:00"}
+{"trace_id": "161a30accff444d7abe8b6ec21c26cb1", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-21T03:44:09.100721+00:00", "timestamp": "2025-11-21T03:44:09.100721+00:00"}
+{"trace_id": "5cb9cc73fad94e9bb2706aef10891502", "type": "manual", "score": 7, "session_id": null, "user_id": null, "saved_at": "2025-11-22T03:38:26.851110+00:00", "timestamp": "2025-11-22T03:38:26.851110+00:00"}
