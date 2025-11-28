@@ -80,11 +80,38 @@ class SuggestedAction(BaseModel):
     priority: Literal["low", "medium", "high", "urgent"] = Field(..., description="우선순위")
     estimated_time_minutes: int = Field(..., description="예상 소요 시간")
 
+
+# === STRICT6 관련 모델들 (SPEC v1.1) ===
+
+class StrictIntakeInput(BaseModel):
+    """STRICT6 감정 인풋 모델 (SPEC v1.1)"""
+    core_emotion: str = Field(..., description="핵심 감정 (불안, 분노, 슬픔 등)")
+    situation_context: str = Field(..., description="상황 맥락")
+    automatic_thought: str = Field(..., description="자동사고 (한 문장 기준)")
+    physical_sensation: Optional[str] = Field(None, description="신체 감각")
+    behavioral_reaction: Optional[str] = Field(None, description="행동 반응")
+    intensity: int = Field(..., ge=0, le=10, description="0~10 SUDS")
+
+    available_time: Optional[int] = Field(None, description="사용 가능 시간 (분)")
+    immediate_goal: Optional[str] = Field(None, description="즉시 목표")
+
+
+class EFTScript(BaseModel):
+    """EFT 스크립트 출력 모델"""
+    setup_phrase: str = Field(..., description="셋업 문장")
+    focus_words: List[str] = Field(..., description="탭핑 중 반복할 짧은 구")
+    intensity_label: str = Field(..., description="약함/중간/강함")
+    situation_summary: str = Field(..., description="현재 감정 상태 요약 (UI용)")
+    recommended_duration: int = Field(..., description="분 단위 권장 시간")
+    target_emotion: str = Field(..., description="core_emotion 그대로")
+
 # === 요청 모델들 ===
 
 class ChatRequest(BaseModel):
     """채팅 요청"""
     message: str = Field(..., min_length=1, max_length=2000, description="사용자 메시지")
+    # ✨ STRICT6 필드 추가
+    strict_intake: Optional[StrictIntakeInput] = Field(None, description="STRICT6 구조화 인풋")
     conversation_history: List[ConversationMessage] = Field(default=[], max_items=20, description="대화 이력")
     user_profile: Optional[UserProfile] = Field(default=None, description="사용자 프로필")
     
@@ -123,6 +150,9 @@ class ChatResponse(BaseModel):
     eft_recommendations: List[EFTRecommendation] = Field(default_factory=list, description="EFT 기법 추천들")
     suggested_actions: List[SuggestedAction] = Field(default_factory=list, description="제안 액션들")
     actions: List[Dict[str, Any]] = Field(default_factory=list, description="액션 토큰 실행 결과")
+    
+    # ✨ STRICT6 EFT 스크립트 필드 추가
+    eft_script: Optional[EFTScript] = Field(None, description="STRICT6 기반 EFT 스크립트")
     
     # 메타데이터
     confidence_score: float = Field(..., ge=0.0, le=1.0, description="응답 신뢰도")
@@ -177,3 +207,5 @@ class HealthCheckResponse(BaseModel):
     timestamp: str = Field(..., description="체크 시간")
     version: str = Field(..., description="서버 버전")
     uptime_seconds: float = Field(..., description="가동 시간(초)")
+# === STRICT6 관련 모델들 (SPEC v1.1) ===
+

@@ -130,6 +130,47 @@ export interface SuggestedAction {
   estimated_time_minutes: number;
 }
 
+
+// ========================================
+// STRICT6 관련 타입 정의
+// ========================================
+
+/** STRICT6 구조화 감정 입력 모델 */
+export interface StrictIntakeInput {
+  /** 핵심 감정 (불안, 분노, 슬픔 등) */
+  core_emotion: string;
+  /** 상황 맥락 */
+  situation_context: string;
+  /** 자동사고 (한 문장 기준) */
+  automatic_thought: string;
+  /** 신체 감각 (선택) */
+  physical_sensation?: string;
+  /** 행동 반응 (선택) */
+  behavioral_reaction?: string;
+  /** 0~10 SUDS 강도 */
+  intensity: number;
+  /** 사용 가능 시간 (분, 선택) */
+  available_time?: number;
+  /** 즉시 목표 (선택) */
+  immediate_goal?: string;
+}
+
+/** EFT 스크립트 출력 모델 */
+export interface EFTScript {
+  /** 셋업 문장 */
+  setup_phrase: string;
+  /** 탭핑 중 반복할 짧은 구절들 */
+  focus_words: string[];
+  /** 약함/중간/강함 */
+  intensity_label: string;
+  /** 현재 감정 상태 요약 (UI용) */
+  situation_summary: string;
+  /** 분 단위 권장 시간 */
+  recommended_duration: number;
+  /** core_emotion 그대로 */
+  target_emotion: string;
+}
+
 // 채팅 요청 (클라이언트 → 서버)
 export interface ChatRequest {
   message: string;
@@ -143,6 +184,9 @@ export interface ChatRequest {
   
   // EFT 관련 설정
   include_eft_recommendations?: boolean;
+  
+  // STRICT6 구조화 인풋 (선택)
+  strict_intake?: StrictIntakeInput;
   emergency_check?: boolean;
   
   // 메타데이터
@@ -179,6 +223,9 @@ export interface ChatResponse {
   session_id?: string;
   response_id: string;
   actions?: ActionItem[];
+  
+  // STRICT6 기반 EFT 스크립트 (선택)
+  eft_script?: EFTScript;
 }
 
 // 스트리밍 응답 청크
