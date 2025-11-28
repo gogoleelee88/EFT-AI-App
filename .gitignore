@@ -59,3 +59,51 @@ __pycache__/
 frontend/nul
 backend/=2.6.0
 backend/config.env
+
+# ===== 추가 (백엔드 런타임/백업/환경 파일) =====
+
+# Python 가상환경
+.venv/
+venv/
+
+# Python 캐시 (혹시 중복이 아니면)
+backend/__pycache__/
+__pycache__/
+
+# nohup 및 실행 로그
+nohup.out
+
+# systemd 텍스트가 실수로 파일로 생긴 경우 방어
+-H
+-d
+=*
+[Unit]
+[Service]
+[Install]
+Environment=*
+WantedBy=*
+
+# backend 라우터 백업/임시 파일들
+backend/routers/*.bak*
+backend/routers/*backup*
+backend/routers/*.save*
+backend/routers/*.INDENT*
+backend/routers/*FULL*
+backend/routers/*fix*
+backend/routers/*v*
+
+# backend 데이터 중 런타임 파일만 제외
+backend/data/conversation_memory.jsonl
+backend/data/running_summaries*
+# ⚠ notices.json 은 커밋 대상으로 두는 걸 추천
+# (콘텐츠/설정 데이터라면)
+
+# backend 빌드/정적 산출물
+static-frontend/
+backend/static-frontend/
+
+# 기타 임시/실험 결과물
+frontend/output.txt
+
+backend/main.py.backup*
+test_phase1.py
