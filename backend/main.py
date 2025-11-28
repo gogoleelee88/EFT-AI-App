@@ -48,7 +48,8 @@ from backend.services.memory_system import (
     get_memory_system,
     get_memory_stats,
 )
-from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType
+from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType, EFTScript
+from backend.services.eft_mapper import build_eft_script_from_strict6
 from backend.utils.action_builder import build_actions
 from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
 from backend.config.settings import get_settings
@@ -1106,12 +1107,25 @@ async def eft_chat(request: ChatRequest, req: Request):
             pass
 
         # ChatResponse 형태로 반환 (토큰 처리 결과 포함)
+
+        # ✨ STRICT6 처리 추가
+        eft_script = None
+        if request.strict_intake is not None:
+            try:
+                script_dict = build_eft_script_from_strict6(request.strict_intake)
+                eft_script = EFTScript(**script_dict)
+                logger.info(f"[STRICT6] EFT 스크립트 생성 완료: {request.strict_intake.core_emotion}")
+            except Exception as e:
+                logger.warning(f"[STRICT6] EFT 스크립트 생성 실패: {e}")
+                eft_script = None
+
         return ChatResponse(
             response=clean_response,  # 🔥 토큰 제거된 깔끔한 텍스트
             emotion_analysis=emotion_analysis,
             eft_recommendations=[],  # 병렬 비교에서는 기본값
             suggested_actions=[],
             actions=executed_actions,  # 🔥 토큰 실행 결과 + ask_suds 자동 방출
+            eft_script=eft_script,  # ✨ STRICT6
             confidence_score=0.8,
             processing_time=processing_time,
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -1144,6 +1158,7 @@ async def eft_chat(request: ChatRequest, req: Request):
             eft_recommendations=[],
             suggested_actions=[],
             actions=[],  # 폴백 시에는 액션 없음
+            eft_script=None,  # ✨ STRICT6
             confidence_score=0.2,
             processing_time=0.1,
             timestamp=datetime.now().isoformat(),
