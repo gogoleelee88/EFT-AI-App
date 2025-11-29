@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useEFTScript } from '../contexts/EFTScriptContext';
 import { STRICT6Form } from '../components/STRICT6Form';
 import { EFTScriptDisplay } from '../components/EFTScriptDisplay';
 import type { StrictIntakeInput, ChatResponse, EFTScript } from '../types/serverAI';
@@ -7,6 +8,7 @@ import '../components/STRICT6.css';
 
 export const EFTStrictPage: React.FC = () => {
   const navigate = useNavigate();
+  const { setEftScript } = useEFTScript();
   const [script, setScript] = useState<EFTScript | null>(null);
   const [loading, setLoading] = useState(false);
 
