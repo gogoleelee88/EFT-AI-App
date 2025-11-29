@@ -820,6 +820,11 @@ export default function ARHolisticTest() {
 
   const [searchParams] = useSearchParams();
 
+  // ✨ EFT 스크립트 문구 읽기
+  const setupPhrase = searchParams.get('setupPhrase') || '';
+  const focusWordsStr = searchParams.get('focusWords') || '';
+  const focusWords = focusWordsStr ? focusWordsStr.split(',') : [];
+
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -2732,6 +2737,7 @@ const drawOverlay = (t: number) => {
 
             {/* 🕳 태핑 포인트에 올라오는 두더지 */}
             {moleActive && molePos && (
+              <>
               <img
                 src={MOLE_FRAMES[moleFrame]}
                 alt="moodtalk mole"
@@ -2748,6 +2754,31 @@ const drawOverlay = (t: number) => {
                   zIndex: 25,
                 }}
               />
+              
+              {/* ✨ Focus Words 표시 (두더지 위) */}
+              {focusWords.length > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${molePos.x * 100}%`,
+                    top: `${molePos.y * 100}%`,
+                    transform: "translate(-50%, -150%)",
+                    backgroundColor: "rgba(100, 50, 200, 0.9)",
+                    color: "white",
+                    padding: "8px 16px",
+                    borderRadius: "20px",
+                    fontSize: "18px",
+                    fontWeight: "bold",
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                    zIndex: 26,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+                  }}
+                >
+                  {focusWords[Math.floor(Math.random() * focusWords.length)]}
+                </div>
+              )}
+            </>
             )}
 
             {/* 🫧 EFT 포인트에서 팝 되는 버블 (DOM 오버레이) */}
@@ -2785,6 +2816,7 @@ const drawOverlay = (t: number) => {
                       setError(e?.message || "카메라 시작 실패");
                     }
                   }}
+            </>
                 >
                   {texts.cameraStart}
                 </button>
@@ -2857,6 +2889,28 @@ const drawOverlay = (t: number) => {
                 objectFit: 'contain'
               }}
             />
+            {/* ✨ EFT Setup Phrase 표시 */}
+            {setupPhrase && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '10%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  color: 'white',
+                  padding: '20px 40px',
+                  borderRadius: '15px',
+                  fontSize: '24px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  maxWidth: '80%',
+                  lineHeight: '1.6'
+                }}
+              >
+                {setupPhrase}
+              </div>
+            )}
             <button
               onClick={handleStartIntro}
               className="absolute opacity-0 cursor-pointer"
