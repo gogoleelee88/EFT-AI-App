@@ -22,7 +22,8 @@ import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 �
 
 import { useEffect, useRef, useState } from "react";
 
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useEFTScript } from '../contexts/EFTScriptContext';
 
 import { Holistic, POSE_LANDMARKS, VERSION } from "@mediapipe/holistic";
 

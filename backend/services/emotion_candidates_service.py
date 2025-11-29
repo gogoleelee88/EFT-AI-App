@@ -1,0 +1,148 @@
+"""
+Emotion Candidates Service
+- STRICT6 결과에서 core_emotion이 null/모호한 경우
+- LLM에게 최상위 3개의 감정 후보를 추천 요청한다.
+"""
+
+import json
+from typing import Any, Dict, List, Optional
+
+import httpx
+from pydantic import BaseModel
+
+
+# ============================
+# 🔧 무료 엔진 / 프리미엄 엔진 설정
+# ============================
+
+ENGINE_CONFIG = {
+    "a": {  # 무료: Engine A (8001)
+        "endpoint": "http://localhost:8001/v1/chat/completions",
+        "model": "engine-a",
+    },
+    "b": {  # 무료: Engine B (8002)
+        "endpoint": "http://localhost:8002/v1/chat/completions",
+        "model": "engine-b",
+    },
+    # 프리미엄 모델이 추가되면 여기만 확장하면 됨 (예: Qwen 프리미엄)
+}
+
+
+# ============================
+# 🎭 Pydantic Model
+# ============================
+
+class EmotionCandidate(BaseModel):
+    label: str
+    reason: str
+    confidence: float
+
+
+# ============================
+# 📌 System Prompt 정의
+# ============================
+
+SYSTEM_PROMPT = """
+너는 감정 후보를 제안하는 도우미다.
+
+[역할]
+- 사용자의 원문 input과 STRICT6 JSON(output)을 보고, "후보 감정" 상위 3개를 추천한다.
+- 이 단계는 최종 진단이 아니라, UI에서 사용자가 고를 수 있도록 후보를 제안하는 용도다.
+
+[감정 라벨 세트]
+다음 리스트 안에서만 감정을 고른다(반드시 이 중 하나로만 label을 작성):
+
+["불안", "걱정", "긴장", "공포", "압박감", "불확실감", "촉박감", "실수공포", "비교스트레스",
+ "분노", "짜증", "억울함", "원망", "무시당함", "경시폄하감", "통제상실감",
+ "수치심", "자괴감", "자기혐오", "후회", "죄책감", "자기비난", "무가치감",
+ "혼란", "압도감", "멍함",
+ "피로감", "무기력", "번아웃", "허탈감", "허무감", "탈의미감",
+ "복합/잘모르겠음"]
+
+[출력 형식]
+반드시 아래 JSON 형식으로만 출력한다(설명 문장 금지):
+
+{
+  "candidates": [
+    {"label": "<감정라벨>", "reason": "<이 라벨을 고른 이유>", "confidence": 0.0},
+    {"label": "<감정라벨>", "reason": "<이 라벨을 고른 이유>", "confidence": 0.0},
+    {"label": "<감정라벨>", "reason": "<이 라벨을 고른 이유>", "confidence": 0.0}
+  ]
+}
+
+- confidence는 0.0~1.0 사이 숫자로, 모델이 느끼는 상대적 확신 정도를 쓴다.
+- reason은 1~2문장으로 간단히 쓴다.
+- 출력은 반드시 위 JSON 한 덩어리만 반환하고, 그 외의 자연어 문장은 절대 섞지 않는다.
+"""
+
+
+# ============================
+# 🚀 핵심 LLM 호출 함수
+# ============================
+
+async def get_emotion_candidates(
+    user_input: str,
+    strict6_output: Dict[str, Any],
+    engine: str = "b",
+) -> Optional[List[EmotionCandidate]]:
+    """
+    사용자의 입력과 STRICT6 JSON을 기반으로
+    감정 후보 상위 3개를 반환한다.
+    """
+
+    if engine not in ENGINE_CONFIG:
+        raise ValueError(f"Unknown engine={engine}. Allowed: {list(ENGINE_CONFIG.keys())}")
+
+    cfg = ENGINE_CONFIG[engine]
+    endpoint = cfg["endpoint"]
+    model = cfg["model"]
+
+    # 🔧 User Prompt 생성
+    user_content = (
+        "아래는 사용자의 감정 관련 입력과 STRICT6 JSON이다.\n"
+        "이를 바탕으로 감정 후보를 3개 추천해줘.\n\n"
+        "[input]\n"
+        f"{user_input}\n\n"
+        "[STRICT6 JSON]\n"
+        f"{json.dumps(strict6_output, ensure_ascii=False, indent=2)}\n"
+    )
+
+    payload = {
+        "model": model,
+        "temperature": 0.3,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ],
+    }
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(endpoint, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"].strip()
+
+        # ⚠️ LLM이 ```json ... ``` 로 응답한 경우 대비
+        if content.startswith("```"):
+            content = content.strip("`")
+            content = content.replace("json", "", 1).strip()
+
+    try:
+        parsed = json.loads(content)
+        raw_candidates = parsed.get("candidates")
+        if not isinstance(raw_candidates, list):
+            return None
+        return [EmotionCandidate(**c) for c in raw_candidates]
+
+    except Exception as e:
+        # JSON 파싱 실패 or 필드 오류 시 fallback 시도
+        logger.warning(f"Engine {engine} failed to parse emotion candidates: {e}")
+        
+        # Engine B 실패 시 Engine A로 재시도
+        if engine != "a":
+            logger.info("Retrying with Engine A...")
+            return await get_emotion_candidates(user_input, strict6_output, engine="a")
+        
+        # Engine A도 실패하면 None 반환
+        return None
+

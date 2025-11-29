@@ -10,6 +10,7 @@ import ARTest from './pages/ARTest';
 import ARHolisticTest from './pages/ARHolisticTest';
 import ArCalibrationPage from './pages/ArCalibrationPage';
 import { EFTStrictPage } from './pages/EFTStrictPage';
+import { EFTScriptProvider } from './contexts/EFTScriptContext';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 import AppHeader from './components/layout/AppHeader';
 import PWAInstallHintIOS from './components/PWAInstallHintIOS';
@@ -50,7 +51,8 @@ const App: React.FC = () => {
   // 로그인된 경우 메인 앱 (React Router 기반 + 반응형)
   return (
     <Router>
-      <ResponsiveContainer>
+      <EFTScriptProvider>
+        <ResponsiveContainer>
         <AppHeader />
         <PWAInstallHintIOS />
         <Routes>
@@ -89,7 +91,8 @@ const App: React.FC = () => {
           {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </EFTScriptProvider>
     </Router>
   );
 };
