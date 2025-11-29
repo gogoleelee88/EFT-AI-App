@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { STRICT6Form } from '../components/STRICT6Form';
 import { EFTScriptDisplay } from '../components/EFTScriptDisplay';
 import type { StrictIntakeInput, ChatResponse, EFTScript } from '../types/serverAI';
 import '../components/STRICT6.css';
 
 export const EFTStrictPage: React.FC = () => {
+  const navigate = useNavigate();
   const [script, setScript] = useState<EFTScript | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -57,9 +59,8 @@ export const EFTStrictPage: React.FC = () => {
         script={script}
         onClose={() => setScript(null)}
         onStartSession={() => {
-          // EFT 세션 시작 로직
-          console.log('EFT 세션 시작');
-          // 필요시 AR Holistic 페이지로 이동하거나 세션 시작
+          console.log('EFT 세션 시작 - AR Holistic으로 이동');
+          navigate('/ar-holistic');
         }}
       />
     );
