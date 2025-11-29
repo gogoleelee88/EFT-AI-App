@@ -2737,6 +2737,7 @@ const drawOverlay = (t: number) => {
 
             {/* 🕳 태핑 포인트에 올라오는 두더지 */}
             {moleActive && molePos && (
+              <>
               <img
                 src={MOLE_FRAMES[moleFrame]}
                 alt="moodtalk mole"
@@ -2777,6 +2778,7 @@ const drawOverlay = (t: number) => {
                   {focusWords[Math.floor(Math.random() * focusWords.length)]}
                 </div>
               )}
+            </>
             )}
 
             {/* 🫧 EFT 포인트에서 팝 되는 버블 (DOM 오버레이) */}
@@ -2814,6 +2816,7 @@ const drawOverlay = (t: number) => {
                       setError(e?.message || "카메라 시작 실패");
                     }
                   }}
+            </>
                 >
                   {texts.cameraStart}
                 </button>
