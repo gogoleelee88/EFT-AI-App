@@ -48,6 +48,7 @@ export default defineConfig({
         ]
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB로 증가
         clientsClaim: true,
         skipWaiting: true,
         cacheId: `eft-ai-${new Date().getTime()}`, // 빌드마다 고유 캐시 ID
