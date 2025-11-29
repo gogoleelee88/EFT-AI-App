@@ -5,7 +5,7 @@ export default function AppHeader() {
 
   return (
     <header className="flex items-center justify-between p-3 border-b bg-white shadow-sm">
-      <h1 className="text-xl font-bold text-gray-800">EFT AI</h1>
+      {/* <h1 className="text-xl font-bold text-gray-800">EFT AI</h1> */}
       {supported && (
         <button
           onClick={async () => {
