@@ -819,12 +819,11 @@ export default function ARHolisticTest() {
 
   const navigate = useNavigate();
 
-  const [searchParams] = useSearchParams();
-
-  // ✨ EFT 스크립트 문구 읽기
-  const setupPhrase = searchParams.get('setupPhrase') || '';
-  const focusWordsStr = searchParams.get('focusWords') || '';
-  const focusWords = focusWordsStr ? focusWordsStr.split(',') : [];
+  // EFT Script Context에서 데이터 가져오기
+  const { eftScript } = useEFTScript();
+  
+  const setupPhrase = eftScript?.setup_phrase || '';
+  const focusWords = eftScript?.focus_words || [];
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
 
