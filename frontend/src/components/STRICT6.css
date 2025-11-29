@@ -1,0 +1,375 @@
+/* ═══════════════════════════════════════════════════════════════════
+   STRICT6 Form 스타일
+   ═══════════════════════════════════════════════════════════════════ */
+
+.strict6-form {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.strict6-form h2 {
+  margin-bottom: 8px;
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+}
+
+.form-description {
+  margin-bottom: 24px;
+  color: #666;
+  font-size: 14px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.required {
+  color: #f44336;
+  margin-left: 4px;
+}
+
+.optional {
+  color: #999;
+  font-weight: 400;
+  font-size: 14px;
+  margin-left: 4px;
+}
+
+.form-group input[type="text"],
+.form-group textarea,
+.form-group input[type="number"] {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #2196f3;
+}
+
+.form-group input.error,
+.form-group textarea.error {
+  border-color: #f44336;
+}
+
+.error-message {
+  display: block;
+  margin-top: 4px;
+  color: #f44336;
+  font-size: 14px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* 슬라이더 스타일 */
+.form-group input[type="range"] {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #4caf50, #ff9800, #f44336);
+  outline: none;
+  margin: 12px 0;
+}
+
+.intensity-value {
+  float: right;
+  font-size: 20px;
+  font-weight: 600;
+  color: #2196f3;
+}
+
+.intensity-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #666;
+  margin-top: -8px;
+}
+
+/* 버튼 */
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-submit,
+.btn-cancel {
+  flex: 1;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-submit {
+  background: #2196f3;
+  color: white;
+}
+
+.btn-submit:hover {
+  background: #1976d2;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+}
+
+.btn-cancel {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.btn-cancel:hover {
+  background: #e0e0e0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   EFT Script Display 스타일
+   ═══════════════════════════════════════════════════════════════════ */
+
+.eft-script-display {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.script-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.script-header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: #333;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #333;
+}
+
+/* 감정 상태 요약 */
+.script-summary {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.script-summary h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #666;
+}
+
+.summary-badge {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.emotion-badge,
+.intensity-badge {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.emotion-badge {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.intensity-badge {
+  color: white;
+}
+
+.summary-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  margin: 0;
+}
+
+/* 권장 시간 */
+.script-duration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #fff3e0;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.duration-icon {
+  font-size: 20px;
+}
+
+.duration-text {
+  font-size: 16px;
+  color: #333;
+}
+
+/* 스크립트 섹션 */
+.script-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.setup-section {
+  background: #e8f5e9;
+}
+
+.focus-section {
+  background: #e3f2fd;
+}
+
+.script-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.instruction {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.setup-phrase {
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  border-left: 4px solid #4caf50;
+}
+
+.setup-phrase p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #333;
+}
+
+/* 포커스 단어 */
+.focus-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.focus-word {
+  padding: 10px 16px;
+  background: white;
+  border: 2px solid #2196f3;
+  border-radius: 20px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #2196f3;
+}
+
+.focus-tip {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+/* 액션 버튼 */
+.script-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-start-session,
+.btn-copy {
+  flex: 1;
+  padding: 14px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-start-session {
+  background: #4caf50;
+  color: white;
+}
+
+.btn-start-session:hover {
+  background: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.btn-copy {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.btn-copy:hover {
+  background: #e0e0e0;
+}
+
+/* 반응형 */
+@media (max-width: 640px) {
+  .strict6-form,
+  .eft-script-display {
+    padding: 16px;
+  }
+
+  .form-actions,
+  .script-actions {
+    flex-direction: column;
+  }
+
+  .focus-words {
+    justify-content: center;
+  }
+}

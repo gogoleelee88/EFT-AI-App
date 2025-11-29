@@ -9,6 +9,7 @@ import ARDemo from './pages/ARDemo';
 import ARTest from './pages/ARTest';
 import ARHolisticTest from './pages/ARHolisticTest';
 import ArCalibrationPage from './pages/ArCalibrationPage';
+import { EFTStrictPage } from './pages/EFTStrictPage';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 import AppHeader from './components/layout/AppHeader';
 import PWAInstallHintIOS from './components/PWAInstallHintIOS';
@@ -75,6 +76,11 @@ const App: React.FC = () => {
             path="/ar/calibration"
             element={<ArCalibrationPage />}
           />
+          {/* STRICT6 EFT 스크립트 생성 페이지 */}
+          <Route
+            path="/eft-strict"
+            element={<EFTStrictPage />}
+          />
           {/* 방어적 리다이렉트: /eft-guide → /ar-holistic */}
           <Route path="/eft-guide" element={<Navigate to="/ar-holistic" replace />} />
           {/* EFT AR 경로: /eftar → /ar-holistic */}
@@ -89,3 +95,4 @@ const App: React.FC = () => {
 };
 
 export default App
+// trigger deploy

@@ -152,6 +152,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       case 'EFT 세션':
         navigate('/ar-holistic'); // EFT AR 홀리스틱 가이드로 이동
         break;
+      case '감정 구조화':
+        navigate('/eft-strict'); // STRICT6 감정 입력
+        break;
       case '감정 체크인':
         handleEmotionCheck();
         break;
@@ -272,6 +275,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 >
                   <span className="text-xl">✨</span>
                   <span className="font-medium">EFT 세션</span>
+                </button>
+
+                <button 
+                  onClick={() => handleMenuItemClick('감정 구조화')}
+                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-green-50 rounded-lg transition-colors"
+                >
+                  <span className="text-xl">📝</span>
+                  <span className="font-medium">감정 구조화</span>
+                  <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">신규</span>
                 </button>
 
                 <button 
