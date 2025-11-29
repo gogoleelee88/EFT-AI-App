@@ -60,7 +60,16 @@ export const EFTStrictPage: React.FC = () => {
         onClose={() => setScript(null)}
         onStartSession={() => {
           console.log('EFT 세션 시작 - AR Holistic으로 이동');
-          navigate('/ar-holistic');
+          
+          // EFT 스크립트를 URL 파라미터로 전달
+          const params = new URLSearchParams({
+            setupPhrase: script.setup_phrase,
+            focusWords: script.focus_words.join(','),
+            emotion: script.target_emotion,
+            intensity: script.intensity_label
+          });
+          
+          navigate();
         }}
       />
     );
