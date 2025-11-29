@@ -22,7 +22,7 @@ import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 �
 
 import { useEffect, useRef, useState } from "react";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEFTScript } from '../contexts/EFTScriptContext';
 
 import { Holistic, POSE_LANDMARKS, VERSION } from "@mediapipe/holistic";
@@ -824,6 +824,9 @@ export default function ARHolisticTest() {
   
   const setupPhrase = eftScript?.setup_phrase || '';
   const focusWords = eftScript?.focus_words || [];
+  
+  // URL 파라미터 (AR 설정용)
+  const [searchParams] = useSearchParams();
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
 
