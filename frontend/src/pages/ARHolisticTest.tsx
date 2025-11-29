@@ -22,7 +22,7 @@ import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 �
 
 import { useEffect, useRef, useState } from "react";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEFTScript } from '../contexts/EFTScriptContext';
 
 import { Holistic, POSE_LANDMARKS, VERSION } from "@mediapipe/holistic";
@@ -819,12 +819,14 @@ export default function ARHolisticTest() {
 
   const navigate = useNavigate();
 
+  // EFT Script Context에서 데이터 가져오기
+  const { eftScript } = useEFTScript();
+  
+  const setupPhrase = eftScript?.setup_phrase || '';
+  const focusWords = eftScript?.focus_words || [];
+  
+  // URL 파라미터 (AR 설정용)
   const [searchParams] = useSearchParams();
-
-  // ✨ EFT 스크립트 문구 읽기
-  const setupPhrase = searchParams.get('setupPhrase') || '';
-  const focusWordsStr = searchParams.get('focusWords') || '';
-  const focusWords = focusWordsStr ? focusWordsStr.split(',') : [];
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
 
