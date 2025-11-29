@@ -2816,7 +2816,6 @@ const drawOverlay = (t: number) => {
                       setError(e?.message || "카메라 시작 실패");
                     }
                   }}
-            </>
                 >
                   {texts.cameraStart}
                 </button>
