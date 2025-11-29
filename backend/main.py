@@ -1441,9 +1441,33 @@ app.include_router(suds_router)
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
 # 프론트엔드 별도 배포 시 디렉터리가 없을 수 있으므로 존재할 때만 마운트
-STATIC_DIR = Path("backend/static-frontend")
+STATIC_DIR = Path("static-frontend")
 if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
-    logger.info(f"📂 StaticFiles 마운트 완료: {STATIC_DIR}")
+    # SPA 라우팅을 위한 catch-all 라우트 추가 (StaticFiles 마운트 전에 정의)
+    from fastapi.responses import FileResponse
+    
+    @app.get("/{catchall:path}")
+    async def spa_catchall(catchall: str):
+        """
+        SPA(Single Page Application) 라우팅 지원
+        /api로 시작하지 않는 모든 경로는 index.html 반환
+        """
+        # API 경로는 제외
+        if catchall.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        # 정적 파일 요청 (js, css, images 등)
+        file_path = STATIC_DIR / catchall
+        if file_path.is_file():
+            return FileResponse(file_path)
+        
+        # SPA 라우트는 index.html 반환
+        index_path = STATIC_DIR / "index.html"
+        if index_path.is_file():
+            return FileResponse(index_path)
+        
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    logger.info(f"📂 SPA 라우팅 활성화: {STATIC_DIR}")
 else:
     logger.info(f"📂 StaticFiles 마운트 스킵: {STATIC_DIR} 디렉터리 없음 (프론트엔드 별도 배포 시 정상)")
