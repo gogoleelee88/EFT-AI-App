@@ -69,7 +69,7 @@ export const EFTStrictPage: React.FC = () => {
             intensity: script.intensity_label
           });
           
-          navigate();
+          navigate("/ar-holistic?" + params.toString());
         }}
       />
     );
