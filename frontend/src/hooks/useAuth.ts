@@ -26,33 +26,12 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 데모용 사용자 데이터 (Firebase 없이 바로 체험 가능)
-    const demoUser: EFTUser = {
-      uid: 'demo-user-' + Date.now(),
-      email: 'demo@eft-ai.com',
-      name: '마음탐험가',
-      photoURL: null,
-      level: 3,
-      xp: 2847,
-      nextLevelXp: 4000,
-      gems: 127,
-      badges: 7,
-      streak: 5,
-      createdAt: new Date(),
-      lastLogin: new Date(),
-      privacySettings: {
-        dataCollection: true,
-        aiLearning: true
-      },
-      completedQuests: ['daily_emotion_check', 'daily_ai_chat'],
-      unlockedInsights: ['procrastination', 'personality_basic', 'stress_management']
-    };
-
-    // 1초 후 데모 사용자로 로그인 (스플래시 효과)
+    // 🔥 데모 모드 비활성화 - 랜딩페이지 우선 표시
+    // 12월 1-7일까지는 로그인 없이 랜딩페이지만 표시
     setTimeout(() => {
-      setUser(demoUser);
+      setUser(null); // 로그인 안 된 상태
       setLoading(false);
-    }, 1500);
+    }, 500); // 스플래시 효과만 유지
   }, []);
 
   const logout = () => {
