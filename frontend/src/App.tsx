@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Login from './components/auth/Login';
 import Dashboard from './pages/Dashboard';
+import LandingPage from './pages/LandingPage';
 import AIChat from './components/feature/AIChat';
 import EFTSessionSelector from './components/feature/EFTSessionSelector';
 import ARDemo from './pages/ARDemo';
@@ -18,6 +19,17 @@ import TriModalMeditation from './components/meditation/TriModalMeditation';
 
 const App: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth();
+  const [hasVisited, setHasVisited] = useState<boolean>(() => {
+    // localStorage에서 방문 기록 확인
+    return localStorage.getItem('hasVisitedBefore') === 'true';
+  });
+
+  useEffect(() => {
+    // 최초 방문 시 localStorage에 기록
+    if (!hasVisited) {
+      localStorage.setItem('hasVisitedBefore', 'true');
+    }
+  }, [hasVisited]);
 
   // 로딩 중 스플래시 화면
   if (loading) {
@@ -28,7 +40,7 @@ const App: React.FC = () => {
             <div className="text-6xl mb-4 animate-pulse">🌿</div>
             <div className="text-xl font-medium text-gray-600">마음을 치유하는 여행</div>
             <div className="text-sm text-gray-500 mt-2">잠시만 기다려주세요...</div>
-            
+
             {/* 로딩 애니메이션 */}
             <div className="mt-6 flex justify-center">
               <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
@@ -39,8 +51,21 @@ const App: React.FC = () => {
     );
   }
 
-  // 로그인되지 않은 경우 로그인 화면
+  // 로그인되지 않은 경우
   if (!isAuthenticated) {
+    // 최초 방문자: 랜딩페이지 표시
+    if (!hasVisited) {
+      return (
+        <Router>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
+      );
+    }
+
+    // 재방문자: 로그인 화면 표시
     return (
       <ResponsiveContainer>
         <Login />
@@ -58,9 +83,9 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/dashboard" element={<Dashboard user={user} />} />
           <Route path="/" element={<Dashboard user={user} />} />
-          <Route 
-            path="/ai-chat" 
-            element={<AIChat userId={user?.uid || 'demo'} />} 
+          <Route
+            path="/ai-chat"
+            element={<AIChat userId={user?.uid || 'demo'} />}
           />
           <Route
             path="/ar-demo"
