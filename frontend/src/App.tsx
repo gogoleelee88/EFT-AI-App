@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-import Login from './components/auth/Login';
 import Dashboard from './pages/Dashboard';
 import LandingPage from './pages/LandingPage';
 import AIChat from './components/feature/AIChat';
-import EFTSessionSelector from './components/feature/EFTSessionSelector';
 import ARDemo from './pages/ARDemo';
 import ARTest from './pages/ARTest';
 import ARHolisticTest from './pages/ARHolisticTest';
@@ -19,17 +17,6 @@ import TriModalMeditation from './components/meditation/TriModalMeditation';
 
 const App: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth();
-  const [hasVisited, setHasVisited] = useState<boolean>(() => {
-    // localStorage에서 방문 기록 확인
-    return localStorage.getItem('hasVisitedBefore') === 'true';
-  });
-
-  useEffect(() => {
-    // 최초 방문 시 localStorage에 기록
-    if (!hasVisited) {
-      localStorage.setItem('hasVisitedBefore', 'true');
-    }
-  }, [hasVisited]);
 
   // 로딩 중 스플래시 화면
   if (loading) {
@@ -51,29 +38,19 @@ const App: React.FC = () => {
     );
   }
 
-  // 로그인되지 않은 경우
+  // 로그인되지 않은 경우 → 항상 랜딩페이지
   if (!isAuthenticated) {
-    // 최초 방문자: 랜딩페이지 표시
-    if (!hasVisited) {
-      return (
-        <Router>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Router>
-      );
-    }
-
-    // 재방문자: 로그인 화면 표시
     return (
-      <ResponsiveContainer>
-        <Login />
-      </ResponsiveContainer>
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
     );
   }
 
-  // 로그인된 경우 메인 앱 (React Router 기반 + 반응형)
+  // 로그인된 경우 → 메인 앱 (대시보드)
   return (
     <Router>
       <EFTScriptProvider>
@@ -103,17 +80,13 @@ const App: React.FC = () => {
             path="/ar/calibration"
             element={<ArCalibrationPage />}
           />
-          {/* STRICT6 EFT 스크립트 생성 페이지 */}
           <Route
             path="/eft-strict"
             element={<EFTStrictPage />}
           />
-          {/* 방어적 리다이렉트: /eft-guide → /ar-holistic */}
           <Route path="/eft-guide" element={<Navigate to="/ar-holistic" replace />} />
-          {/* EFT AR 경로: /eftar → /ar-holistic */}
           <Route path="/eftar" element={<Navigate to="/ar-holistic" replace />} />
           <Route path="/tri-modal" element={<TriModalMeditation />} />
-          {/* 잘못된 경로는 홈으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         </ResponsiveContainer>
