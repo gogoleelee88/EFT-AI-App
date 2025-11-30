@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOCMOOD - 태도를 무너뜨리는 기분을 톡</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .text-accent { color: #FFD700; } /* TOCMOOD 로고 색상 참조 */
+        .bg-accent { background-color: #FFD700; }
+        .btn-glow:hover { box-shadow: 0 0 15px #FFD700; transform: translateY(-2px); transition: all 0.3s; }
+        
+        /* 스크롤바 숨기기 (깔끔함을 위해) */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+    </style>
+</head>
+<body class="bg-black text-white leading-relaxed">
+
+    <nav class="fixed w-full z-50 bg-black/80 backdrop-blur-md border-b border-gray-800">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <img src="/이름.png" alt="TOCMOOD Logo" class="h-8 md:h-10 object-contain">
+            <a href="#footer-form" class="bg-white text-black px-4 py-2 rounded-full font-bold text-sm hover:bg-gray-200 transition">
+                알림 신청하기
+            </a>
+        </div>
+    </nav>
+
+    <header class="relative w-full h-screen flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0 z-0">
+            <img src="/제목을 입력해주세요..png" alt="Background" class="w-full h-full object-cover opacity-40">
+            <div class="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black"></div>
+        </div>
+
+        <div class="relative z-10 text-center px-4 max-w-4xl mx-auto mt-10">
+            <p class="text-accent font-bold tracking-widest mb-4 animate-pulse">SYSTEMATIC MOOD MANAGEMENT</p>
+            <h1 class="text-4xl md:text-6xl font-black mb-6 leading-tight">
+                감정은 참는 것이 아니라,<br>
+                <span class="text-white border-b-4 border-accent">시스템으로 관리</span>하는 것입니다.
+            </h1>
+            <p class="text-gray-300 text-lg md:text-xl mb-8 font-light">
+                MoodTalk: 세계 최초 행동 재진입(Behavioral Re-entry) AI<br>
+                <span class="text-sm md:text-base text-gray-400 mt-2 block">
+                    구글 리더십 코치와 엘리트 스포츠 팀의 멘탈 프로토콜 탑재 | 12월 13일 공개
+                </span>
+            </p>
+            
+            <div class="flex flex-col md:flex-row gap-4 justify-center">
+                <a href="#footer-form" class="bg-accent text-black px-8 py-4 rounded-lg font-bold text-lg btn-glow flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rocket"></i> 텀블벅 펀딩 알림 신청
+                </a>
+                <a href="#footer-form" class="border border-white text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-white hover:text-black transition flex items-center justify-center gap-2">
+                    <i class="fa-regular fa-calendar-check"></i> 12.13 라이브 데모 신청
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <section class="py-20 bg-gray-900">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">
+                    "불안해서 일이 손에 안 잡히나요?<br>
+                    <span class="text-accent">'힘내'라는 말은 그만두겠습니다."</span>
+                </h2>
+                <p class="text-gray-400">말뿐인 위로 대신, 뇌과학에 기반한 확실한 솔루션을 제공합니다.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <div class="relative rounded-2xl overflow-hidden shadow-2xl border border-gray-700 group">
+                    <video class="w-full h-auto" autoplay loop muted playsinline>
+                        <source src="EFT태핑 두더지게임.mp4" type="video/mp4">
+                        브라우저가 비디오를 지원하지 않습니다.
+                    </video>
+                    <div class="absolute bottom-4 left-4 bg-black/70 px-3 py-1 rounded text-xs text-accent">
+                        🔴 AI 기반 EFT 가이드 시연 중
+                    </div>
+                </div>
+
+                <div class="space-y-8">
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-accent text-xl shrink-0">
+                            <i class="fa-solid fa-microscope"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-white mb-2">1. Intake (정밀 분석)</h3>
+                            <p class="text-gray-400 text-sm">단순히 "기분이 나빠"가 아닙니다. 감정의 해상도를 높여 문제의 진짜 원인을 포착합니다.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-accent text-xl shrink-0">
+                            <i class="fa-solid fa-fingerprint"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-white mb-2">2. Somatic Reset (신체 개입)</h3>
+                            <p class="text-gray-400 text-sm">불안한 뇌를 끄는 물리적 스위치. AR 기반 EFT 태핑과 호흡으로 즉각적인 생리학적 안정을 유도합니다.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-4">
+                        <div class="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-accent text-xl shrink-0">
+                            <i class="fa-solid fa-rotate"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-white mb-2">3. Re-entry (행동 재진입)</h3>
+                            <p class="text-gray-400 text-sm">감정 소모 3시간 → 30초. 감정을 털어내고 다시 '몰입'의 상태로 돌아가는 가장 빠른 길을 제시합니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-20 bg-black relative">
+        <div class="max-w-6xl mx-auto px-4 grid md:grid-cols-2 gap-12 items-center">
+            
+            <div class="order-2 md:order-1">
+                <img src="/서비스이름.png" alt="Emotional Struggle" class="rounded-lg shadow-lg opacity-80 hover:opacity-100 transition duration-500">
+                <p class="text-center text-xs text-gray-500 mt-2">TOCMOOD: 태도를 무너뜨리는 기분을 톡</p>
+            </div>
+
+            <div class="order-1 md:order-2">
+                <h2 class="text-3xl font-bold mb-6">
+                    올림픽 메달리스트와 CEO들은<br>
+                    멘탈을 어떻게 관리할까요?
+                </h2>
+                <div class="w-20 h-1 bg-accent mb-6"></div>
+                <p class="text-gray-300 mb-6 leading-relaxed">
+                    그들은 멘탈이 강하게 태어난 것이 아닙니다. <br>
+                    <strong>관리는 기술(Skill)입니다.</strong>
+                </p>
+                <p class="text-gray-400 mb-6 leading-relaxed text-sm">
+                    MoodTalk는 임상심리(CBT/ACT), 퍼포먼스 심리학, 그리고 도파민 시스템 관리 이론을 통합하여 당신의 스마트폰에 탑재했습니다.<br><br>
+                    우리는 명상 앱이 아닙니다. 당신의 압도적 성과를 위한 <strong>'멘탈 엔지니어링 도구'</strong>입니다.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-20 bg-gray-900 text-center">
+        <div class="max-w-4xl mx-auto px-4">
+            <h2 class="text-3xl font-bold mb-12">PROJECT ROADMAP</h2>
+            
+            <div class="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-700 before:to-transparent">
+                
+                <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-full border border-accent bg-accent shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                        <i class="fa-solid fa-check text-black"></i>
+                    </div>
+                    <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded border border-gray-700 bg-gray-800 shadow">
+                        <div class="flex items-center justify-between space-x-2 mb-1">
+                            <div class="font-bold text-white">MODUCON 2025 발표</div>
+                            <time class="font-mono text-xs text-accent">12.05 (Today)</time>
+                        </div>
+                        <div class="text-gray-400 text-xs text-left">컨트리뷰션 세션 참가 및 프로젝트 비전 공개</div>
+                    </div>
+                </div>
+
+                <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-full border border-gray-600 bg-gray-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                        <span class="text-white font-bold text-xs">D-Day</span>
+                    </div>
+                    <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded border border-gray-600 bg-gray-800 shadow">
+                        <div class="flex items-center justify-between space-x-2 mb-1">
+                            <div class="font-bold text-white">AI 라이브 데모 공개</div>
+                            <time class="font-mono text-xs text-accent">12.13</time>
+                        </div>
+                        <div class="text-gray-400 text-xs text-left">GPU 서버 오픈 및 실시간 시연 영상 공개</div>
+                    </div>
+                </div>
+
+                <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-full border border-gray-600 bg-gray-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                        <i class="fa-solid fa-gift text-gray-500"></i>
+                    </div>
+                    <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded border border-gray-700 bg-gray-800 shadow opacity-50">
+                        <div class="flex items-center justify-between space-x-2 mb-1">
+                            <div class="font-bold text-white">텀블벅 크라우드 펀딩</div>
+                            <time class="font-mono text-xs text-gray-500">Coming Soon</time>
+                        </div>
+                        <div class="text-gray-400 text-xs text-left">얼리버드 혜택 오픈 예정</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <footer id="footer-form" class="bg-black py-20 border-t border-gray-800 text-center">
+        <div class="max-w-xl mx-auto px-4">
+            <img src="/이름.png" alt="TOCMOOD Logo" class="h-12 mx-auto mb-8 opacity-80">
+            
+            <h2 class="text-2xl md:text-3xl font-bold mb-4">
+                남들보다 먼저 MoodTalk를 경험하세요.
+            </h2>
+            <p class="text-gray-400 mb-8">
+                12월 13일 데모 공개 알림과 텀블벅 얼리버드 혜택을<br>
+                가장 먼저 문자로 보내드립니다. (스팸 없음, 100% 무료)
+            </p>
+
+            <a href="https://forms.google.com" target="_blank" class="block w-full bg-accent text-black font-bold text-lg py-4 rounded-lg hover:bg-yellow-400 transition mb-4">
+                지금 알림 신청하기 (클릭)
+            </a>
+            
+            <p class="text-gray-600 text-xs mt-8">
+                © 2025 TOCMOOD. All rights reserved.<br>
+                Contact: moodtalk_official@email.com
+            </p>
+        </div>
+    </footer>
+
+</body>
+</html>

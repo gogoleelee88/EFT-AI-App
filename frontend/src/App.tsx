@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Dashboard from './pages/Dashboard';
-import LandingPage from './pages/LandingPage';
 import AIChat from './components/feature/AIChat';
 import ARDemo from './pages/ARDemo';
 import ARTest from './pages/ARTest';
@@ -38,16 +37,15 @@ const App: React.FC = () => {
     );
   }
 
-  // 로그인되지 않은 경우 → 항상 랜딩페이지
+  // 로그인되지 않은 경우 → HTML 랜딩페이지로 리다이렉트
+  useEffect(() => {
+    if (!isAuthenticated && !loading) {
+      window.location.href = '/landing.html';
+    }
+  }, [isAuthenticated, loading]);
+
   if (!isAuthenticated) {
-    return (
-      <Router>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
-    );
+    return null; // 리다이렉트 중
   }
 
   // 로그인된 경우 → 메인 앱 (대시보드)
