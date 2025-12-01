@@ -28,7 +28,7 @@
     "preinstall": "node ./scripts/preinstall.cjs",
     "postinstall": "node ./scripts/postinstall.cjs",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "build:ci": "vite build --mode production --logLevel warn",
     "type-check": "tsc --noEmit",
     "lint": "eslint .",
