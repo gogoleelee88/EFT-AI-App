@@ -15,10 +15,18 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // ⚠️ GPU 서버 복구 시 주의사항:
+    // 1. frontend/public/manifest.json 파일이 존재함
+    // 2. 아래 VitePWA의 manifest 설정과 충돌하여 404 오류 발생
+    // 3. GPU 서버 복구 후 둘 중 하나만 사용해야 함:
+    //    - 옵션 A: public/manifest.json 삭제하고 VitePWA manifest 사용 (권장)
+    //    - 옵션 B: VitePWA manifest 주석 처리하고 public/manifest.json 사용
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
-      manifest: {
+      manifest: false, // ⚠️ 임시로 비활성화: public/manifest.json과 충돌 방지
+      // GPU 복구 후 아래 주석 해제하고 public/manifest.json 삭제할 것
+      /* manifest: {
         name: 'EFT AI 마음챙김 앱',
         short_name: 'EFT AI',
         description: 'AI와 함께하는 마음 여행 - EFT 기반 개인 심리관리 앱',
@@ -46,7 +54,7 @@ export default defineConfig({
             purpose: 'any'
           }
         ]
-      },
+      }, */
       workbox: {
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB로 증가
         clientsClaim: true,
@@ -80,9 +88,9 @@ export default defineConfig({
           }
         ]
       },
-      // ✅ 개발 환경에서도 PWA 테스트 가능하도록 활성화
+      // 🔧 개발 환경에서는 PWA 비활성화 (12월 5일 발표용 임시)
       devOptions: {
-        enabled: true,
+        enabled: false,  // dev에서 Service Worker 끄기
         type: 'module'
       }
     })
