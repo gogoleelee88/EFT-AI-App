@@ -1,0 +1,4 @@
+# Cloudflare Pages SPA 리다이렉트 설정
+# 모든 경로를 index.html로 리다이렉트 (React Router가 처리)
+
+/*    /index.html   200

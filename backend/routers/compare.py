@@ -2,7 +2,6 @@ import re
 import asyncio
 import logging
 import os
-import sys
 import time
 import json
 from datetime import datetime
@@ -13,12 +12,25 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from backend.config.settings import get_settings
-from backend.models.action_tokens import TokenParser
-from backend.services.emotion_analyzer import get_emotion_analyzer
-from backend.utils.action_builder import build_actions
+from backend.models.action_tokens import TokenParser  # keep
+from backend.services.emotion_analyzer import get_emotion_analyzer  # keep
+from backend.utils.action_builder import build_actions  # keep
+
+#==== 공개 API 재정의 + 호출부 마이그레이션 시 이거 삭제 필요 
+
+def _build_system_prompt_for_compare(user_message, session_state, tier: str | None = None) -> str:
+    """[임시 강제] vLLM 테스트/안정화: 항상 내부 빌더(14키 스키마)만 사용"""
+    try:
+        return build_checklist_prompt(user_message, session_state)
+    except Exception as e:
+        logger.error(f"Internal prompt build failed, falling back: {e}")
+        return "You are MoodTalk EFT assistant. Keep responses concise and safe."
+
+
+#====공개 API 재정의 + 호출부 마이그레이션 시 이거 삭제 필요====
 
 logger = logging.getLogger(__name__)
-logger.critical("✅✅✅ [V3 DEBUG] Context-Aware compare.py is running! ✅✅✅")
+logger.critical("✅✅✅ [V4 DEBUG] Context-Aware compare.py is running! ✅✅✅")
 router = APIRouter(prefix="/api/chat", tags=["compare"])
 
 settings = get_settings()
@@ -105,7 +117,33 @@ Now, perform your mission based on the user's message and the current checklist 
 '''
     return prompt.strip()
 
-# =================================================================================
+
+INTAKE_QUESTIONS = [
+    {"key": "core_emotion",        "question": "지금 가장 크게 느껴지는 핵심 감정은 무엇인가요? 말하기 힘드시면 그 기분,그 감정이라고 해도 되요."},
+    {"key": "situation_context",   "question": "그 감정이 든 상황을 알려주실래요?"},
+    {"key": "automatic_thought",   "question": "그때 떠오른 생각은 무엇이었나요?"},
+    {"key": "physical_sensation",  "question": "몸에서는 어떤 신체 감각(두근거림, 긴장 등)이 느껴졌나요?"},
+    {"key": "intensity",           "question": "지금 감정의 강도는 0~10 중 어느 정도인가요?"},
+    {"key": "environment",         "question": "현재 대화 중에 주변 환경(장소/사람/제약)은 명상에 집중할 수 있는 환경인가요?"},
+    {"key": "behavioral_reaction", "question": "그때 어떻게 반응하셨나요? (행동/표정/회피 등) 어떤 행동과 반응도 이유가 있을테니 괜찮아요. "},
+    {"key": "behavior_metric",     "question": "최근 수면/활동/심박 등 추적 지표가 있다면 간단히 알려주세요."},
+    {"key": "coping_attempt",      "question": "그 기분과 상황에서 벗어나려고 어떤 행동을 했나요? (호흡, 산책, 정리 등)"},
+    {"key": "available_time",      "question": "지금 기분전환을 위해 사용가능한 시간은 얼마나 되나요? (분 단위로 대략)"},
+    {"key": "immediate_goal",      "question": "이번 대화에서 지금 기분과 생각에서 벗어나, 어떤 상태가 되고 싶으신가요?"},
+]
+
+def create_new_session_state() -> SessionState:
+    return SessionState(
+        checklist=[ChecklistItem(**item) for item in INTAKE_QUESTIONS],
+        first_turn_done=False
+    )
+
+def _safe_get_val(item) -> Optional[str]:
+    if hasattr(item, "value"):
+        return getattr(item, "value")
+    if isinstance(item, dict):
+        return item.get("value")
+    return None
 
 # Helper functions and existing configurations (mostly unchanged)
 def _normalize_api_base(url: str) -> str:
@@ -120,6 +158,7 @@ ENGINE_A_BASE = _normalize_api_base(settings.VLLM_ENGINE_A_URL)
 ENGINE_B_BASE = _normalize_api_base(settings.VLLM_ENGINE_B_URL)
 ENGINE_A_URL = f"{ENGINE_A_BASE}/chat/completions"
 ENGINE_B_URL = f"{ENGINE_B_BASE}/chat/completions"
+
 ENGINE_A_MODEL = os.getenv("ENGINE_A_MODEL", "engine-a")
 ENGINE_B_MODEL = os.getenv("ENGINE_B_MODEL", "engine-b")
 ENGINE_CONTENT_TYPE = os.getenv("ENGINE_CONTENT_TYPE", "application/json;charset=utf-8")
@@ -127,7 +166,7 @@ ENGINE_HTTP_TIMEOUT = float(os.getenv("ENGINE_HTTP_TIMEOUT", "30"))
 
 class CompareRequest(BaseModel):
     message: str
-    temperature: Optional[float] = 0.7
+    temperature: Optional[float] = 0.2
     top_p: Optional[float] = 0.9
     max_tokens: Optional[int] = 1024 # Increased for JSON output
     session_id: Optional[str] = "dev" # Default for testing
@@ -143,7 +182,7 @@ def _chat_payload(model: str, req: CompareRequest, system_prompt: str) -> Dict[s
         ],
         "temperature": req.temperature,
         "top_p": req.top_p,
-        "max_tokens": req.max_tokens,
+        "max_tokens": 2048, # 1024에서 2048로 늘려서 JSON 잘림 방지
         "stream": False,
         "response_format": {{"type": "json_object"}} # Crucial for the new logic
     }}

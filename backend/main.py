@@ -48,7 +48,8 @@ from backend.services.memory_system import (
     get_memory_system,
     get_memory_stats,
 )
-from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType
+from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType, EFTScript
+from backend.services.eft_mapper import build_eft_script_from_strict6
 from backend.utils.action_builder import build_actions
 from backend.models.action_tokens import TokenParser, TokenProcessor, ActionToken, ActionTokenType
 from backend.config.settings import get_settings
@@ -1106,12 +1107,25 @@ async def eft_chat(request: ChatRequest, req: Request):
             pass
 
         # ChatResponse 형태로 반환 (토큰 처리 결과 포함)
+
+        # ✨ STRICT6 처리 추가
+        eft_script = None
+        if request.strict_intake is not None:
+            try:
+                script_dict = build_eft_script_from_strict6(request.strict_intake)
+                eft_script = EFTScript(**script_dict)
+                logger.info(f"[STRICT6] EFT 스크립트 생성 완료: {request.strict_intake.core_emotion}")
+            except Exception as e:
+                logger.warning(f"[STRICT6] EFT 스크립트 생성 실패: {e}")
+                eft_script = None
+
         return ChatResponse(
             response=clean_response,  # 🔥 토큰 제거된 깔끔한 텍스트
             emotion_analysis=emotion_analysis,
             eft_recommendations=[],  # 병렬 비교에서는 기본값
             suggested_actions=[],
             actions=executed_actions,  # 🔥 토큰 실행 결과 + ask_suds 자동 방출
+            eft_script=eft_script,  # ✨ STRICT6
             confidence_score=0.8,
             processing_time=processing_time,
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -1144,6 +1158,7 @@ async def eft_chat(request: ChatRequest, req: Request):
             eft_recommendations=[],
             suggested_actions=[],
             actions=[],  # 폴백 시에는 액션 없음
+            eft_script=None,  # ✨ STRICT6
             confidence_score=0.2,
             processing_time=0.1,
             timestamp=datetime.now().isoformat(),
@@ -1426,9 +1441,33 @@ app.include_router(suds_router)
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)
 # ===================================================================
 # 프론트엔드 별도 배포 시 디렉터리가 없을 수 있으므로 존재할 때만 마운트
-STATIC_DIR = Path("backend/static-frontend")
+STATIC_DIR = Path("static-frontend")
 if STATIC_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
-    logger.info(f"📂 StaticFiles 마운트 완료: {STATIC_DIR}")
+    # SPA 라우팅을 위한 catch-all 라우트 추가 (StaticFiles 마운트 전에 정의)
+    from fastapi.responses import FileResponse
+    
+    @app.get("/{catchall:path}")
+    async def spa_catchall(catchall: str):
+        """
+        SPA(Single Page Application) 라우팅 지원
+        /api로 시작하지 않는 모든 경로는 index.html 반환
+        """
+        # API 경로는 제외
+        if catchall.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        # 정적 파일 요청 (js, css, images 등)
+        file_path = STATIC_DIR / catchall
+        if file_path.is_file():
+            return FileResponse(file_path)
+        
+        # SPA 라우트는 index.html 반환
+        index_path = STATIC_DIR / "index.html"
+        if index_path.is_file():
+            return FileResponse(index_path)
+        
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    logger.info(f"📂 SPA 라우팅 활성화: {STATIC_DIR}")
 else:
     logger.info(f"📂 StaticFiles 마운트 스킵: {STATIC_DIR} 디렉터리 없음 (프론트엔드 별도 배포 시 정상)")
