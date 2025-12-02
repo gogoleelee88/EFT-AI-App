@@ -94,4 +94,4 @@ const App: React.FC = () => {
 };
 
 export default App
-// trigger deploy
+// Force cache bust - 2025-12-02 11:00
