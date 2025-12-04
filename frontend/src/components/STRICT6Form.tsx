@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { StrictIntakeInput } from '../types/serverAI';
+import './STRICT6.css';
 
 interface STRICT6FormProps {
   onSubmit: (data: StrictIntakeInput) => void;

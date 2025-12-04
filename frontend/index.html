@@ -123,22 +123,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <!-- 초기 스플래시 스크린 -->
-    <div id="initial-loader">
-      <div class="logo">🌿</div>
-      <div class="title">TOCMOOD</div>
-      <div class="subtitle">EFT AI 마음챙김 - 현재 MVP 버전 (PWA)</div>
-      <div class="spinner"></div>
-    </div>
-    
     <!-- React 앱 루트 -->
     <div id="root"></div>
-    
-    <!-- React 앱 로드 -->
+
+    <!-- React 앱 진입점 -->
     <script type="module" src="/src/main.tsx"></script>
-    
-    <!-- Service Worker 등록 (배포 빌드에서만) -->
-    <script type="module">
+
+    <!-- Service Worker 등록 (배포 빌드에서만) - main.tsx에서 관리하므로 주석 처리 -->
+    <!-- <script type="module">
       // Vite는 index.html의 type="module" 스크립트에서 import.meta.env 사용 가능
       if ('serviceWorker' in navigator) {
         if (import.meta.env.PROD) {
@@ -240,6 +232,6 @@
       });
       
       console.log('🌿 EFT AI PWA 초기화 완료');
-    </script>
+    </script> -->
   </body>
 </html>
