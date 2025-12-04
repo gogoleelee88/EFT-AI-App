@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEFTScript } from '../contexts/EFTScriptContext';
-import { STRICT6Form } from '../components/STRICT6Form';
+import { SlideIntakeForm } from '../components/SlideIntakeForm';
 import { EFTScriptDisplay } from '../components/EFTScriptDisplay';
 import type { StrictIntakeInput, ChatResponse, EFTScript } from '../types/serverAI';
-import '../components/STRICT6.css';
 
 export const EFTStrictPage: React.FC = () => {
   const navigate = useNavigate();
@@ -48,9 +47,25 @@ export const EFTStrictPage: React.FC = () => {
         alignItems: 'center',
         minHeight: '100vh',
         fontSize: '20px',
-        color: '#666'
+        color: '#fd6f22',
+        flexDirection: 'column',
+        gap: '20px'
       }}>
+        <div style={{
+          width: '50px',
+          height: '50px',
+          border: '4px solid #fd6f2220',
+          borderTop: '4px solid #fd6f22',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
         스크립트 생성 중...
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
   }
@@ -60,26 +75,24 @@ export const EFTStrictPage: React.FC = () => {
       <EFTScriptDisplay
         script={script}
         onClose={() => setScript(null)}
-                  onStartSession={() => {
-                    console.log('EFT 세션 시작 - AR Holistic으로 이동');
-                    
-                    // 디버깅: Context에 저장할 스크립트 내용을 확인합니다.
-                    console.log("[DEBUG] Script to be set in context:", script);
-        
-                    // EFT 스크립트를 Context에 저장
-                    setEftScript({
-                      setup_phrase: script.setup_phrase,
-                      focus_words: script.focus_words,
-                      target_emotion: script.target_emotion,
-                      intensity_label: script.intensity_label,
-                      round_phrases: script.round_phrases
-                    });
-                    
-                    // AR Holistic으로 이동 (URL 파라미터 없이)
-                    navigate("/ar-holistic");
-                  }}      />
+        onStartSession={() => {
+          console.log('EFT 세션 시작 - AR Holistic으로 이동');
+
+          // EFT 스크립트를 Context에 저장
+          setEftScript({
+            setup_phrase: script.setup_phrase,
+            focus_words: script.focus_words,
+            target_emotion: script.target_emotion,
+            intensity_label: script.intensity_label,
+            round_phrases: script.round_phrases
+          });
+
+          // AR Holistic으로 이동
+          navigate("/ar-holistic");
+        }}
+      />
     );
   }
 
-  return <STRICT6Form onSubmit={handleSubmit} />;
+  return <SlideIntakeForm onSubmit={handleSubmit} />;
 };
