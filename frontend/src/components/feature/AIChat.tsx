@@ -449,7 +449,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           : {
               role: 'ai',
               content:
-                '안녕하세요! 현재 AI 서버 연결이 불안정해요. 잠시 뒤 다시 시도해 주시면 안정적인 상담을 이어갈 수 있도록 준비해둘게요.',
+                '안녕하세요! GPU 이사 작업으로 인해 현재 AI 대화 서비스가 일시 중단되었습니다. 12월 13일 경 정상화될 예정이니 양해 부탁드립니다.',
               timestamp: Date.now(),
               metadata: {
                 confidence: 0.6,
