@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOCMOOD - 태도를 무너뜨리는 기분을 톡</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; background-color: #050505; color: white; overflow-x: hidden; }
+        
+        /* 1. 시네마틱 인트로 스타일 */
+        #intro-overlay {
+            position: fixed; inset: 0; z-index: 100; background: black;
+            display: flex; justify-content: center; items-center;
+            transition: opacity 1s ease-in-out;
+        }
+        .intro-stage { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        
+        /* 이미지 크롭 및 배치 */
+        .intro-img { 
+            position: absolute; width: 100%; height: 100%; object-fit: cover; 
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0;
+        }
+        
+        /* 단계별 스타일 */
+        .stage-1-trapped { opacity: 1; filter: grayscale(80%) brightness(0.6); transform: scale(1); } /* 갇힌 상태 */
+        .stage-2-burst { opacity: 0; transform: scale(1.5); mix-blend-mode: screen; } /* 터지는 순간 */
+        .stage-3-bright { opacity: 0; filter: brightness(1.2); } /* 밝아짐 */
+        
+        .burst-anim { animation: burstShake 0.3s cubic-bezier(.36,.07,.19,.97) both; }
+        
+        @keyframes burstShake {
+            10%, 90% { transform: translate3d(-1px, 0, 0) scale(1.1); }
+            20%, 80% { transform: translate3d(2px, 0, 0) scale(1.2); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0) scale(1.3); }
+            40%, 60% { transform: translate3d(4px, 0, 0) scale(1.5); }
+        }
+
+        /* 2. 유틸리티 & 애니메이션 */
+        .text-accent { color: #FFD700; text-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+        .bg-accent { background-color: #FFD700; }
+        
+        .glass-card {
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .btn-action {
+            background: linear-gradient(135deg, #FFD700 0%, #FFC000 100%);
+            color: black; font-weight: 800;
+            transition: all 0.3s ease;
+        }
+        .btn-action:hover {
+            transform: translateY(-3px); box-shadow: 0 0 30px rgba(255, 215, 0, 0.4);
+        }
+
+        /* 스크롤 리빌 효과 */
+        .reveal { opacity: 0; transform: translateY(30px); transition: all 0.8s ease; }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body>
+
+    <div id="intro-overlay">
+        <div class="intro-stage">
+            <img src="서비스이름.jpg" class="intro-img stage-1-trapped" style="object-position: 15% center;" alt="Trapped">
+            
+            <img src="제목을 입력해주세요..jpg" class="intro-img stage-2-burst" alt="Burst">
+            
+            <img src="서비스이름.jpg" class="intro-img stage-3-bright" style="object-position: 85% center;" alt="Happy">
+            
+            <div id="intro-logo" class="absolute z-20 opacity-0 transition-opacity duration-1000 transform scale-150">
+                <img src="이름.png" class="w-64 md:w-96 drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">
+            </div>
+        </div>
+    </div>
+
+    <main id="main-content" class="opacity-0 transition-opacity duration-1000">
+        
+        <nav class="fixed w-full z-40 top-0 border-b border-white/10 glass-card">
+            <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+                <img src="이름.png" class="h-6" alt="Logo">
+                <div class="hidden md:flex gap-6 text-sm font-medium text-gray-300">
+                    <a href="#" class="hover:text-accent transition">Problem</a>
+                    <a href="#" class="hover:text-accent transition">Solution</a>
+                    <a href="#" class="hover:text-accent transition">Roadmap</a>
+                </div>
+                <a href="#footer-cta" class="bg-white/10 px-4 py-2 rounded-full text-xs font-bold border border-white/20 hover:bg-white hover:text-black transition">
+                    데모 신청하기
+                </a>
+            </div>
+        </nav>
+
+        <header class="relative pt-40 pb-20 px-6 text-center overflow-hidden">
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-yellow-500/10 rounded-full blur-[120px] -z-10"></div>
+
+            <div class="reveal active">
+                <div class="inline-block px-4 py-1 rounded-full border border-yellow-500/30 bg-yellow-500/10 text-accent text-xs font-bold mb-6 tracking-wider">
+                    ✨ MODUCON 2025 CONTRIBUTION
+                </div>
+                <h1 class="text-5xl md:text-7xl font-black leading-tight mb-8">
+                    Break the Loop,<br>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-[#FFF0a0]">TOCMOOD.</span>
+                </h1>
+                <p class="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 font-light">
+                    감정의 방울에 갇혀 계신가요?<br>
+                    우리는 '위로'하지 않습니다. 과학적으로 <strong>'터트립니다.'</strong>
+                </p>
+                <div class="flex flex-col md:flex-row gap-4 justify-center">
+                    <a href="#footer-cta" class="btn-action px-8 py-4 rounded-xl text-lg flex items-center justify-center gap-2">
+                        12.13 데모 참관 신청
+                    </a>
+                    <button onclick="window.location.reload()" class="px-8 py-4 rounded-xl border border-white/20 hover:bg-white/10 transition text-lg">
+                        <i class="fa-solid fa-play mr-2 text-xs"></i> 인트로 다시보기
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <section class="max-w-5xl mx-auto px-4 mb-32 reveal">
+            <div class="relative rounded-2xl p-2 bg-gradient-to-b from-gray-700 to-gray-900 border border-gray-700 shadow-2xl">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-6 bg-black rounded-b-xl z-20"></div> <div class="rounded-xl overflow-hidden bg-black relative aspect-video">
+                    <video class="w-full h-full object-cover" autoplay loop muted playsinline>
+                        <source src="EFT태핑 두더지게임.mp4" type="video/mp4">
+                    </video>
+                    <div class="absolute bottom-6 left-6 text-left">
+                        <h3 class="text-2xl font-bold text-white mb-1">AR Somatic Tapping</h3>
+                        <p class="text-sm text-gray-300">실시간 얼굴 인식으로 진행되는 EFT 심리 치료</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="max-w-6xl mx-auto px-6 mb-32">
+            <h2 class="text-3xl font-bold mb-12 text-center reveal">Why TOCMOOD?</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-[300px]">
+                
+                <div class="md:col-span-2 glass-card rounded-3xl p-8 relative overflow-hidden group reveal">
+                    <div class="absolute inset-0 z-0">
+                        <img src="서비스이름.jpg" class="w-full h-full object-cover opacity-40 group-hover:scale-105 transition duration-700" alt="Solution">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
+                    </div>
+                    <div class="relative z-10 h-full flex flex-col justify-end">
+                        <h3 class="text-2xl font-bold mb-2">No More "Cheer Up"</h3>
+                        <p class="text-gray-300">말뿐인 위로는 그만. 뇌과학에 기반한 물리적 개입으로 감정의 고리를 끊습니다.</p>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-3xl p-8 flex flex-col justify-center items-center text-center border-accent/30 reveal">
+                    <div class="text-5xl font-black text-accent mb-2">30s</div>
+                    <p class="text-gray-400 font-medium">행동 재진입 시간</p>
+                    <div class="w-full bg-gray-700 h-1 mt-6 rounded-full overflow-hidden">
+                        <div class="bg-accent h-full w-[10%]" style="width: 90%"></div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">일반적 감정 소모(3시간) 대비 99% 단축</p>
+                </div>
+
+                <div class="glass-card rounded-3xl p-8 flex flex-col justify-between reveal">
+                    <div class="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center text-accent text-xl">
+                        <i class="fa-solid fa-brain"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold mb-2">Somatic Reset</h3>
+                        <p class="text-gray-400 text-sm">불안한 뇌를 끄는 가장 확실한 물리적 스위치, EFT</p>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2 glass-card rounded-3xl p-8 relative overflow-hidden reveal">
+                     <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-accent/20 rounded-full blur-[80px]"></div>
+                    <h3 class="text-2xl font-bold mb-4">Mood Engineering</h3>
+                    <p class="text-gray-300 max-w-md">
+                        우리는 명상 앱이 아닙니다. 당신의 성과를 위한 멘탈 엔지니어링 도구입니다.
+                        12월 13일, 그 실체가 공개됩니다.
+                    </p>
+                </div>
+
+            </div>
+        </section>
+
+        <footer id="footer-cta" class="py-20 text-center relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-t from-yellow-900/20 to-transparent pointer-events-none"></div>
+            
+            <div class="max-w-2xl mx-auto px-6 relative z-10 reveal">
+                <img src="이름.png" class="h-16 mx-auto mb-8 opacity-90">
+                <h2 class="text-3xl md:text-4xl font-bold mb-6">준비 되셨나요?</h2>
+                <p class="text-gray-400 mb-10">
+                    가장 먼저 알림을 받고, 얼리버드 혜택을 놓치지 마세요.<br>
+                    12월 5일부터 12일까지, 단 8일간만 신청 받습니다.
+                </p>
+                
+                <a href="https://forms.google.com" target="_blank" class="block w-full btn-action py-5 rounded-xl text-xl shadow-lg">
+                    사전 알림 신청하기 <i class="fa-solid fa-arrow-right ml-2"></i>
+                </a>
+            </div>
+        </footer>
+
+    </main>
+
+    <script>
+        // 1. 시네마틱 인트로 스크립트
+        window.addEventListener('load', () => {
+            const trapped = document.querySelector('.stage-1-trapped');
+            const burst = document.querySelector('.stage-2-burst');
+            const bright = document.querySelector('.stage-3-bright');
+            const logo = document.querySelector('#intro-logo');
+            const overlay = document.querySelector('#intro-overlay');
+            const main = document.querySelector('#main-content');
+
+            // 타임라인
+            setTimeout(() => {
+                // 1.5초 후 펑! 터지는 효과
+                trapped.style.opacity = '0'; 
+                trapped.style.transform = 'scale(1.5)';
+                
+                burst.style.opacity = '1';
+                burst.classList.add('burst-anim');
+            }, 1500);
+
+            setTimeout(() => {
+                // 2초 후 밝은 표정 등장
+                burst.style.opacity = '0';
+                bright.style.opacity = '1';
+            }, 2000);
+
+            setTimeout(() => {
+                // 3.5초 후 로고 강조
+                bright.style.filter = 'blur(10px) brightness(0.4)';
+                logo.classList.remove('opacity-0');
+                logo.style.transform = 'scale(1)';
+            }, 3500);
+
+            setTimeout(() => {
+                // 5초 후 인트로 종료 및 메인 화면 등장
+                overlay.style.opacity = '0';
+                setTimeout(() => { overlay.style.display = 'none'; }, 1000);
+                main.classList.remove('opacity-0');
+            }, 5000);
+        });
+
+        // 2. 스크롤 리빌 애니메이션
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    </script>
+</body>
+</html>
