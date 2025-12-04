@@ -22,17 +22,36 @@ interface EFTUser {
 }
 
 export const useAuth = () => {
-  const [user, setUser] = useState<EFTUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // 🔧 12월 5일 발표용: 즉시 로그인 상태로 시작
+  const [user, setUser] = useState<EFTUser | null>({
+    uid: 'dev-user-001',
+    email: 'dev@test.com',
+    name: '개발자',
+    photoURL: null,
+    level: 1,
+    xp: 0,
+    nextLevelXp: 100,
+    gems: 0,
+    badges: 0,
+    streak: 0,
+    createdAt: new Date(),
+    lastLogin: new Date(),
+    privacySettings: {
+      dataCollection: true,
+      aiLearning: true,
+    },
+    completedQuests: [],
+    unlockedInsights: [],
+  });
+  const [loading, setLoading] = useState(false); // 즉시 false로 시작
 
-  useEffect(() => {
-    // 🔥 데모 모드 비활성화 - 랜딩페이지 우선 표시
-    // 12월 1-7일까지는 로그인 없이 랜딩페이지만 표시
-    setTimeout(() => {
-      setUser(null); // 로그인 안 된 상태
-      setLoading(false);
-    }, 500); // 스플래시 효과만 유지
-  }, []);
+  // 🔧 기존 코드 (주석 처리)
+  // useEffect(() => {
+  //   setTimeout(() => {
+  //     setUser({ ... });
+  //     setLoading(false);
+  //   }, 500);
+  // }, []);
 
   const logout = () => {
     setUser(null);
