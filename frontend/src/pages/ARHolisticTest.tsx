@@ -821,6 +821,11 @@ export default function ARHolisticTest() {
 
   // EFT Script Context에서 데이터 가져오기
   const { eftScript } = useEFTScript();
+
+  // 디버깅: Context로부터 받은 스크립트 내용을 확인합니다.
+  useEffect(() => {
+    console.log("[DEBUG] Script received from context:", eftScript);
+  }, [eftScript]);
   
   const setupPhrase = eftScript?.setup_phrase || '';
   const focusWords = eftScript?.focus_words || [];

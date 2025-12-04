@@ -60,22 +60,24 @@ export const EFTStrictPage: React.FC = () => {
       <EFTScriptDisplay
         script={script}
         onClose={() => setScript(null)}
-        onStartSession={() => {
-          console.log('EFT 세션 시작 - AR Holistic으로 이동');
-          
-          // EFT 스크립트를 Context에 저장
-          setEftScript({
-            setup_phrase: script.setup_phrase,
-            focus_words: script.focus_words,
-            target_emotion: script.target_emotion,
-            intensity_label: script.intensity_label,
-            round_phrases: script.round_phrases
-          });
-          
-          // AR Holistic으로 이동 (URL 파라미터 없이)
-          navigate("/ar-holistic");
-        }}
-      />
+                  onStartSession={() => {
+                    console.log('EFT 세션 시작 - AR Holistic으로 이동');
+                    
+                    // 디버깅: Context에 저장할 스크립트 내용을 확인합니다.
+                    console.log("[DEBUG] Script to be set in context:", script);
+        
+                    // EFT 스크립트를 Context에 저장
+                    setEftScript({
+                      setup_phrase: script.setup_phrase,
+                      focus_words: script.focus_words,
+                      target_emotion: script.target_emotion,
+                      intensity_label: script.intensity_label,
+                      round_phrases: script.round_phrases
+                    });
+                    
+                    // AR Holistic으로 이동 (URL 파라미터 없이)
+                    navigate("/ar-holistic");
+                  }}      />
     );
   }
 
