@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Button from '../ui/Button';
+import { Button } from '../ui/Button';
 import SUDSModal from '../modals/SUDSModal';
 import SUDSInlineCard from '../ui/SUDSInlineCard';
 import useEFTSessionHook from '../../hooks/useEFTSessionHook';
@@ -449,7 +449,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           : {
               role: 'ai',
               content:
-                '안녕하세요! 현재 AI 서버 연결이 불안정해요. 잠시 뒤 다시 시도해 주시면 안정적인 상담을 이어갈 수 있도록 준비해둘게요.',
+                '안녕하세요! GPU 이사 작업으로 인해 현재 AI 대화 서비스가 일시 중단되었습니다. 12월 13일 경 정상화될 예정이니 양해 부탁드립니다.',
               timestamp: Date.now(),
               metadata: {
                 confidence: 0.6,
@@ -1272,8 +1272,11 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
                     serverStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'
                   }`}></span>
                   <span className="text-gray-600">
-                    {serverStatus === 'online' ? `${selectedTier.toUpperCase()} AI 온라인` : 
-                     serverStatus === 'offline' ? '서버 오프라인' : '연결 확인 중...'}
+                    {serverStatus === 'online'
+                      ? `${selectedTier.toUpperCase()} AI 온라인`
+                      : serverStatus === 'offline'
+                        ? '서버 오프라인'
+                        : '연결 확인 중…'}
                   </span>
                 </div>
               </div>
@@ -1342,10 +1345,10 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
                 )}
               </div>
               <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <span className="text-lg">⚚</span>
+                <span className="text-lg">ⓘ</span>
               </button>
               <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <span className="text-lg">📤</span>
+                <span className="text-lg">⋯</span>
               </button>
             </div>
           </div>
@@ -1488,11 +1491,31 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
             const flags = generateChecklistBadges();
             return (
               <div className="flex flex-wrap gap-1 my-2">
-                {flags.twoTurn && <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">2턴규칙✓</span>}
-                {flags.oneInterventionWithChoice && <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">선택권✓</span>}
-                {flags.safetyScreened && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">안전점검✓</span>}
-                {flags.lengthAndCulture && <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">문화배려✓</span>}
-                {flags.repetitionDamped && <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">반복방지✓</span>}
+                {flags.twoTurn && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">
+                    2턴규칙✓
+                  </span>
+                )}
+                {flags.oneInterventionWithChoice && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
+                    선택권✓
+                  </span>
+                )}
+                {flags.safetyScreened && (
+                  <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">
+                    안전스크리닝✓
+                  </span>
+                )}
+                {flags.lengthAndCulture && (
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
+                    문화배려✓
+                  </span>
+                )}
+                {flags.repetitionDamped && (
+                  <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+                    반복방지✓
+                  </span>
+                )}
               </div>
             );
           })()}

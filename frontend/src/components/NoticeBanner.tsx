@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Notice,
+  type Notice,
   noticeService,
   NoticeDisplayManager,
   getSeverityColor,
