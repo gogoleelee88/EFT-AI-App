@@ -170,6 +170,7 @@ import ARTest from './pages/ARTest';
 import ARHolisticTest from './pages/ARHolisticTest';
 import ArCalibrationPage from './pages/ArCalibrationPage';
 import { EFTStrictPage } from './pages/EFTStrictPage';
+import EFTPage from './pages/EFT';
 import { EFTScriptProvider } from './contexts/EFTScriptContext';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 import AppHeader from './components/layout/AppHeader';
