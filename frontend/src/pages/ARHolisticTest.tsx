@@ -821,6 +821,11 @@ export default function ARHolisticTest() {
 
   // EFT Script Context에서 데이터 가져오기
   const { eftScript } = useEFTScript();
+
+  // 디버깅: Context로부터 받은 스크립트 내용을 확인합니다.
+  useEffect(() => {
+    console.log("[DEBUG] Script received from context:", eftScript);
+  }, [eftScript]);
   
   const setupPhrase = eftScript?.setup_phrase || '';
   const focusWords = eftScript?.focus_words || [];
@@ -865,11 +870,13 @@ export default function ARHolisticTest() {
 
   // 🧠 무드 점수 (각 포인트마다 8 → 0)
 
-  const [moodScore, setMoodScore] = useState(8);
+    const [moodScore, setMoodScore] = useState(8);
 
-  const moodScoreRef = useRef(8);
+    const moodScoreRef = useRef(8);
 
-  // 🕳 두더지 상태
+    const [activeFocusWord, setActiveFocusWord] = useState<string>(""); 
+
+    // 🕳 두더지 상태
   const [molePos, setMolePos] = useState<{ x: number; y: number } | null>(null); // 0~1 비율
   const [moleFrame, setMoleFrame] = useState(3);  // 기본은 서 있는 프레임 (stand1)
   const [moleActive, setMoleActive] = useState(false);
@@ -1182,12 +1189,26 @@ export default function ARHolisticTest() {
 
   }, [stepIdx]);
 
-  // 🔁 가이드 포인트가 바뀔 때마다 두더지 다시 올라오게
+  // useEffect(() => {
+  //   // 포인트 바뀌면 기본 서 있는 프레임으로 리셋
+  //   setMoleFrame(3);      // stand1 (MOLE_FRAMES[3])
+  //   setMoleActive(true);  // 새 포인트에서 다시 보이기
+  // }, [stepIdx]);
+
+  // 🔁 가이드 포인트가 바뀔 때마다 두더지 다시 올라오게 + 단어 설정
   useEffect(() => {
     // 포인트 바뀌면 기본 서 있는 프레임으로 리셋
-    setMoleFrame(3);      // stand1 (MOLE_FRAMES[3])
+    setMoleFrame(3);      // stand1
     setMoleActive(true);  // 새 포인트에서 다시 보이기
-  }, [stepIdx]);
+  
+    // ✨ 여기서 단어를 하나 골라서 고정합니다 (두더지 들어갈 때까지 유지)
+    if (focusWords && focusWords.length > 0) {
+      const randomWord = focusWords[Math.floor(Math.random() * focusWords.length)];
+      setActiveFocusWord(randomWord);
+    } else {
+      setActiveFocusWord(""); // 단어가 없으면 빈 문자열
+    }
+  }, [stepIdx, focusWords]); // dependency에 focusWords 추가
 
 
 
@@ -2758,7 +2779,7 @@ const drawOverlay = (t: number) => {
                 }}
               />
               
-              {/* ✨ Focus Words 표시 (두더지 위) */}
+              {/* ✨ Focus Words 표시 (두더지 위) - 기존 코드: 깜빡임 문제
               {focusWords.length > 0 && (
                 <div
                   style={{
@@ -2779,6 +2800,32 @@ const drawOverlay = (t: number) => {
                   }}
                 >
                   {focusWords[Math.floor(Math.random() * focusWords.length)]}
+                </div>
+              )}
+              */}
+
+              {/* ✨ Focus Words 표시 (수정됨: activeFocusWord 사용) */}
+              {activeFocusWord && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${molePos.x * 100}%`,
+                    top: `${molePos.y * 100}%`,
+                    transform: "translate(-50%, -150%)", // 두더지 머리 위로 위치 조정
+                    backgroundColor: "rgba(100, 50, 200, 0.9)",
+                    color: "white",
+                    padding: "8px 16px",
+                    borderRadius: "20px",
+                    fontSize: "18px",
+                    fontWeight: "bold",
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                    zIndex: 26,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                    animation: "fadeIn 0.3s ease-out" // 부드럽게 뜨도록 애니메이션 효과
+                  }}
+                >
+                  {activeFocusWord}
                 </div>
               )}
             </>

@@ -46,8 +46,16 @@ export const handlers = [
   }),
 
   // 기존 /api/chat도 유지 (호환성)
-  http.post('/api/chat', async () => {
+  http.post('/api/chat', async ({ request }) => {
     const sc = getScenario();
+
+    // 요청 본문 파싱
+    let requestBody: any = {};
+    try {
+      requestBody = await request.json();
+    } catch (e) {
+      // JSON 파싱 실패 시 빈 객체
+    }
 
     const intake = `라포 형성 멘트…
 [INTAKE_JSON]
@@ -63,7 +71,56 @@ export const handlers = [
   "contraindications": "미상"
 }`;
 
-    return HttpResponse.json(mkReply(intake));
+    // STRICT6 인풋이 있으면 eft_script 생성
+    let eftScript = null;
+    if (requestBody.strict_intake) {
+      const si = requestBody.strict_intake;
+      eftScript = {
+        setup_phrase: `비록 ${si.situation_context} 상황에서 ${si.core_emotion}을(를) 느끼고 '${si.automatic_thought}'라고 생각하지만, 지금 이 순간만큼은 이 마음을 있는 그대로 인정해 보려고 한다.`,
+        focus_words: [
+          `이 ${si.core_emotion}`,
+          "이 마음",
+          si.automatic_thought?.substring(0, 18) || "이 생각",
+          si.physical_sensation ? `이 ${si.physical_sensation.substring(0, 14)}` : "이 감각"
+        ].slice(0, 5),
+        intensity_label: si.intensity <= 3 ? "약함" : si.intensity <= 6 ? "중간" : "강함",
+        situation_summary: `지금 느끼는 감정: ${si.core_emotion} (강도 ${si.intensity}/10)\n상황: ${si.situation_context}\n떠오르는 생각: '${si.automatic_thought}'`,
+        recommended_duration: si.available_time || (si.intensity >= 7 ? 12 : si.intensity >= 4 ? 8 : 5),
+        target_emotion: si.core_emotion,
+        round_phrases: [
+          `이 ${si.core_emotion}`,
+          si.automatic_thought?.substring(0, 20) || "이 생각",
+          "이 마음을 인정한다"
+        ]
+      };
+    }
+
+    // ChatResponse 형태로 반환
+    return HttpResponse.json({
+      response: intake,
+      actions: [],
+      eft_script: eftScript,
+      emotion_analysis: {
+        primary_emotion: "불안",
+        secondary_emotion: null,
+        intensity: 0.7,
+        confidence: 0.8,
+        emotional_keywords: ["불안", "압박"],
+        context_analysis: {}
+      },
+      eft_recommendations: [],
+      suggested_actions: [],
+      confidence_score: 0.85,
+      processing_time: 1.2,
+      model_version: "MSW Mock",
+      timestamp: new Date().toISOString(),
+      tier: "free",
+      requires_followup: false,
+      emergency_detected: false,
+      professional_referral: false,
+      session_id: null,
+      response_id: `mock_${Date.now()}`
+    });
   }),
 
   // SUDS 엔드포인트 (신규 API)
