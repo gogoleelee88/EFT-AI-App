@@ -172,6 +172,7 @@ import ARTest from './pages/ARTest';
 import ARHolisticTest from './pages/ARHolisticTest';
 import ArCalibrationPage from './pages/ArCalibrationPage';
 import { EFTStrictPage } from './pages/EFTStrictPage';
+import EFTPage from './pages/EFT';
 import { EFTScriptProvider } from './contexts/EFTScriptContext';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 import AppHeader from './components/layout/AppHeader';
@@ -237,6 +238,7 @@ const App: React.FC = () => {
               {/* 나머지 경로들은 정상 작동 */}
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/ai-chat" element={<AIChat />} />
+              <Route path="/eft" element={<EFTPage />} />
               <Route path="/eft-strict" element={<EFTStrictPage />} />
               <Route path="/ar-demo" element={<ARDemo />} />
               <Route path="/ar-test" element={<ARTest />} />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEFTScript } from '../contexts/EFTScriptContext';
-import { SlideIntakeForm } from '../components/SlideIntakeForm';
+import { SlideIntake } from '../components/eft/SlideIntake';
 import { EFTScriptDisplay } from '../components/EFTScriptDisplay';
 import type { StrictIntakeInput, ChatResponse, EFTScript } from '../types/serverAI';
 
@@ -94,5 +94,11 @@ export const EFTStrictPage: React.FC = () => {
     );
   }
 
-  return <SlideIntakeForm onSubmit={handleSubmit} />;
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md md:max-w-2xl lg:max-w-4xl">
+        <SlideIntake onComplete={handleSubmit} />
+      </div>
+    </div>
+  );
 };
