@@ -159,8 +159,6 @@
 // };
 
 // export default App;
-
-
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
@@ -238,7 +236,6 @@ const App: React.FC = () => {
               {/* 나머지 경로들은 정상 작동 */}
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/ai-chat" element={<AIChat />} />
-              <Route path="/eft" element={<EFTPage />} />
               <Route path="/eft-strict" element={<EFTStrictPage />} />
               <Route path="/ar-demo" element={<ARDemo />} />
               <Route path="/ar-test" element={<ARTest />} />
