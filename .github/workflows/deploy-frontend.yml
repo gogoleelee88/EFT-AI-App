@@ -68,7 +68,9 @@ jobs:
       - name: Build (frontend)
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ROLLUP_NO_NATIVE: "1"
         run: npm --prefix frontend run build:ci
+
 
       - name: Copy _redirects to dist
         run: |
