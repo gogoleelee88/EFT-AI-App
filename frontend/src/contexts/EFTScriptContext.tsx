@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, type ReactNode } from 'react';
 
 // EFT Script 타입 정의 (backend의 EFTScript 모델과 일치)
 export interface EFTScript {

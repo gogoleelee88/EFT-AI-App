@@ -6,10 +6,17 @@
 EFT AI 서버 - FastAPI 메인 애플리케이션
 심리상담 특화 Llama 3 기반 AI 서버
 """
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
+# .env 파일 경로 명시
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 from backend.routers.compare import router as compare_router
 from backend.routers.health import router as health_router
 from backend.routers.suds import router as suds_router
+from backend.routers.notion import router as notion_router
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
 from fastapi.responses import RedirectResponse
@@ -48,6 +55,7 @@ from backend.services.memory_system import (
     get_memory_system,
     get_memory_stats,
 )
+from backend.services.intake_storage import IntakeStorageService
 from backend.models.chat_models import ChatRequest, ChatResponse, StreamResponse, EmotionAnalysis, EmotionType, EFTScript
 from backend.services.eft_mapper import build_eft_script_from_strict6
 from backend.utils.action_builder import build_actions
@@ -532,7 +540,16 @@ async def startup_event():
         # 3. 감정 분석기 초기화
         logger.info("🧠 감정 분석 시스템 로드 중...")
         emotion_analyzer = EmotionAnalyzer()
-        
+
+        # 4. IntakeStorage 서비스 초기화
+        logger.info("💾 StrictIntake 데이터 저장 시스템 로드 중...")
+        n8n_webhook_url = os.getenv("N8N_WEBHOOK_URL", "").strip() or None
+        intake_storage = IntakeStorageService(n8n_webhook_url=n8n_webhook_url)
+        if n8n_webhook_url:
+            logger.info(f"📤 n8n 웹훅 연동 활성화: {n8n_webhook_url[:50]}...")
+        else:
+            logger.info("⚠️  n8n 웹훅 URL 미설정 (DB 저장만 수행)")
+
         logger.info("✅ 기본 서비스 시작 완료!")
         logger.info("💡 AI 모델은 vLLM 서버 연동을 통해 제공됩니다")
         
@@ -1119,6 +1136,21 @@ async def eft_chat(request: ChatRequest, req: Request):
                 logger.warning(f"[STRICT6] EFT 스크립트 생성 실패: {e}")
                 eft_script = None
 
+            # 💾 StrictIntake 데이터 저장 & n8n 전송
+            try:
+                storage_result = await intake_storage.save_and_send(
+                    intake=request.strict_intake,
+                    session_id=session_id,
+                    user_id=user_id
+                )
+                logger.info(
+                    f"[IntakeStorage] DB 저장: {storage_result['db_saved']} (ID: {storage_result['db_id']}), "
+                    f"n8n 전송: {storage_result['n8n_sent']}"
+                )
+            except Exception as e:
+                logger.error(f"[IntakeStorage] 저장/전송 실패: {e}")
+                # 실패해도 채팅 응답은 계속 진행
+
         return ChatResponse(
             response=clean_response,  # 🔥 토큰 제거된 깔끔한 텍스트
             emotion_analysis=emotion_analysis,
@@ -1436,6 +1468,7 @@ if __name__ == "__main__":
 app.include_router(health_router)  # health endpoints first-class
 app.include_router(compare_router)
 app.include_router(suds_router)
+app.include_router(notion_router)
 
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)

@@ -22,7 +22,7 @@ import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 �
 
 import { useEffect, useRef, useState } from "react";
 
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEFTScript } from '../contexts/EFTScriptContext';
 
 import { Holistic, POSE_LANDMARKS, VERSION } from "@mediapipe/holistic";
@@ -818,10 +818,6 @@ const TAP_COOLDOWN_MS = 250;       // 연속 탭 중복 감지 방지(ms)
 export default function ARHolisticTest() {
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const locationState = (location.state as { strictIntake?: any; intensity_before?: number } | undefined) || {};
-  const strictIntake = locationState?.strictIntake;
-  const intensityBefore = locationState?.intensity_before;
 
   // EFT Script Context에서 데이터 가져오기
   const { eftScript } = useEFTScript();
@@ -852,16 +848,6 @@ export default function ARHolisticTest() {
   const [needsTap, setNeedsTap] = useState(false);
 
   const [showIntro, setShowIntro] = useState(true); // 🔹 처음엔 인트로 보여주기
-  const [sessionDone, setSessionDone] = useState(false);
-
-  const handleStartBoxBreathing = () => {
-    navigate("/ar-box-breathing", {
-      state: {
-        strictIntake,
-        intensity_before: intensityBefore,
-      },
-    });
-  };
 
   const handleStartIntro = async () => {
     // 인트로 다시 안 보이게
@@ -2046,7 +2032,6 @@ const drawOverlay = (t: number) => {
             deadlineMs: 0,
           };
           setIsGuiding(false);
-          setSessionDone(true);
           console.log("🎉 EFT 세션 완전 종료!");
           playBeep(1320, 500);
           vibrate(300);
@@ -2927,17 +2912,6 @@ const drawOverlay = (t: number) => {
           </button>
         </div>
       </div>
-
-      {sessionDone && (
-        <div className="fixed inset-x-0 bottom-6 flex justify-center z-40 px-4">
-          <button
-            className="w-full max-w-xs rounded-xl bg-emerald-600 px-4 py-3 text-center text-base font-semibold text-white shadow-lg hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
-            onClick={handleStartBoxBreathing}
-          >
-            🧘 박스 호흡 시작하기
-          </button>
-        </div>
-      )}
 
       {/* 인트로 오버레이 (최상위) */}
       {showIntro && (

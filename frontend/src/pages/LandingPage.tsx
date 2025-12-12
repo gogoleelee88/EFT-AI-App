@@ -26,9 +26,23 @@ const LandingPage: React.FC = () => {
       <nav className="fixed w-full z-50 bg-black/80 backdrop-blur-md border-b border-gray-800">
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
           <img src="/이름.png" alt="TOCMOOD Logo" className="h-8 md:h-10 object-contain" />
-          <a href="#footer-form" className="bg-white text-black px-4 py-2 rounded-full font-bold text-sm hover:bg-gray-200 transition">
-            알림 신청하기
-          </a>
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={() => navigate('/eft-strict')}
+              className="bg-accent text-black px-4 py-2 rounded-full font-bold text-sm hover:bg-yellow-400 transition flex items-center gap-2"
+            >
+              <i className="fa-solid fa-play"></i> 데모 시연 해보기
+            </button>
+            <a href="#footer-form" className="bg-white text-black px-4 py-2 rounded-full font-bold text-sm hover:bg-gray-200 transition">
+              알림 신청하기
+            </a>
+            <button
+              onClick={() => navigate('/login')}
+              className="border border-white text-white px-4 py-2 rounded-full font-bold text-sm hover:bg-white hover:text-black transition"
+            >
+              로그인
+            </button>
+          </div>
         </div>
       </nav>
 
