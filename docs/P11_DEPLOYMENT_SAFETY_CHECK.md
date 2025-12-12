@@ -253,3 +253,13 @@ curl https://api.moodtalk.app/api/chat/premium
 **작성일:** 2025-10-20
 **작성자:** EFT-AI-App 백엔드 QA 팀
 **검토자:** Claude Code
+
+
+VITE_FIREBASE_API_KEY= "AIzaSyDs6clGYhwNP9BP5FKWwbC0oNGmKL9TqxQ",
+VITE_FIREBASE_AUTH_DOMAIN= "totemic-cursor-447402-e7.firebaseapp.com",
+VITE_FIREBASE_PROJECT_ID= "totemic-cursor-447402-e7",
+VITE_FIREBASE_STORAGE_BUCKET= "totemic-cursor-447402-e7.firebasestorage.app",
+VITE_FIREBASE_MESSAGING_SENDER_ID= "205804764856",
+VITE_FIREBASE_APP_ID= "1:205804764856:web:95ff79f27762c923c3be4d"
+VITE_FIREBASE_MEASUREMENT_ID= "G-JCXX8XNDSC"  
+<!-- 통계를 위한 값 -->

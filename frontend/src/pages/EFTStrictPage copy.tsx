@@ -9,12 +9,10 @@ export const EFTStrictPage: React.FC = () => {
   const navigate = useNavigate();
   const { setEftScript } = useEFTScript();
   const [script, setScript] = useState<EFTScript | null>(null);
-  const [strictIntakeData, setStrictIntakeData] = useState<StrictIntakeInput | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (data: StrictIntakeInput) => {
     setLoading(true);
-    setStrictIntakeData(data);
 
     try {
       const response = await fetch('/api/chat', {
@@ -90,12 +88,7 @@ export const EFTStrictPage: React.FC = () => {
           });
 
           // AR Holistic으로 이동
-          navigate("/ar-holistic", {
-            state: {
-              strictIntake: strictIntakeData,
-              intensity_before: strictIntakeData?.intensity,
-            },
-          });
+          navigate("/ar-holistic");
         }}
       />
     );

@@ -36,6 +36,12 @@ const LandingPage: React.FC = () => {
             <a href="#footer-form" className="bg-white text-black px-4 py-2 rounded-full font-bold text-sm hover:bg-gray-200 transition">
               알림 신청하기
             </a>
+            <button
+              onClick={() => navigate('/login')}
+              className="border border-white text-white px-4 py-2 rounded-full font-bold text-sm hover:bg-white hover:text-black transition"
+            >
+              로그인
+            </button>
           </div>
         </div>
       </nav>

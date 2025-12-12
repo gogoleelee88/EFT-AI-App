@@ -162,7 +162,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-
+import ARBoxBreathingPage from '@/pages/ARBoxBreathingPage';// 박스 ar
+import ARBoxScene from '@/pages/ARBoxScene';
 import Dashboard from './pages/Dashboard';
 import AIChat from './components/feature/AIChat';
 import ARDemo from './pages/ARDemo';
@@ -172,6 +173,7 @@ import ArCalibrationPage from './pages/ArCalibrationPage';
 import { EFTStrictPage } from './pages/EFTStrictPage';
 import EFTPage from './pages/EFT';
 import { EFTScriptProvider } from './contexts/EFTScriptContext';
+import LoginPage from './pages/LoginPage';
 import ResponsiveContainer from './components/layout/ResponsiveContainer';
 import AppHeader from './components/layout/AppHeader';
 import PWAInstallHintIOS from './components/PWAInstallHintIOS';
@@ -235,11 +237,14 @@ const App: React.FC = () => {
 
               {/* 나머지 경로들은 정상 작동 */}
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/ai-chat" element={<AIChat />} />
+              <Route path="/ai-chat" element={<AIChat userId="guest" />} />
+              <Route path="/login" element={<LoginPage />} />
               <Route path="/eft-strict" element={<EFTStrictPage />} />
               <Route path="/ar-demo" element={<ARDemo />} />
               <Route path="/ar-test" element={<ARTest />} />
               <Route path="/ar-holistic" element={<ARHolisticTest />} />
+              <Route path="/ar-box-scene" element={<ARBoxScene />} />
+              <Route path="/ar-box-breathing" element={<ARBoxBreathingPage />} />
               <Route path="/ar-calibration" element={<ArCalibrationPage />} />
               <Route path="/meditation" element={<TriModalMeditation />} />
             </Routes>

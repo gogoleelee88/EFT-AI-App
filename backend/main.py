@@ -16,6 +16,7 @@ load_dotenv(dotenv_path=env_path)
 from backend.routers.compare import router as compare_router
 from backend.routers.health import router as health_router
 from backend.routers.suds import router as suds_router
+from backend.routers.notion import router as notion_router
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header
 from fastapi.responses import RedirectResponse
@@ -1467,6 +1468,7 @@ if __name__ == "__main__":
 app.include_router(health_router)  # health endpoints first-class
 app.include_router(compare_router)
 app.include_router(suds_router)
+app.include_router(notion_router)
 
 # ===================================================================
 # StaticFiles 마운트 (모든 API 라우트 이후에 배치)

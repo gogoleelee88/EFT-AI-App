@@ -35,6 +35,26 @@ class VLLMClient:
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """OpenAI Chat Completions 포맷 그대로 반환."""
+# [긴급 수정] 로컬 개발용 가짜 AI 모드 (GPU 없이 실행)
+        # settings.py에 USE_MOCK_AI = True가 있어야 작동합니다.
+        if getattr(settings, "USE_MOCK_AI", False):
+            logger.warning(f"⚠️ [MOCK MODE] AI 요청을 가로챘습니다. (GPU 미사용): {messages[-1].get('content')}")
+            time.sleep(1) # AI가 생각하는 척 1초 딜레이
+            
+            return {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "이것은 로컬 테스트용 가짜 응답입니다. (GPU 연결 안됨)\n\n[분석 결과]\n감정: 불안감 85%\n원인: 프로젝트 마감 압박\n\n[처방]\n박스 호흡을 3회 실시하고, '나는 안전하다'고 되뇌어보세요."
+                    },
+                    "finish_reason": "stop"
+                }],
+                "tier": tier,
+                "model_used": "MOCK_MODEL",
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+            }
+
+
         client, model = self._get_client_and_model(tier)
         
         try:

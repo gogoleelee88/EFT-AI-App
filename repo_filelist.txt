@@ -194,7 +194,7 @@ C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\ARDemo.tsx
 C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\Dashboard.tsx
 C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\pages\Questionnaire200Test.tsx
 C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\services\aiCompanion.ts
-C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\services\firebase.ts
+C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\services\
 C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\services\personalizedAI.ts
 C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\services\serverAI.ts
 C:\Users\lco20\Desktop\EFT-AI-App\frontend\src\types\mediapipe.d.ts
