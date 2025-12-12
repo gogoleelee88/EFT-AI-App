@@ -63,7 +63,7 @@ interface CushionFollowupState {
 }
 
 interface AIChatProps {
-  userId: string;
+  userId?: string;
 }
 
 type AITier = 'free' | 'premium' | 'enterprise';

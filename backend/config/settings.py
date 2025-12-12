@@ -255,3 +255,6 @@ def apply_model_preset(preset_name: str) -> Settings:
     settings.MAX_MEMORY = preset["max_memory"]
     
     return settings
+
+    # [긴급] 로컬 개발용 AI 모킹 모드 (True면 GPU 없이 돌아감)
+    USE_MOCK_AI: bool = True
