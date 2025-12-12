@@ -29,8 +29,11 @@ jobs:
         env:
           NPM_CONFIG_OPTIONAL: "true"
           NPM_CONFIG_OMIT: ""
-        run: npm ci --include=optional
-
+        run: |
+          npm ci --include=optional
+          ROLLUP_VER=$(node -p "require('./node_modules/rollup/package.json').version")
+          echo "Rollup version: $ROLLUP_VER"
+          npm i --no-save @rollup/rollup-linux-x64-gnu@$ROLLUP_VER
 
       - name: Debug npm optional/omit + rollup native presence
         run: |
@@ -48,14 +51,18 @@ jobs:
           echo "== list @rollup directory under frontend =="
           ls -la frontend/node_modules/@rollup || true
 
-          echo "== check rollup native package presence =="
-          if [ -d "frontend/node_modules/@rollup/rollup-linux-x64-gnu" ]; then
+          echo "== list @rollup directory under root =="
+          ls -la node_modules/@rollup || true
+
+          echo "== check rollup native package presence (frontend or root) =="
+          if [ -d "frontend/node_modules/@rollup/rollup-linux-x64-gnu" ] || [ -d "node_modules/@rollup/rollup-linux-x64-gnu" ]; then
             echo "✅ rollup native present"
           else
             echo "❌ rollup native missing"
             npm ls @rollup/rollup-linux-x64-gnu || true
             exit 1
           fi
+
   
 
       - name: Build (frontend)
