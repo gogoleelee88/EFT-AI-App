@@ -26,7 +26,11 @@ jobs:
           npm -v
 
       - name: Install (root)
-        run: npm ci
+        env:
+          NPM_CONFIG_OPTIONAL: "true"
+          NPM_CONFIG_OMIT: ""
+        run: npm ci --include=optional
+
 
       - name: Debug npm optional/omit + rollup native presence
         run: |
