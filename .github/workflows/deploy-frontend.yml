@@ -28,7 +28,7 @@ jobs:
       - name: Install (root)
         run: npm ci
 
-            - name: Debug npm optional/omit + rollup native presence
+      - name: Debug npm optional/omit + rollup native presence
         run: |
           echo "== versions =="
           node -v
