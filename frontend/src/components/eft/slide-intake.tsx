@@ -66,10 +66,10 @@ const QUESTION_FLOW: QuestionStep[] = [
   },
   {
     id: "target",
-    question: "오늘 어떤 변화를 원하시나요?",
-    subtext: "EFT를 통해 얻고 싶은 것을 알려주세요",
-    placeholder: "예: 마음의 평화...",
-    chips: ["마음의 평화", "불안 해소", "자신감 회복", "스트레스 완화", "에너지 충전", "감정 정리"],
+    question: "우리가 함께 만들 미래의 모습이에요",
+    subtext: "빈칸을 채워 문장을 완성하면 심상화 효과가 더 커져요",
+    placeholder: "",
+    chips: [], // 대화형 UI를 사용하므로 칩은 비웁니다
   },
 ]
 
@@ -96,7 +96,12 @@ const SIX_W_CHIPS = {
 
 export function SlideIntake({ onComplete }: SlideIntakeProps) {
   const [currentStep, setCurrentStep] = useState(0)
-  const [inputValue, setInputValue] = useState("")
+  // 7번째 단계(대화형 템플릿) 전용 상태 데이터
+  const [targetTemplate, setTargetTemplate] = useState({
+    emotion: "",
+    sensory: "",
+    action: ""
+  });
   const [collectedData, setCollectedData] = useState<Partial<StrictIntakeInput>>({})
   const [showEmpathy, setShowEmpathy] = useState(false)
   const [empathyText, setEmpathyText] = useState("")
@@ -120,6 +125,13 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
 
   // 3번째 카드 - 여러 생각 선택
   const [selectedThoughts, setSelectedThoughts] = useState<string[]>([])
+
+  // 7번째 카드 - 대화형 템플릿용 상태 추가
+  const [targetTemplate, setTargetTemplate] = useState({
+    emotion: "",
+    sensory: "",
+    action: ""
+  })
 
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -307,7 +319,7 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
           )}
 
           {/* Next Button (when input has value) */}
-          {!isComplete && inputValue.trim() && (
+          {!isComplete && (currentStep === 6 ? (targetTemplate.emotion && targetTemplate.sensory && targetTemplate.action) : inputValue.trim()) && (
             <motion.button
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -743,7 +755,7 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
                     }}
                   >
                     <Sparkles className="w-5 h-5" />
-                    EFT 스크립트 생성하기
+                    감정다루기 시작
                   </Button>
                 </motion.div>
               </motion.div>

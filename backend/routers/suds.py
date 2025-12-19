@@ -1,3 +1,5 @@
+import httpx
+
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
@@ -8,6 +10,8 @@ from typing import Any, Dict, Literal, Optional, Tuple
 from backend.utils.action_contract import StartEFTARv1
 from backend.models.suds import SUDSEntry
 from backend.services.suds_logger import append_suds
+import os
+from supabase import create_client
 
 router = APIRouter(tags=["suds"])
 
@@ -28,12 +32,12 @@ class SUDSRequest(BaseModel):
         description="Origin of the SUDS score submission"
     )
     score: int = Field(description="SUDS score (expected 0-10 scale)", ge=0, le=10)
-    session_id: Optional[str] = Field(
-        default=None, description="Optional session identifier associated with the score"
-    )
+    session_id: str = Field(description="Session identifier associated with the score")
+
     user_id: Optional[str] = Field(
         default=None, description="Optional user identifier associated with the score"
     )
+    note: Optional[str] = Field(default=None, description="Optional note for SUDS record")
 
 
 class SUDSResponse(BaseModel):
@@ -80,10 +84,26 @@ def _build_response(score: int, *, trace_id: Optional[str], saved_at: Optional[s
         # 6점 이하: 호흡법 우선 추천
         return SUDSResponse(ok=True, actions=[breath_action.model_dump(), eft_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
 
+def _get_supabase():
+    """Supabase 클라이언트 생성"""
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # 권장 (RLS 영향 최소)
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    return create_client(url, key)
 
-def _persist_suds(request: SUDSRequest) -> Tuple[str, str]:
+async def _create_notion_emotion_page(notion_base_url: str, body: Dict[str, Any]) -> None:
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(f"{notion_base_url}/api/notion/create-emotion-page", json=body)
+        r.raise_for_status()
+        return r.json()   # (None 방지)
+
+
+
+def _persist_suds(request: SUDSRequest) -> tuple[str, str]:
     trace_id = uuid4().hex
     saved_at = datetime.now(timezone.utc).isoformat()
+
     entry = SUDSEntry(
         trace_id=trace_id,
         type=request.type,  # type: ignore[arg-type]
@@ -93,18 +113,88 @@ def _persist_suds(request: SUDSRequest) -> Tuple[str, str]:
         saved_at=saved_at,
         timestamp=saved_at,
     )
+
     try:
         append_suds(entry)
+
+        sb = _get_supabase()
+        payload = {
+            "session_id": request.session_id,
+            "score": request.score,
+        }
+        if request.note is not None:
+            payload["note"] = request.note
+
+        res = sb.table("suds_records").insert(payload).execute()
+        if getattr(res, "error", None):
+            raise RuntimeError(f"Supabase insert failed: {res.error}")
+
+        logger.info("✅ Supabase suds_records inserted", extra={"trace_id": trace_id})
+
     except Exception:
         logger.exception("Failed to persist SUDS entry", extra={"trace_id": trace_id})
         raise HTTPException(status_code=500, detail="Failed to persist SUDS entry") from None
+
     return trace_id, saved_at
+
 
 
 async def save_suds(request: SUDSRequest) -> SUDSResponse:
     trace_id, saved_at = _persist_suds(request)
-    return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
+    # ✅ 사전(STRICT7) 조회 → Notion 스펙(STRICT6)로 변환 → Notion 페이지 생성
+    try:
+        sb = _get_supabase()
+        checkin_res = (
+            sb.table("emotion_checkins")
+              .select("*")
+              .eq("session_id", request.session_id)
+              .order("created_at", desc=True)
+              .limit(1)
+              .execute()
+        )
+        rows = getattr(checkin_res, "data", None) or []
+        if not rows:
+            raise RuntimeError(f"emotion_checkins not found for session_id={request.session_id}")
+
+        checkin = rows[0]
+        intensity_before = int(checkin["intensity_before"])
+        intensity_after = int(request.score)
+        delta = intensity_before - intensity_after  # Notion 응답에도 계산됨
+
+        # user_email은 Notion 요청에서 필수
+        user_email = (checkin.get("user_id") or request.user_id or "")
+        if "@" not in user_email:
+            user_email = "unknown@example.com"  # ✅ 임시(테스트용). 나중에 프론트에서 이메일 보내면 여기 제거 가능.
+
+        notion_body = {
+            "user_email": user_email,
+            "strict_intake": {
+                "core_emotion": checkin["core_emotion"],
+                "situation_context": checkin["situation_context"],
+                "automatic_thought": checkin["automatic_thought"],
+                "physical_sensation": checkin.get("physical_sensation"),
+                # Notion 모델이 받는 STRICT6 필드인데 지금 DB에 없으면 None으로
+                "behavioral_reaction": None,
+                "intensity": intensity_before,
+                "available_time": None,
+                "immediate_goal": checkin.get("immediate_goal"),
+            },
+            "intensity_after": intensity_after,
+            "solution": "EFT 탭핑 + 박스 호흡",
+        }
+
+        notion_result = await _create_notion_emotion_page("http://127.0.0.1:8000", notion_body)
+        logger.info("✅ Notion page created", extra={"trace_id": trace_id, "delta": delta})
+        return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
+
+    # except Exception as e:
+    #     logger.exception("⚠️ Notion create failed", extra={"trace_id": trace_id})
+    #     raise HTTPException(status_code=500, detail=f"Notion create failed: {e}")
+    except Exception as e:
+        logger.exception("⚠️ Notion create failed", extra={"trace_id": trace_id})
+        # raise 하지 않음 (SUDS 저장은 성공 처리)
+        return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
 def _cors_headers(origin: Optional[str], requested_headers: Optional[str]) -> Dict[str, str]:
     headers = {
@@ -132,11 +222,15 @@ async def record_suds(payload: SUDSRequest, request: Request, response: Response
     response.headers.update(_cors_headers(origin, requested_headers))
     return await save_suds(payload)
 
-
 def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
     raw_score = payload.get("score", payload.get("value"))
     if raw_score is None:
         raise HTTPException(status_code=422, detail="score is required")
+    
+    session_id = payload.get("session_id") or payload.get("sessionId")
+    if not session_id:
+        raise HTTPException(status_code=422, detail="session_id is required")
+
 
     try:
         score = int(raw_score)
@@ -147,6 +241,7 @@ def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
     normalized_payload: Dict[str, Any] = {
         "type": legacy_type,
         "score": score,
+        "session_id": session_id,
     }
     for legacy_key, target_key in (("session_id", "session_id"), ("sessionId", "session_id"), ("user_id", "user_id"), ("userId", "user_id")):
         value = payload.get(legacy_key)
@@ -154,8 +249,6 @@ def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
             normalized_payload[target_key] = value
     return SUDSRequest.model_validate(normalized_payload)
 
-
-@router.post("/api/suds/record", response_model=SUDSResponse)
 async def record_suds_legacy(
     payload: Dict[str, Any], request: Request, response: Response
 ) -> SUDSResponse:
@@ -167,15 +260,19 @@ async def record_suds_legacy(
     return await save_suds(normalized)
 
 
-@router.get("/api/suds/record", response_model=SUDSResponse)
-async def record_suds_get(value: int, request: Request, response: Response) -> SUDSResponse:
-    """Fallback GET handler for environments where POST is blocked upstream."""
-    request_payload = SUDSRequest(type="manual", score=value)
+@router.post("/api/suds/record", response_model=SUDSResponse)
+async def record_suds_legacy(payload: Dict[str, Any], request: Request, response: Response) -> SUDSResponse:
+    normalized = _normalize_legacy_payload(payload)
+
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     response.headers.update(_cors_headers(origin, requested_headers))
-    return await save_suds(request_payload)
 
+    return await save_suds(normalized)
+
+@router.get("/api/suds/record", response_model=SUDSResponse)
+async def record_suds_get(value: int) -> SUDSResponse:
+    raise HTTPException(status_code=405, detail="GET not supported. Use POST with session_id.")
 
 @router.options("/api/suds/record")
 async def options_record(request: Request) -> Response:

@@ -64,6 +64,10 @@ from backend.config.settings import get_settings
 from backend.utils.logger import get_logger
 # Premium router removed - using only free tier /api/chat endpoint
 
+
+
+
+
 # 설정 및 로거
 settings = get_settings()
 logger = get_logger(__name__)
@@ -1464,6 +1468,10 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level="info" if settings.DEBUG else "warning"
     )
+
+from backend.routers.emotion_candidates import router as emotion_router
+app.include_router(emotion_router)
+
 
 app.include_router(health_router)  # health endpoints first-class
 app.include_router(compare_router)

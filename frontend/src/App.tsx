@@ -94,14 +94,13 @@
 
 // export default App;
 import React from "react";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { BrowserRouter as Router } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
-import { routes } from "./routes";
 import { EFTScriptProvider } from "./contexts/EFTScriptContext";
 import ResponsiveContainer from "./components/layout/ResponsiveContainer";
 import PWAInstallHintIOS from "./components/PWAInstallHintIOS";
-
-const router = createBrowserRouter(routes);
+import AppRoutes from "./routes";
+import LayoutController from "./components/layout/LayoutController";
 
 export default function App() {
   const { loading } = useAuth();
@@ -117,11 +116,15 @@ export default function App() {
   }
 
   return (
-    <EFTScriptProvider>
-      <div className="min-h-screen bg-gray-50">
-        <RouterProvider router={router} />
-        <PWAInstallHintIOS />
-      </div>
-    </EFTScriptProvider>
+    <Router>
+      <EFTScriptProvider>
+        <div className="min-h-screen bg-gray-50">
+          <LayoutController>
+            <AppRoutes />
+          </LayoutController>
+          <PWAInstallHintIOS />
+        </div>
+      </EFTScriptProvider>
+    </Router>
   );
 }

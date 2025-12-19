@@ -2,13 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEFTScript } from '../contexts/EFTScriptContext';
 import { SlideIntake } from '../components/eft/SlideIntake';
-import { EFTScriptDisplay } from '../components/EFTScriptDisplay';
-import type { StrictIntakeInput, ChatResponse, EFTScript } from '../types/serverAI';
+import type { StrictIntakeInput, ChatResponse } from '../types/serverAI';
 
 export const EFTStrictPage: React.FC = () => {
   const navigate = useNavigate();
   const { setEftScript } = useEFTScript();
-  const [script, setScript] = useState<EFTScript | null>(null);
   const [strictIntakeData, setStrictIntakeData] = useState<StrictIntakeInput | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,7 +27,22 @@ export const EFTStrictPage: React.FC = () => {
       const result: ChatResponse = await response.json();
 
       if (result.eft_script) {
-        setScript(result.eft_script);
+        // EFT 스크립트를 Context에 저장
+        setEftScript({
+          setup_phrase: result.eft_script.setup_phrase,
+          focus_words: result.eft_script.focus_words,
+          target_emotion: result.eft_script.target_emotion,
+          intensity_label: result.eft_script.intensity_label,
+          round_phrases: result.eft_script.round_phrases
+        });
+
+        // 바로 AR Holistic 페이지로 이동
+        navigate("/ar-holistic", {
+          state: {
+            strictIntake: data,
+            intensity_before: data.intensity,
+          },
+        });
       } else {
         alert('EFT 스크립트 생성에 실패했습니다.');
       }
@@ -69,35 +82,6 @@ export const EFTStrictPage: React.FC = () => {
           }
         `}</style>
       </div>
-    );
-  }
-
-  if (script) {
-    return (
-      <EFTScriptDisplay
-        script={script}
-        onClose={() => setScript(null)}
-        onStartSession={() => {
-          console.log('EFT 세션 시작 - AR Holistic으로 이동');
-
-          // EFT 스크립트를 Context에 저장
-          setEftScript({
-            setup_phrase: script.setup_phrase,
-            focus_words: script.focus_words,
-            target_emotion: script.target_emotion,
-            intensity_label: script.intensity_label,
-            round_phrases: script.round_phrases
-          });
-
-          // AR Holistic으로 이동
-          navigate("/ar-holistic", {
-            state: {
-              strictIntake: strictIntakeData,
-              intensity_before: strictIntakeData?.intensity,
-            },
-          });
-        }}
-      />
     );
   }
 

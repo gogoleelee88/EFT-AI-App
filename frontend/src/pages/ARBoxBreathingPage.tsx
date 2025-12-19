@@ -3,6 +3,7 @@ import Webcam from 'react-webcam';
 import { Hands, Results } from '@mediapipe/hands';
 import { Camera } from '@mediapipe/camera_utils';
 import { useNavigate } from 'react-router-dom';
+import SUDSModal from '../components/modals/SUDSModal';
 import bgImage from './sky.png' 
 
 // --- Types & Interfaces ---
@@ -71,6 +72,7 @@ const ARBoxBreathingPage: React.FC = () => {
     startTime: Date.now(),
   });
 
+  const [showPostSUDS, setShowPostSUDS] = useState(false);
   const fingerRef = useRef<{ x: number, y: number } | null>(null);
   const starsRef = useRef<Star[]>([]);
   const particlesRef = useRef<Particle[]>([]);
@@ -126,6 +128,7 @@ const ARBoxBreathingPage: React.FC = () => {
       gameState.current.phase = 'FINISHED';
       setUiMessage("모든 훈련 완료!");
       setUiFeedback("수고하셨습니다! 🎉");
+      setShowPostSUDS(true);
       return;
     }
 
@@ -162,12 +165,25 @@ const ARBoxBreathingPage: React.FC = () => {
     const fingerX = finger.x * CANVAS_WIDTH;
     const fingerY = finger.y * CANVAS_HEIGHT;
     const { currentStarIndex, caughtCount, targetCount } = gameState.current;
-    
+
     const activeStar = starsRef.current[currentStarIndex];
+
+    // 🔍 디버깅: 현재 상태 출력
+    console.log('🎯 Game State:', {
+      phase: gameState.current.phase,
+      currentStarIndex,
+      caughtCount,
+      targetCount,
+      fingerPos: { x: fingerX, y: fingerY },
+      activeStar: activeStar ? { x: activeStar.x, y: activeStar.y, isCaught: activeStar.isCaught } : null
+    });
 
     if (activeStar && !activeStar.isCaught) {
       const dist = Math.hypot(fingerX - activeStar.x, fingerY - activeStar.y);
+      console.log('📏 Distance to star:', dist, 'Required:', STAR_RADIUS + 15);
+
       if (dist < STAR_RADIUS + 15) {
+        console.log('⭐ Star caught!');
         activeStar.isCaught = true;
         gameState.current.caughtCount++;
         gameState.current.currentStarIndex++;
@@ -183,7 +199,7 @@ const ARBoxBreathingPage: React.FC = () => {
     if (gameState.current.caughtCount === targetCount) {
        stopTimerRef.current += 1;
        if (stopTimerRef.current > 60) { // 약 1초 정지
-         evaluateResult(true, "완벽합니다!");
+         evaluateResult(true, 'PERFECT'); // 한글 대신 정의된 리터럴 타입을 전달
        }
     } else {
       stopTimerRef.current = 0;
@@ -191,11 +207,17 @@ const ARBoxBreathingPage: React.FC = () => {
   };
 
   const evaluateResult = (isSuccess: boolean, type: 'FAST' | 'SLOW' | 'PERFECT') => {
-    // [수정] 기존 피드백 팝업(FEEDBACK phase)을 제거하고, 다음 단계로 조언(type)을 전달합니다.
-    
-    // 1초 후 (기존 2초에서 단축) 다음 단계로 부드럽게 진입하며 코칭 메시지 활성화
+    // 성공 여부나 타입에 따라 피드백 메시지 설정
+    if (type === 'PERFECT') {
+      setUiFeedback("완벽합니다! ✨");
+    } else if (type === 'FAST') {
+      setUiFeedback("조금만 더 천천히 숨을 들이마셔보세요.");
+    }
+
+    // 1초 후 피드백을 지우고 다음 단계로 이동
     setTimeout(() => {
-      startNextStep(gameState.current.globalStep + 1, type);
+      setUiFeedback(null);
+      startNextStep(gameState.current.globalStep + 1);
     }, 1000);
   };
 
@@ -391,6 +413,9 @@ const draw = useCallback(() => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // 루프가 끊기지 않도록 항상 다음 프레임을 예약합니다.
+    requestRef.current = requestAnimationFrame(draw);
+
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     const { phase, sideIndex } = gameState.current;
@@ -398,21 +423,22 @@ const draw = useCallback(() => {
 
     drawBackgroundBox(ctx); // 배경 박스 그리기
     
-    // 시작 전에는 리턴
+    // IDLE 상태일 때도 루프는 돌지만, 로직만 실행하지 않고 리턴합니다.
     if (phase === 'IDLE') {
         return; 
     }
 
-    // [변경점 1] drawActiveSide 삭제됨 -> 초록색 선과 화살표가 더 이상 안 나옵니다.
-
     if (phase === 'PREVIEW') {
       drawGhostPath(ctx, sideIndex);
-      if (Date.now() - gameState.current.startTime > PREVIEW_DURATION) { 
+      if (Date.now() - gameState.current.startTime > PREVIEW_DURATION) {
         gameState.current.phase = 'PLAYING';
       }
-    } 
+    }
     else if (phase === 'PLAYING') {
-      // [변경점 2] 별자리 그리기 함수 호출
+      // [수정 완료] 진행 방향(초록선+화살표) 그리기 함수 복구!
+      drawActiveSide(ctx, sideIndex);
+
+      // 별자리 그리기
       drawConstellation(ctx); 
 
       if (finger) {
@@ -441,7 +467,17 @@ const draw = useCallback(() => {
       if (results.multiHandLandmarks?.[0]) {
         const indexTip = results.multiHandLandmarks[0][8];
         fingerRef.current = { x: 1 - indexTip.x, y: indexTip.y };
-      } else fingerRef.current = null;
+
+        // 🔍 디버깅: 손가락 인식 확인
+        if (gameState.current.phase === 'PLAYING') {
+          console.log('👆 Hand detected:', fingerRef.current);
+        }
+      } else {
+        fingerRef.current = null;
+        if (gameState.current.phase === 'PLAYING') {
+          console.log('🚫 No hand detected');
+        }
+      }
     });
 
     if (webcamRef.current?.video) {
@@ -454,11 +490,29 @@ const draw = useCallback(() => {
     return () => { hands.close(); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
   }, []);
 
-  // [수정] 자동 시작 제거하고 드로우 루프만 시작
+  // 드로우 루프를 최초 1회 시작시킵니다. (draw 내부에서 스스로를 재호출함)
   useEffect(() => {
     requestRef.current = requestAnimationFrame(draw);
-    return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
-  }, [draw]);
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, []); // 의존성 배열을 비워 처음에만 실행되게 합니다.
+
+  // 🔥 개발자 스킵 모드 (Ctrl+Shift+S)
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        console.log('🔥 [개발자 모드] 호흡 훈련 즉시 완료!');
+        gameState.current.phase = 'FINISHED';
+        setUiMessage("모든 훈련 완료!");
+        setUiFeedback("수고하셨습니다! 🎉");
+        setShowPostSUDS(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   return (
     <div 
@@ -475,7 +529,7 @@ const draw = useCallback(() => {
       <Webcam ref={webcamRef} mirrored className="absolute w-full h-full object-cover opacity-10" />
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="absolute w-full h-full object-contain z-10" />
 
-      --- 시작 전 안내 모달 (Intro Overlay) ---
+      {/* --- 시작 전 안내 모달 (Intro Overlay) --- */}
       {!isStarted && (
         <div className="absolute z-50 inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="max-w-2xl w-full bg-gray-900 border border-green-500/30 rounded-3xl p-8 text-center shadow-2xl">
@@ -546,6 +600,26 @@ const draw = useCallback(() => {
           </div>
         </div>
       )}
+    {showPostSUDS && (
+    <SUDSModal
+      open={true}
+      label="post"
+      onClose={() => setShowPostSUDS(false)}
+      onSubmit={async (score) => {
+        await fetch("/suds", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "manual",
+            score,
+            session_id: "box-breathing-session", // 필요시 실제 session_id 사용
+          }),
+        });
+        setShowPostSUDS(false);
+        navigate("/dashboard"); // 완료 후 대시보드로 이동
+      }}
+    />
+  )}
     </div>
   );
 };

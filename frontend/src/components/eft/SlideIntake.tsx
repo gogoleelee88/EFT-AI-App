@@ -1,5 +1,6 @@
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
+import { useNavigate } from "react-router-dom" 
 import { motion, AnimatePresence } from "framer-motion"
 import { Sparkles, ArrowRight, Check, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
 import { Button } from "../ui/Button"
@@ -64,10 +65,10 @@ const QUESTION_FLOW: QuestionStep[] = [
   },
   {
     id: "immediate_goal",
-    question: "오늘 어떤 변화를 원하시나요?",
-    subtext: "EFT를 통해 얻고 싶은 것을 알려주세요",
-    placeholder: "예: 마음의 평화...",
-    chips: ["마음의 평화", "불안 해소", "자신감 회복", "스트레스 완화", "에너지 충전", "감정 정리"],
+    question: "우리가 함께 만들 미래의 모습이에요",
+    subtext: "빈칸을 채워 문장을 완성하면 심상화 효과가 더 커져요",
+    placeholder: "",
+    chips: [], 
   },
 ]
 
@@ -93,8 +94,15 @@ const SIX_W_CHIPS = {
 }
 
 export function SlideIntake({ onComplete }: SlideIntakeProps) {
+  const navigate = useNavigate() 
   const [currentStep, setCurrentStep] = useState(0)
   const [inputValue, setInputValue] = useState("")
+  // 7번째 단계(대화형 템플릿) 전용 상태 데이터
+  const [targetTemplate, setTargetTemplate] = useState({
+    emotion: "",
+    sensory: "",
+    action: ""
+  });
   const [collectedData, setCollectedData] = useState<Partial<StrictIntakeInput>>({})
   const [showEmpathy, setShowEmpathy] = useState(false)
   const [empathyText, setEmpathyText] = useState("")
@@ -169,6 +177,41 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
       setCollectedData((prev) => ({ ...prev, [currentQuestion.id]: answer }))
     }
 
+     // 🔥 7번째 질문(마지막) 완료 시 특별 처리
+    if (currentStep === 6) {
+      // 최종 데이터 구성
+      const finalData: StrictIntakeInput = {
+        core_emotion: collectedData.core_emotion || "",
+        situation_context: collectedData.situation_context || "",
+        automatic_thought: collectedData.automatic_thought || "",
+        physical_sensation: collectedData.physical_sensation || "",
+        intensity: collectedData.intensity || 5,
+        coping_attempt: collectedData.coping_attempt || "",
+        immediate_goal: answer, // 마지막 입력값
+      }
+
+      // 짧은 공감 메시지 표시
+      const randomEmpathy = "완벽해요! 이제 시작해볼까요?"
+      setEmpathyText(randomEmpathy)
+      setShowEmpathy(true)
+
+      setTimeout(() => {
+        setShowEmpathy(false)
+        setTimeout(() => {
+          // 부모 콜백 호출
+          onComplete(finalData)
+
+          // EFT-AR 페이지로 즉시 이동
+          navigate('/eft-ar', {
+            state: { intakeData: finalData }
+          })
+        }, 300)
+      }, 1200)
+
+      return // 더 이상 진행하지 않음
+    }
+
+    // 기존 로직 (1~6번째 질문)
     const randomEmpathy = EMPATHY_RESPONSES[Math.floor(Math.random() * EMPATHY_RESPONSES.length)]
     setEmpathyText(randomEmpathy)
     setShowEmpathy(true)
@@ -306,7 +349,7 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
           )}
 
           {/* Next Button (when input has value) */}
-          {!isComplete && inputValue.trim() && (
+          {!isComplete && (currentStep === 6 ? (targetTemplate.emotion && targetTemplate.sensory && targetTemplate.action) : inputValue.trim()) && (
             <motion.button
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -539,58 +582,99 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
                     </motion.div>
                   )}
 
-                  {/* Text Input */}
-                  <motion.form
-                    onSubmit={handleInputSubmit}
-                    className="space-y-3"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.35 }}
-                  >
-                    <div className="relative">
-                      <input
-                        ref={inputRef}
-                        type={showPassword ? "text" : "password"}
-                        value={inputValue}
-                        onChange={(e) => setInputValue(e.target.value)}
-                        onFocus={() => setIsFocused(true)}
-                        onBlur={() => setIsFocused(false)}
-                        placeholder={currentQuestion.placeholder}
-                        disabled={isTransitioning}
-                        className={cn(
-                          "w-full px-0 py-4 pr-12 text-lg md:text-xl font-medium",
-                          "bg-transparent border-0 border-b-2",
-                          "placeholder:text-muted-foreground/40",
-                          "focus:outline-none",
-                          "transition-colors duration-200",
-                          "disabled:opacity-50",
-                        )}
-                        style={{
-                          borderBottomColor: isFocused ? BRAND_COLOR : "hsl(var(--border) / 0.3)",
-                        }}
-                      />
-                      {inputValue && (
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className={cn(
-                            "absolute right-0 top-1/2 -translate-y-1/2",
-                            "p-2 rounded-lg",
-                            "text-muted-foreground hover:text-foreground",
-                            "transition-colors duration-200",
+                  {/* Text Input: 7단계는 템플릿, 나머지는 기존 입력창 */}
+                  <AnimatePresence mode="wait">
+                    {currentStep === 6 ? (
+                      <motion.div 
+                        key="template-ui"
+                        className="space-y-6 py-4"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <div className="text-xl md:text-2xl leading-relaxed font-medium text-foreground/90">
+                          "나는 
+                          <input
+                            className="mx-2 px-3 py-1 bg-muted/40 border-b-2 border-[#fd6f22] focus:outline-none w-32 text-center"
+                            placeholder="평온한"
+                            value={targetTemplate.emotion}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTargetTemplate(prev => ({ ...prev, emotion: val }));
+                              setInputValue(`나는 ${val} 상태가 되어, ${targetTemplate.sensory}을 느끼며, ${targetTemplate.action}을 할 것이다.`);
+                            }}
+                          /> 
+                          상태가 되어, <br className="md:hidden" />
+                          <input
+                            className="mx-2 px-3 py-1 bg-muted/40 border-b-2 border-[#fd6f22] focus:outline-none w-48 text-center"
+                            placeholder="가슴이 시원해짐"
+                            value={targetTemplate.sensory}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTargetTemplate(prev => ({ ...prev, sensory: val }));
+                              setInputValue(`나는 ${targetTemplate.emotion} 상태가 되어, ${val}을 느끼며, ${targetTemplate.action}을 할 것이다.`);
+                            }}
+                          />
+                          을 느끼며, <br /> 세션이 끝나면 
+                          <input
+                            className="mx-2 px-3 py-1 bg-muted/40 border-b-2 border-[#fd6f22] focus:outline-none w-48 text-center"
+                            placeholder="따뜻한 물 한 잔"
+                            value={targetTemplate.action}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTargetTemplate(prev => ({ ...prev, action: val }));
+                              setInputValue(`나는 ${targetTemplate.emotion} 상태가 되어, ${targetTemplate.sensory}을 느끼며, ${val}을 할 것이다.`);
+                            }}
+                          />
+                          을 할 것이다."
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.form
+                        key="standard-input"
+                        onSubmit={handleInputSubmit}
+                        className="space-y-3"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ delay: 0.35 }}
+                      >
+                        <div className="relative">
+                          <input
+                            ref={inputRef}
+                            type={showPassword ? "text" : "password"}
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onFocus={() => setIsFocused(true)}
+                            onBlur={() => setIsFocused(false)}
+                            placeholder={currentQuestion.placeholder}
+                            disabled={isTransitioning}
+                            className={cn(
+                              "w-full px-0 py-4 pr-12 text-lg md:text-xl font-medium",
+                              "bg-transparent border-0 border-b-2",
+                              "placeholder:text-muted-foreground/40",
+                              "focus:outline-none",
+                              "transition-colors duration-200",
+                              "disabled:opacity-50",
+                            )}
+                            style={{
+                              borderBottomColor: isFocused ? BRAND_COLOR : "hsl(var(--border) / 0.3)",
+                            }}
+                          />
+                          {inputValue && (
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground"
+                            >
+                              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
                           )}
-                        >
-                          {showPassword ? (
-                            <EyeOff className="w-5 h-5" />
-                          ) : (
-                            <Eye className="w-5 h-5" />
-                          )}
-                        </button>
-                      )}
-                    </div>
-
-                    <p className="text-xs text-muted-foreground/50">칩을 클릭하거나 직접 입력 후 Enter</p>
-                  </motion.form>
+                        </div>
+                        <p className="text-xs text-muted-foreground/50">칩을 클릭하거나 직접 입력 후 Enter</p>
+                      </motion.form>
+                    )}
+                  </AnimatePresence>
 
                   {/* Empathy Bubble */}
                   <AnimatePresence>
@@ -687,17 +771,19 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
                       className="px-4 py-3 rounded-xl bg-muted/50 backdrop-blur-sm border border-border/30"
                     >
                       <p className="text-xs text-muted-foreground mb-1 capitalize">
-                        {key === "situation"
+                        {key === "core_emotion"
                           ? "감정"
-                          : key === "thought"
-                            ? "생각"
-                            : key === "reaction"
-                              ? "신체반응"
-                              : key === "intensity"
-                                ? "강도"
-                                : key === "coping"
-                                  ? "대처방식"
-                                  : "목표"}
+                          : key === "situation_context"
+                            ? "상황"
+                            : key === "automatic_thought"
+                              ? "생각"
+                              : key === "physical_sensation"
+                                ? "신체반응"
+                                : key === "intensity"
+                                  ? "강도"
+                                  : key === "coping_attempt"
+                                    ? "대처방식"
+                                    : "목표"}
                       </p>
                       <p className="text-sm font-medium text-foreground truncate">
                         {key === "intensity" ? `${value}/10` : value}

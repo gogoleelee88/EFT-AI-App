@@ -16,7 +16,22 @@ console.log('🔄 Bundle regeneration timestamp:', Date.now())
 if (import.meta.env.DEV && !localStorage.getItem('DISABLE_MSW')) {
   import('./mocks/browser').then(({ worker }) => {
     worker.start({
-      onUnhandledRequest: 'bypass', // 모킹되지 않은 요청은 그대로 통과
+      onUnhandledRequest(request, print) {
+        // MediaPipe, CDN, 외부 라이브러리 요청은 MSW가 간섭하지 않고 통과시킴
+        if (
+          request.url.includes('jsdelivr.net') ||
+          request.url.includes('mediapipe') ||
+          request.url.includes('.wasm') ||
+          request.url.includes('.png') ||
+          request.url.includes('cdnjs.cloudflare.com') ||
+          request.url.includes('fonts.googleapis.com')
+        ) {
+          return; // 아무것도 안 함 = MSW가 안 건드림
+        }
+
+        // 그 외의 처리되지 않은 API 요청은 경고 로그 출력
+        print.warning();
+      },
     });
     console.log('🧪 MSW mocking enabled (DEV mode)');
   });

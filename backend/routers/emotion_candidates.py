@@ -1,13 +1,57 @@
+import redis
+
+import os
+from supabase import create_client
+
 from fastapi import APIRouter, HTTPException
 from backend.services.emotion_candidates_service import get_emotion_candidates, EmotionCandidate
-from backend.routers.compare import SessionState, redis_client
+from backend.routers.compare import SessionState
 import json
 
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    return create_client(url, key)
+
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+try:
+    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+except Exception as e:
+    redis_client = None
+
+
 router = APIRouter(prefix="/api/emotion", tags=["emotion"])
+
+
+class EmotionCheckinRequest(BaseModel):
+    session_id: str
+    user_id: str | None = None
+    core_emotion: str
+    situation_context: str
+    automatic_thought: str
+    physical_sensation: str | None = None
+    coping_attempt: str | None = None
+    immediate_goal: str | None = None
+    intensity_before: int
+
+
+@router.post("/checkin")
+def save_emotion_checkin(payload: EmotionCheckinRequest):
+    try:
+        sb = _get_supabase()
+        sb.table("emotion_checkins").insert(payload.model_dump()).execute()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save emotion checkin: {e}")
 
 class EmotionCandidatesRequest(BaseModel):
     session_id: str

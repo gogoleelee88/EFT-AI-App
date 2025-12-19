@@ -1,5 +1,9 @@
 # backend/routes/emotion_candidates.py
 
+import redis
+import os
+from supabase import create_client
+
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -19,6 +23,27 @@ from backend.routes.compare import (  # compare.py에서 이미 있는 것 재�
 )
 
 router = APIRouter(prefix="/api/emotion", tags=["emotion"])
+
+class EmotionCheckinRequest(BaseModel):
+    session_id: str
+    user_id: str | None = None
+    core_emotion: str
+    situation_context: str
+    automatic_thought: str
+    physical_sensation: str | None = None
+    coping_attempt: str | None = None
+    immediate_goal: str | None = None
+    intensity_before: int
+
+
+@router.post("/checkin")
+def save_emotion_checkin(payload: EmotionCheckinRequest):
+    try:
+        sb = _get_supabase()
+        sb.table("emotion_checkins").insert(payload.model_dump()).execute()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save emotion checkin: {e}")
 
 
 # ---- 1) 후보 레이어 모델 ----
@@ -233,3 +258,10 @@ async def set_emotion_choice(req: EmotionChoiceRequest):
         core_emotion_final=req.user_choice,
         chosen_at=now,
     )
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    return create_client(url, key)
