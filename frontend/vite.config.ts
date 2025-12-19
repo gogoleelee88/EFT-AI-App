@@ -112,10 +112,21 @@ export default defineConfig({
     }
   },
   server: {
-    host: 'localhost',      // HMR 안정성을 위해 명시적 설정
-    hmr: true,              // 동적 포트 할당 허용
-    headers: {
-      'X-Content-Type-Options': 'nosniff',
+  host: 'localhost',
+  hmr: true,
+  headers: {
+    'X-Content-Type-Options': 'nosniff',
+  },
+  proxy: {
+    '/api': {
+      target: 'http://127.0.0.1:8000',
+      changeOrigin: true,
     },
-  }
+    '/suds': {
+      target: 'http://127.0.0.1:8000',
+      changeOrigin: true,
+    },
+  },
+},
+
 })

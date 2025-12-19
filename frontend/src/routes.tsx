@@ -1,9 +1,6 @@
 import React from "react";
-import { RouteObject, Outlet } from "react-router-dom";
-
-import LayoutController from "./components/layout/LayoutController";
+import LoginPage from "./pages/LoginPage";
 import RootLanding from "./pages/RootLanding";
-
 import Dashboard from "./pages/Dashboard";
 import ARDemo from "./pages/ARDemo";
 import ARTest from "./pages/ARTest";
@@ -12,29 +9,24 @@ import ArCalibrationPage from "./pages/ArCalibrationPage";
 import { EFTStrictPage } from "./pages/EFTStrictPage";
 import TriModalMeditation from "./components/meditation/TriModalMeditation";
 import ARBoxBreathingPage from "./pages/ARBoxBreathingPage";
+import { Routes, Route, Navigate } from "react-router-dom";
 
-const Shell = () => (
-  <LayoutController>
-    <Outlet />
-  </LayoutController>
-);
+export default function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<RootLanding />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/eft-strict" element={<EFTStrictPage />} />
+      <Route path="/login" element={<LoginPage />} />
 
-export const routes: RouteObject[] = [
-  {
-    element: <Shell />,
-    children: [
-      { path: "/", element: <RootLanding /> },
+      <Route path="/ar-demo" element={<ARDemo />} />
+      <Route path="/ar-test" element={<ARTest />} />
+      <Route path="/ar-holistic" element={<ARHolisticTest />} />
+      <Route path="/ar-box-breathing" element={<ARBoxBreathingPage />} />
+      <Route path="/ar-calibration" element={<ArCalibrationPage />} />
 
-      { path: "/dashboard", element: <Dashboard /> },
-      { path: "/eft-strict", element: <EFTStrictPage /> },
-
-      { path: "/ar-demo", element: <ARDemo /> },
-      { path: "/ar-test", element: <ARTest /> },
-      { path: "/ar-holistic", element: <ARHolisticTest /> },
-      { path: "/ar-box-breathing", element: <ARBoxBreathingPage /> },
-      { path: "/ar-calibration", element: <ArCalibrationPage /> },
-
-      { path: "/meditation", element: <TriModalMeditation /> },
-    ],
-  },
-];
+      <Route path="/meditation" element={<TriModalMeditation />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

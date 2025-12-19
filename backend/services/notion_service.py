@@ -106,63 +106,61 @@ async def create_emotion_page(
         },
 
         # 페이지 본문 (children 블록)
-        "children": [
-            {
-                "object": "block",
-                "type": "heading_2",
-                "heading_2": {
-                    "rich_text": [{"text": {"content": "📊 개입 효과 분석"}}]
-                }
-            },
+                "children": [
             {
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
                     "rich_text": [
-                        {"text": {"content": f"• 개입 전 강도: {intensity_before}/10\n"}},
-                        {"text": {"content": f"• 개입 후 강도: {intensity_after}/10\n"}},
-                        {"text": {"content": f"• 강도 변화: {delta_intensity} (", "annotations": {"bold": True}}},
-                        {"text": {"content": "개선됨" if delta_intensity > 0 else "변화없음" if delta_intensity == 0 else "악화됨",
-                         "annotations": {"color": "green" if delta_intensity > 0 else "gray" if delta_intensity == 0 else "red"}}},
-                        {"text": {"content": ")", "annotations": {"bold": True}}}
+                        {"type": "text", "text": {"content": f"• 개입 전 강도: {intensity_before}/10\n"}},
+                        {"type": "text", "text": {"content": f"• 개입 후 강도: {intensity_after}/10\n"}},
+                        {
+                            "type": "text",
+                            "text": {"content": f"• 강도 변화: {delta_intensity} ("},
+                            "annotations": {"bold": True},
+                        },
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": "개선됨"
+                                if delta_intensity > 0
+                                else "변화없음"
+                                if delta_intensity == 0
+                                else "악화됨"
+                            },
+                            "annotations": {
+                                "color": "green"
+                                if delta_intensity > 0
+                                else "gray"
+                                if delta_intensity == 0
+                                else "red"
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": {"content": ")"},
+                            "annotations": {"bold": True},
+                        },
                     ]
-                }
-            },
-            {
-                "object": "block",
-                "type": "divider",
-                "divider": {}
-            },
-            {
-                "object": "block",
-                "type": "heading_2",
-                "heading_2": {
-                    "rich_text": [{"text": {"content": "💭 자동사고 분석"}}]
-                }
-            },
-            {
-                "object": "block",
-                "type": "quote",
-                "quote": {
-                    "rich_text": [{"text": {"content": strict_intake.automatic_thought}}]
-                }
-            },
-            {
-                "object": "block",
-                "type": "heading_2",
-                "heading_2": {
-                    "rich_text": [{"text": {"content": "💊 AI 솔루션"}}]
-                }
-            },
-            {
-                "object": "block",
-                "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [{"text": {"content": solution or "솔루션이 제공되지 않았습니다."}}]
-                }
+                },
             }
-        ]
+        ],
     }
+
+# "children": [
+#   {
+#     "object": "block",
+#     "type": "paragraph",
+#     "paragraph": {
+#       "rich_text": [
+#         {"type": "text", "text": {"content": f"• 개입 전 강도: {intensity_before}/10\n"}},
+#         {"type": "text", "text": {"content": f"• 개입 후 강도: {intensity_after}/10\n"}},
+#         {"type": "text", "text": {"content": f"• 강도 변화: {delta_intensity}"}}
+#       ]
+#     }
+#   }
+# ]
+
 
     # Notion API 호출
     try:

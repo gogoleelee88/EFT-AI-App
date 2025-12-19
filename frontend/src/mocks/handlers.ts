@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, passthrough } from 'msw'; // 1. passthrough 추가됨
 
 const mkReply = (body: string, actions: any[] = []) => ({ response: body, actions });
 
@@ -6,7 +6,12 @@ const mkReply = (body: string, actions: any[] = []) => ({ response: body, action
 const getScenario = () => (localStorage.getItem('mt_scenario') ?? 'eft').toLowerCase();
 
 export const handlers = [
-  // AI 대화 엔드포인트 모킹 (Engine A/B 병렬 비교)
+  // 2. [추가됨] 외부 CDN 및 폰트 리소스는 MSW 처리 없이 통과시킴
+  http.get('https://cdn.jsdelivr.net/*', () => passthrough()),
+  http.get('https://fonts.googleapis.com/*', () => passthrough()),
+  http.get('https://fonts.gstatic.com/*', () => passthrough()),
+
+  // AI 대화 엔드포인트 모킹 (Engine A/B 병렬 비교) - 이 아래는 기존 코드 유지
   http.post('/api/chat/compare', async () => {
     const sc = getScenario();
 

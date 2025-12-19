@@ -40,3 +40,29 @@
 .read-the-docs {
   color: #888;
 }
+
+/* 🫧 물방울 파티클 스타일 */
+.mood-bubble-particle {
+  position: fixed;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(173, 216, 230, 0.8) 40%,
+    rgba(100, 149, 237, 0.4) 100%
+  );
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+  z-index: 9999;
+}
+
+/* 톡! 글자 스타일 */
+.mood-bubble-pop-text {
+  position: fixed;
+  pointer-events: none;
+  font-weight: bold;
+  color: #ffffff;
+  font-size: 24px;
+  text-shadow: 0 0 10px rgba(0, 150, 255, 0.8);
+  z-index: 10000;
+}

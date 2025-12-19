@@ -7,7 +7,7 @@
     "preinstall": "node ./scripts/ensure-registry.js",
     "fix:registry": "node ./scripts/ensure-registry.js",
     "test:npm-registry": "node ./scripts/check-npm-registry.js",
-    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "dev": "npm run frontend",
     "backend": "cd backend && npm run dev",
     "frontend": "cd frontend && npm run dev",
     "build": "npm run build:frontend && npm run build:backend",
