@@ -840,8 +840,6 @@ export default function ARHolisticTest() {
   const [searchParams] = useSearchParams();
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
-// 추가: 애니메이션 루프에서 최신 파라미터를 참조하기 위한 Ref
-  const paramsRef = useRef<ARParams>(DEFAULT_PARAMS);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -1124,15 +1122,18 @@ useEffect(() => {
   // URL → 상태 동기화
 
   useEffect(() => {
-    const parsed = parseARParams(searchParams);
-    setArParams(parsed);
-    // 추가: 최신 파라미터를 Ref에도 동기화
-    paramsRef.current = parsed; 
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[AR] URL Params →", parsed);
-    }
-  }, [searchParams]);
+    const parsed = parseARParams(searchParams);
+
+    setArParams(parsed);
+
+    if (process.env.NODE_ENV !== "production") {
+
+      console.debug("[AR] URL Params →", parsed);
+
+    }
+
+  }, [searchParams]);
 
 
 
@@ -1793,7 +1794,64 @@ const drawOverlay = (t: number) => {
 // [수정] 실루엣 항시 표시 (세션 중에는 더 투명하게)
 // -----------------------------
 // [drawOverlay 함수 내부, 220~233번 라인 교체]
-// 
+if (showFramingGuide) {
+  const isRunning = guideEngineRef.current.running;
+  const ctx = canvasRef.current?.getContext("2d");
+  const c = canvasRef.current;
+  if (!ctx || !c) return;
+
+  // 1. 핵심 타점(정수리, 쇄골) 데이터 가져오기
+  const th = lastValidPoints.current["TH"]; // 정수리 타점 [cite: 171]
+  const cb = lastValidPoints.current["CB"]; // 쇄골 타점 [cite: 166]
+  
+  ctx.save();
+  
+  let statusMsg = "";
+  let isSafe = true;
+
+  // 2. 타점 인식 상태 및 화면 이탈 체크
+  if (!th || !cb) {
+    statusMsg = "인식 중... 카메라 앞에 서주세요.";
+    isSafe = false;
+  } else {
+    // 쇄골(CB)이 화면 아래쪽 끝(90%)에 너무 붙었는지 확인 [cite: 167]
+    const cbTooLow = cb.y > c.height * 0.9;
+    // 정수리(TH)가 화면 위쪽 끝(10%)에 너무 붙었는지 확인 [cite: 172]
+    const thTooHigh = th.y < c.height * 0.1;
+
+    if (cbTooLow) {
+      statusMsg = "⚠️ 카메라를 조금 아래로 숙여주세요 (쇄골 안 보임)";
+      isSafe = false;
+    } else if (thTooHigh) {
+      statusMsg = "⚠️ 조금 뒤로 가거나 카메라를 올려주세요 (머리 안 보임)";
+      isSafe = false;
+    } else {
+      statusMsg = "✅ 모든 타점이 잘 보입니다. 시작하세요!";
+      isSafe = true;
+    }
+  }
+
+  // 3. 안내 문구 출력 (세션 시작 전까지만 표시)
+  if (!isRunning) {
+    const boxW = 480;
+    const boxH = 46;
+    const bx = (c.width - boxW) / 2;
+    const by = c.height - 70; // 화면 하단에 배치
+
+    // 상태에 따라 박스 색상 변경 (빨강/초록)
+    ctx.fillStyle = isSafe ? "rgba(0, 180, 100, 0.8)" : "rgba(220, 50, 50, 0.8)";
+    ctx.beginPath();
+    ctx.roundRect(bx, by, boxW, boxH, 12);
+    ctx.fill();
+
+    ctx.font = "bold 17px sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.fillText(statusMsg, c.width / 2, by + 29);
+  }
+
+  ctx.restore();
+}
 
   const eng = guideEngineRef.current;
 
@@ -2070,23 +2128,22 @@ const drawOverlay = (t: number) => {
       drawPoint(key, label, color, isCurrentPoint);
     });
 
-    // paramsRef를 사용하여 실시간 인풋값(감정, 강도 등)을 가져옵니다 [cite: 285, 287]
-    const currentParams = paramsRef.current;
+    // 감정/강도 표시
+    if (arParams.emotion != null && typeof arParams.intensity === "number") {
+      const emotionText = `감정: ${arParams.emotion} (${arParams.intensity}/10)`;
+      drawPill(ctx, 10, 10, emotionText, {
+        font: "14px system-ui, sans-serif",
+      });
+    }
 
-    if (currentParams.emotion != null && typeof currentParams.intensity === "number") {
-      const emotionText = `감정: ${currentParams.emotion} (${currentParams.intensity}/10)`;
-      drawPill(ctx, 10, 10, emotionText, {
-        font: "bold 14px system-ui, sans-serif",
-        box: "rgba(0, 0, 0, 0.7)", // 배경을 어둡게 하여 가독성 향상 [cite: 39]
-      });
-    }
+    // 라운드 진행 표시
+    if (round && arParams.rounds) {
+      const roundText = `라운드: ${round}/${arParams.rounds}  (${elapsed}s / ${arParams.durationSec}s)`;
+      drawPill(ctx, 10, 44, roundText, {
+        font: "12px system-ui, sans-serif",
+      });
+    }
 
-    if (round && currentParams.rounds) {
-      const roundText = `라운드: ${round}/${currentParams.rounds}  (${elapsed}s / ${currentParams.durationSec}s)`;
-      drawPill(ctx, 10, 44, roundText, {
-        font: "12px system-ui, sans-serif",
-      });
-    }
     // 현재 포인트 텍스트
     if (activePointId) {
       const meta = SEQUENCE.find((s) => s.id === activePointId);

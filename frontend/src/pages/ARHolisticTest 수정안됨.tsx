@@ -840,8 +840,6 @@ export default function ARHolisticTest() {
   const [searchParams] = useSearchParams();
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
-// 추가: 애니메이션 루프에서 최신 파라미터를 참조하기 위한 Ref
-  const paramsRef = useRef<ARParams>(DEFAULT_PARAMS);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -851,22 +849,7 @@ export default function ARHolisticTest() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // 카메라와 Mediapipe가 준비되었는지 확인하는 상태 변수입니다.
-  // 이 변수가 없어서 현재 화면이 멈추거나 에러가 발생하고 있습니다.
-  const [ready, setReady] = useState(false);
-
-    // 시작 전 가이드 실루엣 표시 여부
-  const [showFramingGuide, setShowFramingGuide] = useState(true);
-  // 사용자가 가이드 안에 적절히 들어왔는지 판단
-  const [isPositionCorrect, setIsPositionCorrect] = useState(false);
-
-  // 사용자의 얼굴을 예쁘게 보이게 하는 필터 강도 설정 값
-// 나중에 이 값을 슬라이더 등으로 조절할 수 있도록 확장 가능합니다.
-const beautyFilterStyle = {
-  transform: "scaleX(-1)",
-  filter: "brightness(1.1) contrast(1.1) saturate(1.1) blur(0.4px)",
-  WebkitFilter: "brightness(1.1) contrast(1.1) saturate(1.1) blur(0.4px)" // 사파리 브라우저 호환용
-};
+  const [ready, setReady] = useState(false);
 
   const [needsTap, setNeedsTap] = useState(false);
 
@@ -1037,6 +1020,8 @@ const bubbleRespawnTimeoutRef = useRef<number | null>(null);
   const lastBubblePopTimeRef = useRef<number>(-Infinity);
 
   const lastTapTimeRef = useRef<number>(-Infinity);
+  // 🔥 추가: 현재 손가락이 타점 안에 있는지 여부를 추적 (중복 실행 방지 및 찰나의 뗌 감지)
+  const isTouchingRef = useRef<boolean>(false);
 // 🔥 비눗방울이 지금 '있는지' 즉시 확인하는 잠금장치
 const isBubbleVisibleRef = useRef(true); 
 
@@ -1124,15 +1109,18 @@ useEffect(() => {
   // URL → 상태 동기화
 
   useEffect(() => {
-    const parsed = parseARParams(searchParams);
-    setArParams(parsed);
-    // 추가: 최신 파라미터를 Ref에도 동기화
-    paramsRef.current = parsed; 
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[AR] URL Params →", parsed);
-    }
-  }, [searchParams]);
+    const parsed = parseARParams(searchParams);
+
+    setArParams(parsed);
+
+    if (process.env.NODE_ENV !== "production") {
+
+      console.debug("[AR] URL Params →", parsed);
+
+    }
+
+  }, [searchParams]);
 
 
 
@@ -1247,6 +1235,7 @@ useEffect(() => {
     setMoodScore(8);
     isBubbleVisibleRef.current = true;
     setIsBubbleVisible(true);
+isTouchingRef.current = false; // 🔥 추가: 포인트가 바뀌면 접촉 상태 초기화
   
     if (focusWords && focusWords.length > 0) {
       const randomWord = focusWords[Math.floor(Math.random() * focusWords.length)];
@@ -1608,7 +1597,9 @@ useEffect(() => {
           const leftHand = (res as any).leftHandLandmarks;
           const rightHand = (res as any).rightHandLandmarks;
 
-          if (currentGuide.running && currentGuide.phase === "tapping") {
+          // 가이드가 실행 중이 아니더라도(테스트용) 두더지와 터치가 작동하게 하려면 
+          // 아래처럼 running 조건을 잠시 빼두셔도 됩니다.
+          if (currentGuide.phase === "tapping") {
             const curStep = SEQUENCE[currentGuide.stepIdx];
             const curId = curStep.id;
 
@@ -1624,10 +1615,13 @@ useEffect(() => {
               null;
 
             if (curPt) {
+// Canvas의 실제 픽셀 좌표를 바탕으로 비율을 다시 계산합니다.
               setMolePos({
                 x: curPt.x / c.width,
                 y: curPt.y / c.height,
               });
+      // 💡 만약 거울 모드 때문에 좌우가 반대로 보인다면 아래처럼 수정하세요 (선택)
+      // x: 1 - (curPt.x / c.width),
               setMoleActive(true);
             } else {
               setMoleActive(false);
@@ -1644,18 +1638,75 @@ useEffect(() => {
               if (leftHand) pushFinger(leftHand, 8);
               if (rightHand) pushFinger(rightHand, 8);
 
-              let hit = false;
+              // 1. 최소 거리 계산 (가장 가까운 손가락 찾기)
+              let minDistance = Infinity;
               for (const f of fingers) {
-                const dx = f.x - curPt.x;
-                const dy = f.y - curPt.y;
-                const distSq = dx * dx + dy * dy;
-                if (distSq <= TAP_DISTANCE_PX * TAP_DISTANCE_PX) {
-                  hit = true;
-                  break;
-                }
+                const dist = Math.sqrt((f.x - curPt.x) ** 2 + (f.y - curPt.y) ** 2);
+                if (dist < minDistance) minDistance = dist;
               }
 
-              // 🔥 수정된 핵심 로직: hit이고 쿨다운 지났으며 비눗방울이 보이는 상태일 때만!
+              // 2. 판정 임계값 설정 (범위를 60px로 더 넉넉하게 잡습니다)
+              const enterThreshold = 60; 
+              const exitThreshold = 85; 
+
+              // [디버깅] 거리 확인용 (콘솔창 F12에서 확인 가능)
+              // console.log("현재 거리:", Math.round(minDistance));
+
+              // 3. 찰나의 두드림 감지 로직
+              if (!isTouchingRef.current && minDistance < enterThreshold) {
+                // [CASE A] 방금 막 타점에 닿았음 (Tap 발생!)
+                isTouchingRef.current = true; 
+
+                // 쿨다운과 비눗방울 가시성 확인 후 실행
+                if ((nowTap - lastTapTimeRef.current > TAP_COOLDOWN_MS) && isBubbleVisibleRef.current) {
+                  lastTapTimeRef.current = nowTap;
+                  
+                  // 즉시 잠금
+                  isBubbleVisibleRef.current = false;
+                  setIsBubbleVisible(false);
+
+                  // --- 기존의 효과 로직 시작 ---
+                  if (moodScoreRef.current > 0) {
+                    const next = moodScoreRef.current - 1;
+                    moodScoreRef.current = next;
+                    setMoodScore(next);
+
+                    const rect = c.getBoundingClientRect();
+                    const screenX = rect.left + (curPt.x / c.width) * rect.width;
+                    const screenY = rect.top + (curPt.y / c.height) * rect.height;
+                    triggerBubblePopEffect(screenX, screenY);
+
+                    playBeep(800 + next * 50, 80);
+                    vibrate(40);
+
+                    if (bubbleRespawnTimeoutRef.current) window.clearTimeout(bubbleRespawnTimeoutRef.current);
+                    if (next > 0) {
+                      bubbleRespawnTimeoutRef.current = window.setTimeout(() => {
+                        isBubbleVisibleRef.current = true;
+                        setIsBubbleVisible(true);
+                        isTouchingRef.current = false; // 🔥 추가: 포인트가 바뀌면 접촉 상태 초기화
+                      }, 400); 
+                    } else {
+                      guideEngineRef.current.deadlineMs = nowTap; 
+                    }
+                  }
+
+                  if (moleHideTimeoutRef.current) window.clearTimeout(moleHideTimeoutRef.current);
+                  const downFrames = [6, 7, 8];
+                  downFrames.forEach((frame, i) => {
+                    window.setTimeout(() => {
+                      setMoleFrame(frame);
+                      if (i === downFrames.length - 1) {
+                        moleHideTimeoutRef.current = window.setTimeout(() => setMoleActive(false), 40);
+                      }
+                    }, i * 80);
+                  });
+                  // --- 기존의 효과 로직 끝 ---
+                }
+              } else if (isTouchingRef.current && minDistance > exitThreshold) {
+                // [CASE B] 손가락을 충분히 뗐음 (다시 칠 준비 완료)
+                isTouchingRef.current = false;
+              }
               if (hit && (nowTap - lastTapTimeRef.current > TAP_COOLDOWN_MS) && isBubbleVisibleRef.current) {
                 lastTapTimeRef.current = nowTap;
                 
@@ -1681,6 +1732,7 @@ useEffect(() => {
                     bubbleRespawnTimeoutRef.current = window.setTimeout(() => {
                       isBubbleVisibleRef.current = true;
                       setIsBubbleVisible(true);
+isTouchingRef.current = false; // 🔥 추가: 포인트가 바뀌면 접촉 상태 초기화
                     }, 400); 
                   } else {
                     guideEngineRef.current.deadlineMs = nowTap; 
@@ -1702,22 +1754,7 @@ useEffect(() => {
           } else {
             setMoleActive(false);
           }
-          // [추가] 사용자의 얼굴/쇄골 위치가 가이드 안에 있는지 체크
-            const shL = pose?.[11];
-            const shR = pose?.[12];
-
-            if (noseTip && shL && shR) {
-              // 164번 라인에서 정의한 noseTip을 사용하여 위치를 체크합니다.
-              const isCentered = noseTip.x > 0.4 && noseTip.x < 0.6;
-              const isVisible = (shL.visibility ?? 0) > 0.5 && (shR.visibility ?? 0) > 0.5;
-              setIsPositionCorrect(isCentered && isVisible);
-            } else {
-              setIsPositionCorrect(false);
-            }
-
-            
-            // 이제 에러 없이 이 지점에 도달하여 '준비 완료' 상태가 됩니다.
-            setReady(true);
+          setReady(true);
         });
 
 
@@ -1785,15 +1822,6 @@ const drawOverlay = (t: number) => {
 
   // 매 프레임 초기화
   ctx.clearRect(0, 0, c.width, c.height);
-
-  // -----------------------------
-  // [추가] 시작 전 위치 가이드 실루엣 그리기
-  // -----------------------------
-  // -----------------------------
-// [수정] 실루엣 항시 표시 (세션 중에는 더 투명하게)
-// -----------------------------
-// [drawOverlay 함수 내부, 220~233번 라인 교체]
-// 
 
   const eng = guideEngineRef.current;
 
@@ -2070,23 +2098,22 @@ const drawOverlay = (t: number) => {
       drawPoint(key, label, color, isCurrentPoint);
     });
 
-    // paramsRef를 사용하여 실시간 인풋값(감정, 강도 등)을 가져옵니다 [cite: 285, 287]
-    const currentParams = paramsRef.current;
+    // 감정/강도 표시
+    if (arParams.emotion != null && typeof arParams.intensity === "number") {
+      const emotionText = `감정: ${arParams.emotion} (${arParams.intensity}/10)`;
+      drawPill(ctx, 10, 10, emotionText, {
+        font: "14px system-ui, sans-serif",
+      });
+    }
 
-    if (currentParams.emotion != null && typeof currentParams.intensity === "number") {
-      const emotionText = `감정: ${currentParams.emotion} (${currentParams.intensity}/10)`;
-      drawPill(ctx, 10, 10, emotionText, {
-        font: "bold 14px system-ui, sans-serif",
-        box: "rgba(0, 0, 0, 0.7)", // 배경을 어둡게 하여 가독성 향상 [cite: 39]
-      });
-    }
+    // 라운드 진행 표시
+    if (round && arParams.rounds) {
+      const roundText = `라운드: ${round}/${arParams.rounds}  (${elapsed}s / ${arParams.durationSec}s)`;
+      drawPill(ctx, 10, 44, roundText, {
+        font: "12px system-ui, sans-serif",
+      });
+    }
 
-    if (round && currentParams.rounds) {
-      const roundText = `라운드: ${round}/${currentParams.rounds}  (${elapsed}s / ${currentParams.durationSec}s)`;
-      drawPill(ctx, 10, 44, roundText, {
-        font: "12px system-ui, sans-serif",
-      });
-    }
     // 현재 포인트 텍스트
     if (activePointId) {
       const meta = SEQUENCE.find((s) => s.id === activePointId);
@@ -2143,9 +2170,6 @@ const drawOverlay = (t: number) => {
 
         const startGuide = () => {
 
-        // 게임 시작 시 가이드 실루엣 숨김
-          setShowFramingGuide(true);
-
           console.log("🚀 startGuide 호출됨! 7포인트 × 3라운드 + 호흡 시작");
 
           const now = performance.now();
@@ -2196,15 +2220,18 @@ const drawOverlay = (t: number) => {
 
         (window as any).__startEFTGuide = startGuide;
 
-// 1. startCameraOnce 할당까지가 원래 로직입니다.
-        (window as any).__startCamera = startCameraOnce;
+        (window as any).__startCamera = startCameraOnce;
 
-      } catch (e: any) { 
-        // 2. 여기서 try 블록을 닫고 catch를 시작해야 1428라인의 에러가 사라집니다.
-        console.error("Setup failed:", e);
-        setError(e?.message ?? "초기화 실패");
-      }
-    }; // 3. 마지막으로 setup async 함수를 닫습니다.
+      } catch (e: any) {
+
+        console.error(e);
+
+        setError(e?.message ?? "초기화 실패");
+
+      }
+
+    };
+
 
 
     setup();
@@ -2635,12 +2662,7 @@ const drawOverlay = (t: number) => {
               autoPlay
               muted
               playsInline
-              // 기존 transform(좌우 반전)에 뷰티 필터 효과를 추가합니다.
-// brightness: 피부를 밝게, contrast: 선명하게, saturate: 생기 있게, blur: 미세한 피부 요철 보정
-style={{ 
-  transform: "scaleX(-1)", 
-  filter: "brightness(1.1) contrast(1.05) saturate(1.1) blur(0.4px)" 
-}}
+              style={{ transform: "scaleX(-1)" }}
               onLoadedMetadata={() => {
                 const v = videoRef.current;
                 const c = canvasRef.current;

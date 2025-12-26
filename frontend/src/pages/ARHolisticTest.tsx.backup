@@ -840,8 +840,6 @@ export default function ARHolisticTest() {
   const [searchParams] = useSearchParams();
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
-// 추가: 애니메이션 루프에서 최신 파라미터를 참조하기 위한 Ref
-  const paramsRef = useRef<ARParams>(DEFAULT_PARAMS);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -1124,15 +1122,18 @@ useEffect(() => {
   // URL → 상태 동기화
 
   useEffect(() => {
-    const parsed = parseARParams(searchParams);
-    setArParams(parsed);
-    // 추가: 최신 파라미터를 Ref에도 동기화
-    paramsRef.current = parsed; 
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[AR] URL Params →", parsed);
-    }
-  }, [searchParams]);
+    const parsed = parseARParams(searchParams);
+
+    setArParams(parsed);
+
+    if (process.env.NODE_ENV !== "production") {
+
+      console.debug("[AR] URL Params →", parsed);
+
+    }
+
+  }, [searchParams]);
 
 
 
@@ -1715,7 +1716,6 @@ useEffect(() => {
               setIsPositionCorrect(false);
             }
 
-            
             // 이제 에러 없이 이 지점에 도달하여 '준비 완료' 상태가 됩니다.
             setReady(true);
         });
@@ -1792,8 +1792,51 @@ const drawOverlay = (t: number) => {
   // -----------------------------
 // [수정] 실루엣 항시 표시 (세션 중에는 더 투명하게)
 // -----------------------------
-// [drawOverlay 함수 내부, 220~233번 라인 교체]
-// 
+  if (showFramingGuide) {
+    const isRunning = guideEngineRef.current.running;
+    const cx = c.width / 2;
+    const cy = c.height * 0.45;
+
+    ctx.save();
+    
+    // 세션 시작 전에는 진하게(0.8), 시작 후에는 아주 연하게(0.2) 설정하여 방해를 줄입니다.
+    const baseAlpha = isRunning ? 0.2 : 0.8;
+    ctx.strokeStyle = isPositionCorrect ? `rgba(0, 255, 150, ${baseAlpha})` : `rgba(255, 255, 255, ${baseAlpha * 0.5})`;
+    ctx.lineWidth = isRunning ? 2 : 5; // 세션 중에는 선을 더 가늘게 바꿉니다.
+    
+    ctx.setLineDash([15, 10]);
+
+    // 1. 머리 실루엣
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 60, 70, 90, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 2. 어깨 및 쇄골 실루엣
+    ctx.beginPath();
+    ctx.moveTo(cx - 150, cy + 120);
+    ctx.quadraticCurveTo(cx - 150, cy + 30, cx - 70, cy + 30);
+    ctx.lineTo(cx + 70, cy + 30);
+    ctx.quadraticCurveTo(cx + 150, cy + 30, cx + 150, cy + 120);
+    ctx.stroke();
+
+    // 3. 안내 문구 (세션 시작 전까지만 표시)
+    if (!isRunning) {
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+      ctx.roundRect(cx - 140, cy + 140, 280, 40, 10);
+      ctx.fill();
+      
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        isPositionCorrect ? "완벽합니다! 이제 시작하세요." : "얼굴과 쇄골을 점선에 맞춰주세요",
+        cx, cy + 165
+      );
+    }
+    
+    ctx.restore();
+  }
 
   const eng = guideEngineRef.current;
 
@@ -2070,23 +2113,22 @@ const drawOverlay = (t: number) => {
       drawPoint(key, label, color, isCurrentPoint);
     });
 
-    // paramsRef를 사용하여 실시간 인풋값(감정, 강도 등)을 가져옵니다 [cite: 285, 287]
-    const currentParams = paramsRef.current;
+    // 감정/강도 표시
+    if (arParams.emotion != null && typeof arParams.intensity === "number") {
+      const emotionText = `감정: ${arParams.emotion} (${arParams.intensity}/10)`;
+      drawPill(ctx, 10, 10, emotionText, {
+        font: "14px system-ui, sans-serif",
+      });
+    }
 
-    if (currentParams.emotion != null && typeof currentParams.intensity === "number") {
-      const emotionText = `감정: ${currentParams.emotion} (${currentParams.intensity}/10)`;
-      drawPill(ctx, 10, 10, emotionText, {
-        font: "bold 14px system-ui, sans-serif",
-        box: "rgba(0, 0, 0, 0.7)", // 배경을 어둡게 하여 가독성 향상 [cite: 39]
-      });
-    }
+    // 라운드 진행 표시
+    if (round && arParams.rounds) {
+      const roundText = `라운드: ${round}/${arParams.rounds}  (${elapsed}s / ${arParams.durationSec}s)`;
+      drawPill(ctx, 10, 44, roundText, {
+        font: "12px system-ui, sans-serif",
+      });
+    }
 
-    if (round && currentParams.rounds) {
-      const roundText = `라운드: ${round}/${currentParams.rounds}  (${elapsed}s / ${currentParams.durationSec}s)`;
-      drawPill(ctx, 10, 44, roundText, {
-        font: "12px system-ui, sans-serif",
-      });
-    }
     // 현재 포인트 텍스트
     if (activePointId) {
       const meta = SEQUENCE.find((s) => s.id === activePointId);

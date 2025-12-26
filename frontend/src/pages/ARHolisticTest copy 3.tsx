@@ -840,8 +840,6 @@ export default function ARHolisticTest() {
   const [searchParams] = useSearchParams();
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
-// 추가: 애니메이션 루프에서 최신 파라미터를 참조하기 위한 Ref
-  const paramsRef = useRef<ARParams>(DEFAULT_PARAMS);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -1124,15 +1122,18 @@ useEffect(() => {
   // URL → 상태 동기화
 
   useEffect(() => {
-    const parsed = parseARParams(searchParams);
-    setArParams(parsed);
-    // 추가: 최신 파라미터를 Ref에도 동기화
-    paramsRef.current = parsed; 
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[AR] URL Params →", parsed);
-    }
-  }, [searchParams]);
+    const parsed = parseARParams(searchParams);
+
+    setArParams(parsed);
+
+    if (process.env.NODE_ENV !== "production") {
+
+      console.debug("[AR] URL Params →", parsed);
+
+    }
+
+  }, [searchParams]);
 
 
 
@@ -1792,8 +1793,75 @@ const drawOverlay = (t: number) => {
   // -----------------------------
 // [수정] 실루엣 항시 표시 (세션 중에는 더 투명하게)
 // -----------------------------
-// [drawOverlay 함수 내부, 220~233번 라인 교체]
-// 
+  // [drawOverlay 함수 내부, 기존 실루엣 로직 교체]
+if (showFramingGuide) {
+  const isRunning = guideEngineRef.current.running;
+  const ctx = canvasRef.current?.getContext("2d");
+  if (!ctx) return;
+
+  // 1. 데이터 가져오기 (스무딩 처리된 좌표 활용)
+  const face = smoothRef.current;
+  const shL = lastValidPoints.current["CB"]; // 쇄골/어깨 기준점 활용 [cite: 131, 167]
+  const nose = smoothRef.current["UN"]; // 코 끝 [cite: 164]
+
+  ctx.save();
+  // 세션 중에는 아주 연하게(0.2), 준비 중에는 적당히(0.6) 표시 [cite: 222]
+  const baseAlpha = isRunning ? 0.2 : 0.6;
+  ctx.setLineDash([5, 5]); // 부드러운 점선 효과 [cite: 223]
+  
+  // -----------------------------
+  // [가이드 1] 실시간 얼굴 윤곽 와이어프레임
+  // -----------------------------
+  if (nose && face["EB"]) {
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${baseAlpha})`;
+    ctx.lineWidth = 2;
+    // 코 끝을 중심으로 얼굴의 대략적인 영역을 가느다란 원으로 표시
+    ctx.arc(nose.x, nose.y, 80, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // -----------------------------
+  // [가이드 2] 실시간 어깨/쇄골 라인 (핵심!)
+  // -----------------------------
+  if (shL) {
+    // 쇄골 타점이 화면 하단에 너무 가깝게 있는지 체크 (세이프 존)
+    const isTooLow = shL.y > canvasRef.current!.height * 0.85;
+    const lineColor = isTooLow ? `rgba(255, 100, 100, ${baseAlpha + 0.2})` : `rgba(0, 255, 150, ${baseAlpha})`;
+    
+    ctx.beginPath();
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = isTooLow ? 4 : 2;
+    
+    // 사용자의 어깨 선을 따라 가로 가이드라인 표시
+    ctx.moveTo(shL.x - 120, shL.y);
+    ctx.lineTo(shL.x + 120, shL.y);
+    ctx.stroke();
+
+    // -----------------------------
+    // [가이드 3] 경고 문구 (위치가 나쁠 때만 표시)
+    // -----------------------------
+    if (isTooLow && !isRunning) {
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(200, 0, 0, 0.7)";
+      ctx.roundRect(shL.x - 140, shL.y - 60, 280, 40, 10);
+      ctx.fill();
+      
+      ctx.font = "bold 15px sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.fillText("⚠️ 카메라를 조금 아래로 내려주세요", shL.x, shL.y - 35);
+    } else if (!isRunning) {
+      // 위치가 좋을 때 안내
+      ctx.font = "14px sans-serif";
+      ctx.fillStyle = `rgba(255, 255, 255, ${baseAlpha})`;
+      ctx.textAlign = "center";
+      ctx.fillText("쇄골 위치 인식 중...", shL.x, shL.y + 30);
+    }
+  }
+  
+  ctx.restore();
+}
 
   const eng = guideEngineRef.current;
 
@@ -2070,23 +2138,22 @@ const drawOverlay = (t: number) => {
       drawPoint(key, label, color, isCurrentPoint);
     });
 
-    // paramsRef를 사용하여 실시간 인풋값(감정, 강도 등)을 가져옵니다 [cite: 285, 287]
-    const currentParams = paramsRef.current;
+    // 감정/강도 표시
+    if (arParams.emotion != null && typeof arParams.intensity === "number") {
+      const emotionText = `감정: ${arParams.emotion} (${arParams.intensity}/10)`;
+      drawPill(ctx, 10, 10, emotionText, {
+        font: "14px system-ui, sans-serif",
+      });
+    }
 
-    if (currentParams.emotion != null && typeof currentParams.intensity === "number") {
-      const emotionText = `감정: ${currentParams.emotion} (${currentParams.intensity}/10)`;
-      drawPill(ctx, 10, 10, emotionText, {
-        font: "bold 14px system-ui, sans-serif",
-        box: "rgba(0, 0, 0, 0.7)", // 배경을 어둡게 하여 가독성 향상 [cite: 39]
-      });
-    }
+    // 라운드 진행 표시
+    if (round && arParams.rounds) {
+      const roundText = `라운드: ${round}/${arParams.rounds}  (${elapsed}s / ${arParams.durationSec}s)`;
+      drawPill(ctx, 10, 44, roundText, {
+        font: "12px system-ui, sans-serif",
+      });
+    }
 
-    if (round && currentParams.rounds) {
-      const roundText = `라운드: ${round}/${currentParams.rounds}  (${elapsed}s / ${currentParams.durationSec}s)`;
-      drawPill(ctx, 10, 44, roundText, {
-        font: "12px system-ui, sans-serif",
-      });
-    }
     // 현재 포인트 텍스트
     if (activePointId) {
       const meta = SEQUENCE.find((s) => s.id === activePointId);

@@ -840,8 +840,6 @@ export default function ARHolisticTest() {
   const [searchParams] = useSearchParams();
 
   const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
-// 추가: 애니메이션 루프에서 최신 파라미터를 참조하기 위한 Ref
-  const paramsRef = useRef<ARParams>(DEFAULT_PARAMS);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -851,22 +849,7 @@ export default function ARHolisticTest() {
 
   const [error, setError] = useState<string | null>(null);
 
-  // 카메라와 Mediapipe가 준비되었는지 확인하는 상태 변수입니다.
-  // 이 변수가 없어서 현재 화면이 멈추거나 에러가 발생하고 있습니다.
-  const [ready, setReady] = useState(false);
-
-    // 시작 전 가이드 실루엣 표시 여부
-  const [showFramingGuide, setShowFramingGuide] = useState(true);
-  // 사용자가 가이드 안에 적절히 들어왔는지 판단
-  const [isPositionCorrect, setIsPositionCorrect] = useState(false);
-
-  // 사용자의 얼굴을 예쁘게 보이게 하는 필터 강도 설정 값
-// 나중에 이 값을 슬라이더 등으로 조절할 수 있도록 확장 가능합니다.
-const beautyFilterStyle = {
-  transform: "scaleX(-1)",
-  filter: "brightness(1.1) contrast(1.1) saturate(1.1) blur(0.4px)",
-  WebkitFilter: "brightness(1.1) contrast(1.1) saturate(1.1) blur(0.4px)" // 사파리 브라우저 호환용
-};
+  const [ready, setReady] = useState(false);
 
   const [needsTap, setNeedsTap] = useState(false);
 
@@ -1124,15 +1107,18 @@ useEffect(() => {
   // URL → 상태 동기화
 
   useEffect(() => {
-    const parsed = parseARParams(searchParams);
-    setArParams(parsed);
-    // 추가: 최신 파라미터를 Ref에도 동기화
-    paramsRef.current = parsed; 
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[AR] URL Params →", parsed);
-    }
-  }, [searchParams]);
+    const parsed = parseARParams(searchParams);
+
+    setArParams(parsed);
+
+    if (process.env.NODE_ENV !== "production") {
+
+      console.debug("[AR] URL Params →", parsed);
+
+    }
+
+  }, [searchParams]);
 
 
 
@@ -1702,22 +1688,7 @@ useEffect(() => {
           } else {
             setMoleActive(false);
           }
-          // [추가] 사용자의 얼굴/쇄골 위치가 가이드 안에 있는지 체크
-            const shL = pose?.[11];
-            const shR = pose?.[12];
-
-            if (noseTip && shL && shR) {
-              // 164번 라인에서 정의한 noseTip을 사용하여 위치를 체크합니다.
-              const isCentered = noseTip.x > 0.4 && noseTip.x < 0.6;
-              const isVisible = (shL.visibility ?? 0) > 0.5 && (shR.visibility ?? 0) > 0.5;
-              setIsPositionCorrect(isCentered && isVisible);
-            } else {
-              setIsPositionCorrect(false);
-            }
-
-            
-            // 이제 에러 없이 이 지점에 도달하여 '준비 완료' 상태가 됩니다.
-            setReady(true);
+          setReady(true);
         });
 
 
@@ -1785,15 +1756,6 @@ const drawOverlay = (t: number) => {
 
   // 매 프레임 초기화
   ctx.clearRect(0, 0, c.width, c.height);
-
-  // -----------------------------
-  // [추가] 시작 전 위치 가이드 실루엣 그리기
-  // -----------------------------
-  // -----------------------------
-// [수정] 실루엣 항시 표시 (세션 중에는 더 투명하게)
-// -----------------------------
-// [drawOverlay 함수 내부, 220~233번 라인 교체]
-// 
 
   const eng = guideEngineRef.current;
 
@@ -2070,23 +2032,22 @@ const drawOverlay = (t: number) => {
       drawPoint(key, label, color, isCurrentPoint);
     });
 
-    // paramsRef를 사용하여 실시간 인풋값(감정, 강도 등)을 가져옵니다 [cite: 285, 287]
-    const currentParams = paramsRef.current;
+    // 감정/강도 표시
+    if (arParams.emotion != null && typeof arParams.intensity === "number") {
+      const emotionText = `감정: ${arParams.emotion} (${arParams.intensity}/10)`;
+      drawPill(ctx, 10, 10, emotionText, {
+        font: "14px system-ui, sans-serif",
+      });
+    }
 
-    if (currentParams.emotion != null && typeof currentParams.intensity === "number") {
-      const emotionText = `감정: ${currentParams.emotion} (${currentParams.intensity}/10)`;
-      drawPill(ctx, 10, 10, emotionText, {
-        font: "bold 14px system-ui, sans-serif",
-        box: "rgba(0, 0, 0, 0.7)", // 배경을 어둡게 하여 가독성 향상 [cite: 39]
-      });
-    }
+    // 라운드 진행 표시
+    if (round && arParams.rounds) {
+      const roundText = `라운드: ${round}/${arParams.rounds}  (${elapsed}s / ${arParams.durationSec}s)`;
+      drawPill(ctx, 10, 44, roundText, {
+        font: "12px system-ui, sans-serif",
+      });
+    }
 
-    if (round && currentParams.rounds) {
-      const roundText = `라운드: ${round}/${currentParams.rounds}  (${elapsed}s / ${currentParams.durationSec}s)`;
-      drawPill(ctx, 10, 44, roundText, {
-        font: "12px system-ui, sans-serif",
-      });
-    }
     // 현재 포인트 텍스트
     if (activePointId) {
       const meta = SEQUENCE.find((s) => s.id === activePointId);
@@ -2143,9 +2104,6 @@ const drawOverlay = (t: number) => {
 
         const startGuide = () => {
 
-        // 게임 시작 시 가이드 실루엣 숨김
-          setShowFramingGuide(true);
-
           console.log("🚀 startGuide 호출됨! 7포인트 × 3라운드 + 호흡 시작");
 
           const now = performance.now();
@@ -2196,15 +2154,18 @@ const drawOverlay = (t: number) => {
 
         (window as any).__startEFTGuide = startGuide;
 
-// 1. startCameraOnce 할당까지가 원래 로직입니다.
-        (window as any).__startCamera = startCameraOnce;
+        (window as any).__startCamera = startCameraOnce;
 
-      } catch (e: any) { 
-        // 2. 여기서 try 블록을 닫고 catch를 시작해야 1428라인의 에러가 사라집니다.
-        console.error("Setup failed:", e);
-        setError(e?.message ?? "초기화 실패");
-      }
-    }; // 3. 마지막으로 setup async 함수를 닫습니다.
+      } catch (e: any) {
+
+        console.error(e);
+
+        setError(e?.message ?? "초기화 실패");
+
+      }
+
+    };
+
 
 
     setup();
@@ -2635,12 +2596,7 @@ const drawOverlay = (t: number) => {
               autoPlay
               muted
               playsInline
-              // 기존 transform(좌우 반전)에 뷰티 필터 효과를 추가합니다.
-// brightness: 피부를 밝게, contrast: 선명하게, saturate: 생기 있게, blur: 미세한 피부 요철 보정
-style={{ 
-  transform: "scaleX(-1)", 
-  filter: "brightness(1.1) contrast(1.05) saturate(1.1) blur(0.4px)" 
-}}
+              style={{ transform: "scaleX(-1)" }}
               onLoadedMetadata={() => {
                 const v = videoRef.current;
                 const c = canvasRef.current;
