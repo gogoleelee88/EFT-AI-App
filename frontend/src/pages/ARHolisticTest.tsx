@@ -2861,6 +2861,32 @@ style={{
       onClose={() => setShowPostSUDS(false)}
       onSubmit={async (score) => {
         const intensityBefore = locationState?.intensity_before;
+        if (locationState?.strictIntake) {
+          const checkinPayload = {
+            session_id: "eft-session", // 나중에 실제 ID 변수로 교체 필요 (예: sessionId)
+            user_id: "user-id-placeholder", 
+            core_emotion: locationState.strictIntake.core_emotion,
+            situation_context: locationState.strictIntake.situation_context,
+            automatic_thought: locationState.strictIntake.automatic_thought,
+            physical_sensation: locationState.strictIntake.physical_sensation,
+            coping_attempt: locationState.strictIntake.behavioral_reaction,
+            immediate_goal: locationState.strictIntake.immediate_goal,
+            intensity_before: locationState.strictIntake.intensity,
+          };
+
+          try {
+            await fetch("/api/emotion/checkin", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(checkinPayload),
+            });
+            console.log("✅ 감정 수집 데이터 DB 저장 성공!");
+          } catch (err) {
+            console.error("❌ 감정 수집 데이터 저장 실패:", err);
+          }
+        }
+
+
         await fetch("/suds", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

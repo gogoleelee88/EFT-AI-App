@@ -48,7 +48,24 @@ class EmotionCheckinRequest(BaseModel):
 def save_emotion_checkin(payload: EmotionCheckinRequest):
     try:
         sb = _get_supabase()
-        sb.table("emotion_checkins").insert(payload.model_dump()).execute()
+        data = payload.model_dump()
+        
+        # 만약 user_id가 없으면, 테스트용 ID를 강제로 넣거나
+        # (로그인이 안 된 상태라도 일단 저장은 되게 하기 위함)
+        if not data.get("user_id"):
+            # 주의: 이 ID는 auth.users 테이블에 실제로 존재하는 ID여야 안전합니다.
+            # 일단은 None으로 보내되, DB RLS 정책을 잠시 꺼두거나
+            # 테스트용 유저 ID를 넣으세요.
+            # 예: data["user_id"] = "00000000-0000-0000-0000-000000000000" 
+            pass 
+        
+        # 하지만 가장 좋은 건, payload 자체를 넣는 게 아니라
+        # Supabase가 '현재 로그인한 유저'를 알게 하는 것입니다.
+        # (Python 백엔드는 Service Role Key를 쓰므로 모든 권한이 있습니다.)
+        # 따라서 여기서는 그냥 저장하면 됩니다. 단, user_id 컬럼에 null이 들어가도 되는지 확인하세요.
+        
+        sb.table("emotion_checkins").insert(data).execute()
+        #sb.table("emotion_checkins").insert(payload.model_dump()).execute()
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save emotion checkin: {e}")

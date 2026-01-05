@@ -121,6 +121,7 @@ def _persist_suds(request: SUDSRequest) -> tuple[str, str]:
         payload = {
             "session_id": request.session_id,
             "score": request.score,
+            "user_id": request.user_id
         }
         if request.note is not None:
             payload["note"] = request.note
