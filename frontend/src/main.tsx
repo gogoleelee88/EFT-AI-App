@@ -13,6 +13,7 @@ console.log('🔄 Bundle regeneration timestamp:', Date.now())
 
 // 🧪 MSW 모킹 활성화 (개발 모드 전용)
 // 💡 localStorage.setItem('DISABLE_MSW','1') → 새로고침하면 실서버 직접 확인 가능
+/*
 if (import.meta.env.DEV && !localStorage.getItem('DISABLE_MSW')) {
   import('./mocks/browser').then(({ worker }) => {
     worker.start({
@@ -38,7 +39,9 @@ if (import.meta.env.DEV && !localStorage.getItem('DISABLE_MSW')) {
 
   // 시나리오 토글 유틸 로드
   import('./utils/testScenario');
-} else if (import.meta.env.DEV) {
+} else */
+
+if (import.meta.env.DEV) {
   console.log('🔇 MSW mocking disabled (DISABLE_MSW=1)');
 }
 
