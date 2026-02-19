@@ -7,12 +7,30 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+const normalizeUrl = (raw: string): string => {
+  const value = (raw || '').trim()
+  if (!value || value === '/') return ''
+  const candidate = /^https?:\/\//i.test(value) ? value : `http://${value}`
+  try {
+    const parsed = new URL(candidate)
+    if (!parsed.hostname) return ''
+    return `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, '')
+  } catch {
+    return ''
+  }
+}
+
+const API_PROXY_TARGET = (normalizeUrl(process.env.VITE_API_BASE_URL || '') || 'http://127.0.0.1:8000')
+const WS_PROXY_TARGET = API_PROXY_TARGET.replace(/^https:/, 'ws:').replace(/^http:/, 'ws:')
+
 // https://vite.dev/config/
 export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(process.env.GITHUB_RUN_NUMBER || Date.now().toString()),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __API_PROXY_TARGET__: JSON.stringify(API_PROXY_TARGET),
   },
+  root: __dirname,
   plugins: [
     react(),
     // ⚠️ GPU 서버 복구 시 주의사항:
@@ -112,18 +130,29 @@ export default defineConfig({
     }
   },
   server: {
-  host: 'localhost',
+  host: '0.0.0.0',
+  port: 5173,
+  strictPort: true,
   hmr: true,
   headers: {
     'X-Content-Type-Options': 'nosniff',
   },
   proxy: {
     '/api': {
-      target: 'http://127.0.0.1:8000',
+      target: API_PROXY_TARGET,
+      changeOrigin: true,
+    },
+    '/v1': {
+      target: API_PROXY_TARGET,
+      changeOrigin: true,
+    },
+    '/ws': {
+      target: WS_PROXY_TARGET,
+      ws: true,
       changeOrigin: true,
     },
     '/suds': {
-      target: 'http://127.0.0.1:8000',
+      target: API_PROXY_TARGET,
       changeOrigin: true,
     },
   },

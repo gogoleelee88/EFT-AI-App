@@ -425,7 +425,7 @@ const draw = useCallback(() => {
     
     // IDLE 상태일 때도 루프는 돌지만, 로직만 실행하지 않고 리턴합니다.
     if (phase === 'IDLE') {
-        return; 
+      return;
     }
 
     if (phase === 'PREVIEW') {
@@ -552,10 +552,10 @@ const draw = useCallback(() => {
                   <li>네온 박스를 따라 4초씩 4단계를 반복합니다.</li>
                 </ul>
               </div>
-            </div>
+          </div>
 
             {isLoaded ? (
-              <button 
+              <button
                 onClick={handleStartGame}
                 className="w-full py-5 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white text-2xl font-bold rounded-2xl shadow-lg transform transition hover:scale-[1.02] active:scale-95"
               >
@@ -567,8 +567,8 @@ const draw = useCallback(() => {
               </div>
             )}
           </div>
-        </div>
-      )}
+                </div>
+              )}
 
       {/* --- 게임 UI Overlay --- */}
       {isStarted && (
@@ -579,7 +579,7 @@ const draw = useCallback(() => {
             <h1 className="text-3xl md:text-4xl text-white font-bold drop-shadow-lg mt-4 whitespace-pre-wrap text-center leading-relaxed">
               {uiMessage}
             </h1>
-          </div>
+            </div>
 
           {uiFeedback && (
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
@@ -595,7 +595,7 @@ const draw = useCallback(() => {
             {gameState.current.phase === 'FINISHED' && (
               <button onClick={() => navigate('/result')} className="px-8 py-4 bg-blue-500 text-white text-xl font-bold rounded-full shadow-lg hover:scale-105 animate-bounce">
                 결과 저장하기
-              </button>
+            </button>
             )}
           </div>
         </div>
@@ -620,7 +620,7 @@ const draw = useCallback(() => {
       }}
     />
   )}
-    </div>
+      </div>
   );
 };
 

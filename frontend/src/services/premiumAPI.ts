@@ -1,10 +1,13 @@
-// frontend/src/services/premiumAPI.ts - 프리미엄 백엔드 연동
+﻿// frontend/src/services/premiumAPI.ts - premium backend integration helper
+
+const envPremiumApiKey = (import.meta.env.VITE_PREMIUM_API_KEY as string | undefined)?.trim();
+
 export const PREMIUM_API_CONFIG = {
-  BASE_URL: '',  // ✅ 상대경로만 사용 (Proxy/CDN이 라우팅 처리)
+  BASE_URL: "",
   HEADERS: {
-    'Content-Type': 'application/json; charset=utf-8',
-    'X-API-Key': 'premium-eft-ai-moodtalk-2025!'
-  }
+    "Content-Type": "application/json; charset=utf-8",
+    ...(envPremiumApiKey ? { "X-API-Key": envPremiumApiKey } : {}),
+  },
 };
 
 export interface ChatRequest {
@@ -26,15 +29,15 @@ export interface ChatResponse {
 
 export const callPremiumChat = async (request: ChatRequest): Promise<ChatResponse> => {
   const response = await fetch(`${PREMIUM_API_CONFIG.BASE_URL}/api/chat`, {
-    method: 'POST',
+    method: "POST",
     headers: PREMIUM_API_CONFIG.HEADERS,
     body: JSON.stringify({
       message: request.message,
       temperature: request.temperature || 0.7,
       max_tokens: request.max_tokens || 300,
       sessionId: request.sessionId,
-      userId: request.userId
-    })
+      userId: request.userId,
+    }),
   });
 
   if (!response.ok) {
@@ -47,8 +50,8 @@ export const callPremiumChat = async (request: ChatRequest): Promise<ChatRespons
 export const validatePremiumKey = async (): Promise<boolean> => {
   try {
     const response = await fetch(`${PREMIUM_API_CONFIG.BASE_URL}/api/validate`, {
-      method: 'GET',
-      headers: PREMIUM_API_CONFIG.HEADERS
+      method: "GET",
+      headers: PREMIUM_API_CONFIG.HEADERS,
     });
     return response.ok;
   } catch {

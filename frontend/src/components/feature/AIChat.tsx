@@ -439,7 +439,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
           ? {
               role: 'ai',
               content:
-                "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **Engine A/B 병렬 비교 시스템 활성화!**\n- 🆓 무료: Llama-3 vs Qwen-2.5 병렬 비교\n- 💎 프리미엄: Llama 3.1 최고급 모델\n\n두 최신 AI 모델이 동시에 응답하여 더 나은 답변을 제공합니다!\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
+                "안녕하세요! 저는 EFT 전문 AI 상담사입니다. 🌿\n\n🚀 **OpenAI GPT-5.2 상담 시스템**\n- 🆓 무료: GPT-5.2 기반 병렬 비교\n- 💎 프리미엄: GPT-5.2 고급 모델\n\nOpenAI 응답 모델을 기반으로 일관된 맥락을 유지합니다.\n\n오늘은 어떤 마음으로 찾아오셨나요? 편안하게 이야기해 주세요.",
               timestamp: Date.now(),
               metadata: {
                 confidence: 1.0,
@@ -1324,7 +1324,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
                         }`}
                       >
                         💎 프리미엄 티어 (NEW!)<br />
-                        <span className="text-xs text-purple-500">Llama 3.1 고급 상담 (400토큰)</span>
+                        <span className="text-xs text-purple-500">GPT-5.2 고급 상담 (400토큰)</span>
                       </button>
                     )}
                     {availableTiers.includes('enterprise') && (

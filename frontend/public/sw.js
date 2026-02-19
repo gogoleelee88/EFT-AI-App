@@ -1,7 +1,7 @@
 // EFT AI 앱 Service Worker
-const CACHE_NAME = 'eft-ai-app-v1.0.1';
-const STATIC_CACHE_NAME = 'eft-ai-static-v1.0.1';
-const DYNAMIC_CACHE_NAME = 'eft-ai-dynamic-v1.0.1';
+const CACHE_NAME = 'eft-ai-app-v1.0.2';
+const STATIC_CACHE_NAME = 'eft-ai-static-v1.0.2';
+const DYNAMIC_CACHE_NAME = 'eft-ai-dynamic-v1.0.2';
 
 // 캐시할 정적 리소스
 const STATIC_ASSETS = [
@@ -90,6 +90,12 @@ const shouldBypass = (url) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
+
+  // Non-GET requests (POST/PUT/PATCH/DELETE) must bypass cache logic.
+  // Caches API does not support storing non-GET requests.
+  if (request.method !== 'GET') {
+    return;
+  }
   
   // WebSocket은 SW가 가로채지 않음(안전하게 우회)
   if (request.headers.get('upgrade') === 'websocket') return;
@@ -129,7 +135,9 @@ async function cacheFirstStrategy(request) {
     
     const networkResponse = await fetch(request);
     const cache = await caches.open(STATIC_CACHE_NAME);
-    cache.put(request, networkResponse.clone());
+    if (request.method === 'GET') {
+      cache.put(request, networkResponse.clone());
+    }
     return networkResponse;
   } catch (error) {
     console.error('Cache First 전략 실패:', error);
@@ -147,7 +155,9 @@ async function cacheFirstWithUpdateStrategy(request) {
       try {
         const networkResponse = await fetch(request);
         const cache = await caches.open(DYNAMIC_CACHE_NAME);
-        cache.put(request, networkResponse.clone());
+        if (request.method === 'GET') {
+          cache.put(request, networkResponse.clone());
+        }
       } catch (error) {
         console.log('백그라운드 업데이트 실패 (정상):', error.message);
       }
@@ -161,7 +171,9 @@ async function cacheFirstWithUpdateStrategy(request) {
     // 캐시에 없으면 네트워크에서 가져오기
     const networkResponse = await fetch(request);
     const cache = await caches.open(DYNAMIC_CACHE_NAME);
-    cache.put(request, networkResponse.clone());
+    if (request.method === 'GET') {
+      cache.put(request, networkResponse.clone());
+    }
     return networkResponse;
   } catch (error) {
     console.error('AI 모델 캐시 전략 실패:', error);
@@ -202,7 +214,7 @@ async function networkFirstWithCacheFallback(request) {
   if (request.mode === 'navigate') {
     try {
       const fresh = await fetch(request);
-      if (fresh.ok) {
+      if (fresh.ok && request.method === 'GET') {
         const cache = await caches.open(DYNAMIC_CACHE_NAME);
         cache.put(request, fresh.clone());
       }
@@ -221,7 +233,7 @@ async function networkFirstWithCacheFallback(request) {
     const networkResponse = await fetch(request);
     
     // 성공한 페이지 응답을 캐시
-    if (networkResponse.ok) {
+    if (networkResponse.ok && request.method === 'GET') {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }

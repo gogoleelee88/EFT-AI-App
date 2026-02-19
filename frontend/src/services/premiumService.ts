@@ -91,7 +91,7 @@ export class PremiumService {
     const data = await response.json();
     return {
       response: data.response || data.reply || 'No response',
-      model_version: data.model || 'Premium Model',
+      model_version: data.model || 'gpt-5.2',
       processing_time: data.processing_time || 0,
       tier: 'premium',
       success: true
@@ -129,10 +129,11 @@ export class PremiumService {
     const winnerResponse = data.faster_model === 'llama3'
       ? data.llama3_response
       : data.qwen25_response;
+    const winnerModel = winnerResponse?.model || 'gpt-5.2';
 
     return {
       response: winnerResponse?.response || 'Engine response failed',
-      model_version: `Engine ${data.faster_model === 'llama3' ? 'A (Llama-3)' : 'B (Qwen-2.5)'}`,
+      model_version: winnerModel,
       processing_time: data.comparison_time || 0,
       tier: 'free',
       success: winnerResponse?.success || false

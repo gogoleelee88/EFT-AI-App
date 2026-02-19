@@ -13,17 +13,18 @@ import down3 from "@/assets/motion/down3.png";
 
 // 올라오는 3장 → 서있는 3장 → 내려가는 3장 순서
 const MOLE_FRAMES = [
-  up1, up2, up3,        // 올라오는 3장
-  stand1, stand2, stand3, // 서있는 3장
-  down1, down2, down3,  // 내려가는 3장
+  up1, up2, up3,        // 올라오는 3장
+  stand1, stand2, stand3, // 서있는 3장
+  down1, down2, down3,  // 내려가는 3장
 ];
 
-import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 경로 (네가 저장한 위치에 맞게 수정)
+import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 경로
 
 import { useEffect, useRef, useState } from "react";
 
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useEFTScript } from '../contexts/EFTScriptContext';
+import { useAuth } from '../hooks/useAuth';
 import SUDSModal from '../components/modals/SUDSModal';
 import { Holistic, POSE_LANDMARKS, VERSION } from "@mediapipe/holistic";
 
@@ -31,7 +32,26 @@ import { Camera } from "@mediapipe/camera_utils";
 
 import type { EFTCode } from "@/types/eftCodes";
 
+// 🎮 두더지 게임 튜닝 포인트 (상단 상수화)
+const MOLE_VISIBLE_MS_BASE = 900;  // 기본 노출 시간(ms)
+const MOLE_VISIBLE_MS_MIN = 350;  // 최소 노출 시간(ms)
+const MOLE_VISIBLE_MS_DECREASE = 65; // miss당 감소량(ms)
+const MOLE_VISIBLE_MS_INCREASE = 20; // hit당 완화량(ms)
+const OFFSET_RANGE_PX = 0;        // curPt와 정확히 일치 (랜덤 오프셋 제거)
+const VULNERABLE_WINDOW_MS = 250;  // 완전히 나왔을 때만 히트 인정 구간(ms)
+const TAUNT_DURATION_MS = 200;     // 약올리기(TAUNT) 지속 시간(ms)
+const SPAWN_ANIMATION_MS = 300;    // 등장 애니메이션 시간(ms)
+const FEVER_COMBO_THRESHOLD = 5;   // 피버 모드 진입 콤보
+const FEVER_DURATION_MS = 4000;    // 피버 모드 지속 시간(ms)
+const BOSS_POINT: EFTCode = "CB";  // 보스 두더지 포인트 (쇄골)
+const BOSS_HP = 8;                 // 보스 HP
+const HAND_POSITION_RADIUS_PX = 60; // 실제 탭핑 유도: 손이 이 거리 내에 있어야 점수 인정
+const HAND_POSITION_PENALTY = 0.2;  // 손 위치 조건 미충족 시 점수 배율
+const RECENT_SESSIONS_WINDOW = 7;   // 개인화 분석용 최근 세션 수
+const SESSION_DURATION_MS = 60000;  // 기본 세션 지속 시간(ms)
 
+// 🎯 게임 상태 타입
+type GamePhase = "IDLE" | "SPAWN" | "TAUNT" | "VULNERABLE" | "HIT" | "MISS" | "FEVER" | "BOSS";
 
 // ===== AR URL Params Schema =====
 
@@ -818,12 +838,21 @@ const TAP_COOLDOWN_MS = 250;       // 연속 탭 중복 감지 방지(ms)
 export default function ARHolisticTest() {
 
 
-  const [showPostSUDS, setShowPostSUDS] = useState(false);
-  const navigate = useNavigate();
+  const [showPostSUDS, setShowPostSUDS] = useState(false);
+  const [postSUDSSubmitting, setPostSUDSSubmitting] = useState(false);
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const location = useLocation();
-  const locationState = (location.state as { strictIntake?: any; intensity_before?: number } | undefined) || {};
+  const locationState = (location.state as {
+    strictIntake?: any;
+    intensity_before?: number;
+    planStartResistance?: string;
+  } | undefined) || {};
   const strictIntake = locationState?.strictIntake;
-  const intensityBefore = locationState?.intensity_before;
+  const intensityBefore = locationState?.intensity_before;
+  const emotionSessionIdRef = useRef<string>(
+    `eft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  );
 
   // EFT Script Context에서 데이터 가져오기
   const { eftScript } = useEFTScript();
@@ -913,14 +942,40 @@ const beautyFilterStyle = {
     // 🕳 두더지 상태
   const [molePos, setMolePos] = useState<{ x: number; y: number } | null>(null); // 0~1 비율
   const [moleFrame, setMoleFrame] = useState(3);  // 기본은 서 있는 프레임 (stand1)
-  const [moleActive, setMoleActive] = useState(false);
+  const [moleActive, setMoleActive] = useState(false);
+  const [gamePhase, setGamePhase] = useState<GamePhase>("IDLE"); // 게임 상태 (UI 업데이트용)
 
-  // hit 애니메이션 타이머 관리
-  // hit 애니메이션 타이머 관리
+  // hit 애니메이션 타이머 관리
+  // hit 애니메이션 타이머 관리
 const moleHideTimeoutRef = useRef<number | null>(null);
 
 // 🫧 비눗방울 리필 타이머 (8회 태핑용)
 const bubbleRespawnTimeoutRef = useRef<number | null>(null);
+
+// 🎮 게임 상태 머신 ref (성능 위해 ref 중심)
+const gamePhaseRef = useRef<GamePhase>("IDLE");
+const comboRef = useRef(0);
+const missRef = useRef(0);
+const moleVisibleMsRef = useRef(MOLE_VISIBLE_MS_BASE); // 현재 난이도 노출 시간
+const moleDeadlineMsRef = useRef<number | null>(null); // 현재 스폰 만료 시각
+const moleTargetRef = useRef<Pt | null>(null); // moleTarget (px 좌표)
+const moleSpawnTimeRef = useRef<number | null>(null); // 스폰 시작 시각
+const lastResultRef = useRef<"hit" | "miss" | null>(null);
+const feverStartMsRef = useRef<number | null>(null);
+const bossHpRef = useRef(BOSS_HP);
+const moleHitPhaseRef = useRef<"normal" | "squash" | null>(null); // 스쿼시 애니메이션 상태
+
+// 🎯 SUDS 측정 및 세션 저장
+const [sudsBefore, setSudsBefore] = useState<number | null>(null);
+const [sudsAfter, setSudsAfter] = useState<number | null>(null);
+const sessionStartMsRef = useRef<number | null>(null);
+const sessionDataRef = useRef<{
+  pointCounts: Record<string, number>;
+  hits: number;
+  misses: number;
+  bestCombo: number;
+  durationMs: number;
+} | null>(null);
 
 
   useEffect(() => {
@@ -929,26 +984,51 @@ const bubbleRespawnTimeoutRef = useRef<number | null>(null);
 
   }, [moodScore]);
 
-  // ⏱ 두더지 프레임 애니메이션 (위→서기→아래 반복)
-  useEffect(() => {
-    if (!moleActive) return;
+  // ⏱ 두더지 프레임 애니메이션 (게임 상태 머신 기반)
+  useEffect(() => {
+    if (!moleActive) return;
 
-    // 프레임 속도 (ms) – 필요하면 80~150 사이에서 조절
-    const FRAME_MS = 90;
+    const phase = gamePhase;
+    let animSeq: number[] = [];
+    let FRAME_MS = 90;
 
-    // 단순 0~8 순환 대신, 위→서기→아래 느낌 주고 싶으면 이런 패턴 써도 됨
-    const animSeq = [0,1,2,3,4,5,4,3,2,1,0]; // 살짝 올라갔다 다시 내려오는 루프
+    // 게임 상태에 따라 다른 애니메이션
+    if (phase === "SPAWN") {
+      // 올라오는 애니메이션 (0-2: up1-3)
+      animSeq = [0, 1, 2];
+      FRAME_MS = SPAWN_ANIMATION_MS / 3; // 300ms / 3 = 100ms per frame
+    } else if (phase === "TAUNT") {
+      // 약올리기: stand 프레임을 빠르게 순환 (3-5: stand1-3)
+      animSeq = [3, 4, 5, 4, 3]; // 흔들리는 효과
+      FRAME_MS = TAUNT_DURATION_MS / 5; // 200ms / 5 = 40ms per frame (빠른 흔들림)
+    } else if (phase === "VULNERABLE" || phase === "FEVER" || phase === "BOSS") {
+      // 완전히 나온 상태: stand 프레임 유지 (3-5 순환, 느리게)
+      animSeq = [3, 4, 5];
+      FRAME_MS = 150; // 천천히 순환
+    } else if (phase === "HIT") {
+      // 히트: 내려가는 애니메이션 (6-8: down1-3)
+      animSeq = [6, 7, 8];
+      FRAME_MS = 80; // 빠르게 내려감
+    } else if (phase === "MISS") {
+      // MISS: 빠르게 도망가는 애니메이션 (6-8: down1-3, 더 빠르게)
+      animSeq = [6, 7, 8];
+      FRAME_MS = 50; // 매우 빠르게 도망감
+    } else {
+      // 기본: stand 프레임 유지
+      animSeq = [3, 4, 5];
+      FRAME_MS = 150;
+    }
 
-    let idx = 0;
-    setMoleFrame(animSeq[0]);
+    let idx = 0;
+    setMoleFrame(animSeq[0]);
 
-    const id = window.setInterval(() => {
-      idx = (idx + 1) % animSeq.length;
-      setMoleFrame(animSeq[idx]);
-    }, FRAME_MS);
+    const id = window.setInterval(() => {
+      idx = (idx + 1) % animSeq.length;
+      setMoleFrame(animSeq[idx]);
+    }, FRAME_MS);
 
-    return () => window.clearInterval(id);
-  }, [moleActive]);
+    return () => window.clearInterval(id);
+  }, [moleActive, gamePhase]);
 
   // 🔸 선택: 첫 방문에만 인트로 보여주기
   useEffect(() => {
@@ -964,30 +1044,155 @@ const bubbleRespawnTimeoutRef = useRef<number | null>(null);
 
 // (삭제) bubblePos / bubblePopKey 상태 제거
 
-    // 💬 "톡!" 텍스트 DOM 생성
-  const spawnPopText = (x: number, y: number) => {
-    const popText = document.createElement("div");
-    popText.className = "mood-bubble-pop-text";
-    popText.textContent = "톡!";
-    popText.style.left = `${x}px`;
-    popText.style.top = `${y}px`;
-    popText.style.transform = "translate(-50%, -50%)";
-    document.body.appendChild(popText);
+    // 💬 텍스트 팝업 DOM 생성 (확장: 문자열 인자 받기)
+  const spawnPopText = (x: number, y: number, text: string = "톡!", duration: number = 600) => {
+    const popText = document.createElement("div");
+    popText.className = "mood-bubble-pop-text";
+    popText.textContent = text;
+    popText.style.left = `${x}px`;
+    popText.style.top = `${y}px`;
+    popText.style.transform = "translate(-50%, -50%)";
+    popText.style.fontSize = "24px";
+    popText.style.fontWeight = "bold";
+    popText.style.color = text.includes("PERFECT") || text.includes("GET") ? "#FFD700" : "#FFFFFF";
+    popText.style.textShadow = "2px 2px 4px rgba(0,0,0,0.8)";
+    document.body.appendChild(popText);
 
-    const textAnimation = popText.animate(
-      [
-        { transform: "translate(-50%, -50%) scale(0.5)", opacity: 1 },
-        { transform: "translate(-50%, -100px) scale(1.5)", opacity: 0 },
-      ],
-      {
-        duration: 600,
-        easing: "ease-out",
-        fill: "forwards",
-      }
-    );
+    const textAnimation = popText.animate(
+      [
+        { transform: "translate(-50%, -50%) scale(0.5)", opacity: 1 },
+        { transform: "translate(-50%, -100px) scale(1.5)", opacity: 0 },
+      ],
+      {
+        duration,
+        easing: "ease-out",
+        fill: "forwards",
+      }
+    );
 
-    textAnimation.onfinish = () => popText.remove();
-  };
+    textAnimation.onfinish = () => popText.remove();
+  };
+  
+  // 🎮 카메라 쉐이크 효과
+  const triggerCameraShake = (intensity: number = 4) => {
+    const container = videoRef.current?.parentElement;
+    if (!container) return;
+    
+    const originalTransform = container.style.transform;
+    let shakeCount = 0;
+    const maxShakes = 6;
+    
+    const shake = () => {
+      if (shakeCount >= maxShakes) {
+        container.style.transform = originalTransform;
+        return;
+      }
+      const offsetX = (Math.random() - 0.5) * intensity;
+      const offsetY = (Math.random() - 0.5) * intensity;
+      container.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+      shakeCount++;
+      requestAnimationFrame(() => {
+        setTimeout(shake, 20);
+      });
+    };
+    shake();
+  };
+  
+  // 🎯 타격감 강화: 스쿼시 + 쉐이크 + 파티클 + 텍스트
+  const triggerHitEffects = (screenX: number, screenY: number, combo: number) => {
+    // 스쿼시 애니메이션 (두더지 이미지)
+    const moleImg = document.querySelector('img[alt="moodtalk mole"]') as HTMLElement;
+    if (moleImg) {
+      moleHitPhaseRef.current = "squash";
+      const squashAnim = moleImg.animate(
+        [
+          { transform: "scale(0.85, 1.15)" },
+          { transform: "scale(1.1, 0.9)" },
+          { transform: "scale(1, 1)" },
+        ],
+        {
+          duration: 150,
+          easing: "ease-out",
+        }
+      );
+      squashAnim.onfinish = () => {
+        moleHitPhaseRef.current = null;
+      };
+    }
+    
+    // 카메라 쉐이크
+    triggerCameraShake(combo >= FEVER_COMBO_THRESHOLD ? 6 : 4);
+    
+    // 파티클 효과 (기존 버블 파티클 + 먼지 파티클)
+    createBubbleBurst(screenX, screenY);
+    createDustParticles(screenX, screenY, combo >= FEVER_COMBO_THRESHOLD ? 60 : 30);
+    
+    // 텍스트 팝업
+    const texts = [
+      combo >= 5 ? "FEVER!" : combo >= 3 ? "COMBO!" : "GET!",
+      "PERFECT!",
+      "STRESS -1",
+    ];
+    const randomText = texts[Math.floor(Math.random() * texts.length)];
+    spawnPopText(screenX, screenY, randomText);
+    
+    // 사운드
+    playBeep(900 + combo * 20, 70);
+    vibrate(combo >= FEVER_COMBO_THRESHOLD ? 60 : 40);
+  };
+  
+  // 🎯 BOSS 처치 효과
+  const triggerBossDefeatEffects = (screenX: number, screenY: number) => {
+    // 강한 파티클 효과
+    createDustParticles(screenX, screenY, 90);
+    createBubbleBurst(screenX, screenY);
+    
+    // 강한 쉐이크
+    triggerCameraShake(8);
+    
+    // 텍스트
+    spawnPopText(screenX, screenY, "BOSS DEFEATED!", 1000);
+    
+    // 사운드
+    playBeep(1320, 500);
+    vibrate(300);
+  };
+  
+  // 💨 먼지 파티클 효과
+  const createDustParticles = (x: number, y: number, count: number = 30) => {
+    for (let i = 0; i < count; i++) {
+      const particle = document.createElement("div");
+      particle.className = "mood-bubble-particle";
+      particle.style.backgroundColor = `hsl(${Math.random() * 60 + 20}, 70%, 50%)`;
+      document.body.appendChild(particle);
+
+      const size = Math.random() * 8 + 4;
+      particle.style.width = `${size}px`;
+      particle.style.height = `${size}px`;
+      particle.style.left = `${x}px`;
+      particle.style.top = `${y}px`;
+      particle.style.borderRadius = "50%";
+
+      const angle = (Math.PI * 2 * i) / count;
+      const speed = Math.random() * 200 + 100;
+      const destX = Math.cos(angle) * speed;
+      const destY = Math.sin(angle) * speed;
+
+      const animation = particle.animate(
+        [
+          { transform: "translate(-50%, -50%) scale(1)", opacity: 1 },
+          { transform: `translate(${destX}px, ${destY}px) scale(0)`, opacity: 0 },
+        ],
+        {
+          duration: Math.random() * 400 + 300,
+          easing: "cubic-bezier(0, .9, .57, 1)",
+          fill: "forwards",
+        }
+      );
+
+      animation.onfinish = () => particle.remove();
+    }
+  };
 
   // 💥 MoodTalk 비눗방울 터지는 파티클
   const createBubbleBurst = (x: number, y: number) => {
@@ -1623,16 +1828,7 @@ useEffect(() => {
               curId === "TH"   ? smoothRef.current["TH"]   || lastValidPoints.current["TH"]   :
               null;
 
-            if (curPt) {
-              setMolePos({
-                x: curPt.x / c.width,
-                y: curPt.y / c.height,
-              });
-              setMoleActive(true);
-            } else {
-              setMoleActive(false);
-            }
-
+            // 🎮 게임 상태 머신 기반 탭 감지 로직
             if (curPt && (leftHand || rightHand)) {
               const fingers: Pt[] = [];
               const pushFinger = (hand: any, idx: number) => {
@@ -1644,34 +1840,80 @@ useEffect(() => {
               if (leftHand) pushFinger(leftHand, 8);
               if (rightHand) pushFinger(rightHand, 8);
 
+              // 탭핑 위치(curPt=도트) 기준으로 히트 판정
+              const target = curPt;
               let hit = false;
+              let handInPosition = false; // 실제 탭핑 유도: 손이 타점 영역 근처에 있는지
+              
               for (const f of fingers) {
-                const dx = f.x - curPt.x;
-                const dy = f.y - curPt.y;
+                // moleTarget과의 거리
+                const dx = f.x - target.x;
+                const dy = f.y - target.y;
                 const distSq = dx * dx + dy * dy;
                 if (distSq <= TAP_DISTANCE_PX * TAP_DISTANCE_PX) {
                   hit = true;
-                  break;
+                }
+                
+                // 손 위치 조건: curPt 주변 HAND_POSITION_RADIUS_PX 내에 있는지
+                const handDx = f.x - curPt.x;
+                const handDy = f.y - curPt.y;
+                const handDistSq = handDx * handDx + handDy * handDy;
+                if (handDistSq <= HAND_POSITION_RADIUS_PX * HAND_POSITION_RADIUS_PX) {
+                  handInPosition = true;
                 }
               }
 
-              // 🔥 수정된 핵심 로직: hit이고 쿨다운 지났으며 비눗방울이 보이는 상태일 때만!
-              if (hit && (nowTap - lastTapTimeRef.current > TAP_COOLDOWN_MS) && isBubbleVisibleRef.current) {
+              // VULNERABLE 구간에서만 히트 인정 + 쿨다운 체크
+              const phase = gamePhaseRef.current;
+              const isVulnerable = phase === "VULNERABLE" || phase === "FEVER" || phase === "BOSS";
+              
+              if (hit && isVulnerable && (nowTap - lastTapTimeRef.current > TAP_COOLDOWN_MS)) {
                 lastTapTimeRef.current = nowTap;
+                
+                // 득점 가중치: 손 위치 조건 충족 여부에 따라
+                let scoreMultiplier = 1.0;
+                if (!handInPosition) {
+                  scoreMultiplier = HAND_POSITION_PENALTY;
+                  // "MOVE HAND TO POINT" 안내 텍스트
+                  spawnPopText(target.x, target.y - 50, "손을 포인트로!", 400);
+                }
+                
+                // HIT 처리
+                gamePhaseRef.current = "HIT";
+                lastResultRef.current = "hit";
+                comboRef.current++;
+                
+                // 난이도 완화
+                moleVisibleMsRef.current = Math.min(
+                  MOLE_VISIBLE_MS_BASE,
+                  moleVisibleMsRef.current + MOLE_VISIBLE_MS_INCREASE
+                );
                 
                 // 즉시 잠금
                 isBubbleVisibleRef.current = false;
                 setIsBubbleVisible(false);
 
                 if (moodScoreRef.current > 0) {
-                  const next = moodScoreRef.current - 1;
+                  const next = Math.max(0, moodScoreRef.current - Math.ceil(scoreMultiplier));
                   moodScoreRef.current = next;
                   setMoodScore(next);
 
                   const rect = c.getBoundingClientRect();
-                  const screenX = rect.left + (curPt.x / c.width) * rect.width;
-                  const screenY = rect.top + (curPt.y / c.height) * rect.height;
-                  triggerBubblePopEffect(screenX, screenY);
+                  const screenX = rect.left + (target.x / c.width) * rect.width;
+                  const screenY = rect.top + (target.y / c.height) * rect.height;
+                  
+                  // 타격감 강화: 스쿼시 애니메이션, 쉐이크, 파티클, 텍스트
+                  triggerHitEffects(screenX, screenY, comboRef.current);
+                  
+                  // BOSS 모드: HP 감소
+                  if (phase === "BOSS") {
+                    bossHpRef.current = Math.max(0, bossHpRef.current - 1);
+                    if (bossHpRef.current === 0) {
+                      // BOSS 처치: 강한 소멸 VFX
+                      triggerBossDefeatEffects(screenX, screenY);
+                      gamePhaseRef.current = "IDLE";
+                    }
+                  }
 
                   playBeep(800 + next * 50, 80);
                   vibrate(40);
@@ -1687,13 +1929,21 @@ useEffect(() => {
                   }
                 }
 
+                // 두더지 숨김 애니메이션
                 if (moleHideTimeoutRef.current) window.clearTimeout(moleHideTimeoutRef.current);
                 const downFrames = [6, 7, 8];
                 downFrames.forEach((frame, i) => {
                   window.setTimeout(() => {
                     setMoleFrame(frame);
                     if (i === downFrames.length - 1) {
-                      moleHideTimeoutRef.current = window.setTimeout(() => setMoleActive(false), 40);
+                      moleHideTimeoutRef.current = window.setTimeout(() => {
+                        setMoleActive(false);
+                        gamePhaseRef.current = "IDLE";
+                        setGamePhase("IDLE");
+                        moleTargetRef.current = null;
+                        moleDeadlineMsRef.current = null;
+                        moleSpawnTimeRef.current = null;
+                      }, 40);
                     }
                   }, i * 80);
                 });
@@ -1797,11 +2047,136 @@ const drawOverlay = (t: number) => {
 
   const eng = guideEngineRef.current;
 
-  // -----------------------------
-  // 1) 가이드 상태 업데이트 (타이머, 단계 전환)
-  // -----------------------------
-  if (eng.running) {
-    if (eng.phase === "tapping") {
+  // -----------------------------
+  // 0) 게임 상태 머신 루프 (두더지 도망 시스템)
+  // -----------------------------
+  if (eng.running && eng.phase === "tapping") {
+    const curStep = SEQUENCE[eng.stepIdx];
+    const curId = curStep.id;
+    const curPt: Pt | null =
+      curId === "EB"   ? smoothRef.current["EB"]   || lastValidPoints.current["EB"]   :
+      curId === "SE-L" ? smoothRef.current["SE-L"] || lastValidPoints.current["SE-L"] :
+      curId === "SE-R" ? smoothRef.current["SE-R"] || lastValidPoints.current["SE-R"] :
+      curId === "UE"   ? smoothRef.current["UE"]   || lastValidPoints.current["UE"]   :
+      curId === "UN"   ? smoothRef.current["UN"]   || lastValidPoints.current["UN"]   :
+      curId === "CH"   ? smoothRef.current["CH"]   || lastValidPoints.current["CH"]   :
+      curId === "CB"   ? smoothRef.current["CB"]   || lastValidPoints.current["CB"]   :
+      curId === "TH"   ? smoothRef.current["TH"]   || lastValidPoints.current["TH"]   :
+      null;
+
+    const phase = gamePhaseRef.current;
+    
+    // 게임 상태 머신 루프 처리
+    if (curPt) {
+      // 랜덤 오프셋 스폰: curPt 주변 "작은 원" 안에서만 랜덤 위치 생성 (IDLE 상태일 때만)
+      if (phase === "IDLE" || (phase === "MISS" && moleDeadlineMsRef.current && now > moleDeadlineMsRef.current)) {
+        // 스폰 시작: 작은 원 안에서만 랜덤
+        const MAX_OFFSET = Math.min(OFFSET_RANGE_PX, HAND_POSITION_RADIUS_PX * 0.6);
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * MAX_OFFSET;
+        const offsetX = Math.cos(angle) * radius;
+        const offsetY = Math.sin(angle) * radius;
+        const moleTargetX = Math.max(0, Math.min(c.width, curPt.x + offsetX));
+        const moleTargetY = Math.max(0, Math.min(c.height, curPt.y + offsetY));
+        moleTargetRef.current = { x: moleTargetX, y: moleTargetY };
+        moleSpawnTimeRef.current = now;
+        moleDeadlineMsRef.current = now + moleVisibleMsRef.current;
+        gamePhaseRef.current = "SPAWN";
+        setGamePhase("SPAWN"); // state 업데이트로 애니메이션 트리거
+        setMoleActive(true);
+        setMoleFrame(0); // 올라오는 프레임 시작
+      }
+      
+      // SPAWN → TAUNT → VULNERABLE 전환
+      if (phase === "SPAWN" && moleSpawnTimeRef.current) {
+        const elapsed = now - moleSpawnTimeRef.current;
+        if (elapsed >= SPAWN_ANIMATION_MS) {
+          gamePhaseRef.current = "TAUNT";
+          setMoleFrame(3); // 서 있는 프레임
+        }
+      }
+      
+      if (phase === "TAUNT" && moleSpawnTimeRef.current) {
+        const elapsed = now - moleSpawnTimeRef.current;
+        if (elapsed >= SPAWN_ANIMATION_MS + TAUNT_DURATION_MS) {
+          gamePhaseRef.current = "VULNERABLE";
+          setGamePhase("VULNERABLE"); // VULNERABLE 상태로 전환
+        }
+      }
+      
+      // VULNERABLE 구간에서만 히트 인정
+      // MISS 처리: 마감 시간 초과
+      if (phase === "VULNERABLE" && moleDeadlineMsRef.current) {
+        if (now > moleDeadlineMsRef.current) {
+          // MISS 처리
+          gamePhaseRef.current = "MISS";
+          setGamePhase("MISS"); // MISS 애니메이션 시작
+          missRef.current++;
+          comboRef.current = 0;
+          lastResultRef.current = "miss";
+          
+          // 난이도 증가
+          moleVisibleMsRef.current = Math.max(
+            MOLE_VISIBLE_MS_MIN,
+            moleVisibleMsRef.current - MOLE_VISIBLE_MS_DECREASE
+          );
+          
+          // MISS 애니메이션 후 숨김
+          setTimeout(() => {
+            setMoleActive(false);
+            gamePhaseRef.current = "IDLE";
+            setGamePhase("IDLE");
+            moleTargetRef.current = null;
+            moleDeadlineMsRef.current = null;
+            moleSpawnTimeRef.current = null;
+          }, 150); // MISS 애니메이션 시간
+          
+          // 사운드: whoosh
+          playBeep(300, 60);
+        }
+      }
+      
+      // 두더지 위치 업데이트: 탭핑 위치(curPt=도트)에 맞춤
+      if (moleTargetRef.current && curPt) {
+        setMolePos({
+          x: curPt.x / c.width,
+          y: curPt.y / c.height,
+        });
+      }
+    } else if (!curPt || phase === "IDLE") {
+      setMoleActive(false);
+      gamePhaseRef.current = "IDLE";
+      setGamePhase("IDLE");
+    }
+    
+    // FEVER 모드 체크
+    if (comboRef.current >= FEVER_COMBO_THRESHOLD && phase !== "FEVER") {
+      gamePhaseRef.current = "FEVER";
+      setGamePhase("FEVER");
+      feverStartMsRef.current = now;
+    }
+    
+    if (phase === "FEVER" && feverStartMsRef.current) {
+      if (now - feverStartMsRef.current > FEVER_DURATION_MS) {
+        gamePhaseRef.current = "VULNERABLE"; // 피버 종료 후 다시 VULNERABLE
+        setGamePhase("VULNERABLE");
+        feverStartMsRef.current = null;
+      }
+    }
+    
+    // BOSS 모드 체크 (CB 포인트일 때)
+    if (curId === BOSS_POINT && phase !== "BOSS" && phase !== "IDLE") {
+      gamePhaseRef.current = "BOSS";
+      setGamePhase("BOSS");
+      bossHpRef.current = BOSS_HP;
+    }
+  }
+
+  // -----------------------------
+  // 1) 가이드 상태 업데이트 (타이머, 단계 전환)
+  // -----------------------------
+  if (eng.running) {
+    if (eng.phase === "tapping") {
       const cur = SEQUENCE[eng.stepIdx];
       const remainMs = Math.max(0, eng.deadlineMs - now);
       const remainSec = Math.ceil(remainMs / 1000);
@@ -2033,17 +2408,17 @@ const drawOverlay = (t: number) => {
       { key: "TH",   label: "TH",   color: "rgba(255,200,0,0.95)" },
     ];
 
-    const drawPoint = (
-      key: StepId,
-      label: string,
-      color: string,
-      highlight: boolean
-    ) => {
-      const pt =
-        smoothRef.current[key] || lastValidPoints.current[key];
-      if (!pt) return;
+    const drawPoint = (
+      key: StepId,
+      label: string,
+      color: string,
+      highlight: boolean
+    ) => {
+      const pt =
+        smoothRef.current[key] || lastValidPoints.current[key];
+      if (!pt) return;
 
-      const baseR = 13;
+      const baseR = 7;
       const pulse = 3 * Math.sin(pulseRef.current * 0.01 + key.charCodeAt(0));
       const r = baseR + (highlight ? 6 : pulse);
 
@@ -2063,12 +2438,12 @@ const drawOverlay = (t: number) => {
       ctx.restore();
     };
 
-    allPoints.forEach(({ key, label, color }) => {
-      if (isGuidedMode && activePointId && key !== activePointId) return;
-      const isCurrentPoint =
-        !!activePointId && activePointId === key;
-      drawPoint(key, label, color, isCurrentPoint);
-    });
+    allPoints.forEach(({ key, label, color }) => {
+      if (isGuidedMode && activePointId && key !== activePointId) return;
+      const isCurrentPoint =
+        !!activePointId && activePointId === key;
+      drawPoint(key, label, color, isCurrentPoint);
+    });
 
     // paramsRef를 사용하여 실시간 인풋값(감정, 강도 등)을 가져옵니다 [cite: 285, 287]
     const currentParams = paramsRef.current;
@@ -2085,6 +2460,39 @@ const drawOverlay = (t: number) => {
       const roundText = `라운드: ${round}/${currentParams.rounds}  (${elapsed}s / ${currentParams.durationSec}s)`;
       drawPill(ctx, 10, 44, roundText, {
         font: "12px system-ui, sans-serif",
+      });
+    }
+    
+    // 🎮 게임 상태 UI (COMBO, MISS, FEVER)
+    const combo = comboRef.current;
+    const miss = missRef.current;
+    const phase = gamePhaseRef.current;
+    
+    if (combo > 0) {
+      drawPill(ctx, c.width - 120, 10, `COMBO: ${combo}`, {
+        font: "bold 16px system-ui, sans-serif",
+        box: phase === "FEVER" ? "rgba(255, 100, 0, 0.9)" : "rgba(0, 200, 255, 0.9)",
+      });
+    }
+    
+    if (miss > 0) {
+      drawPill(ctx, c.width - 120, 44, `MISS: ${miss}`, {
+        font: "14px system-ui, sans-serif",
+        box: "rgba(200, 50, 50, 0.9)",
+      });
+    }
+    
+    if (phase === "FEVER") {
+      drawPill(ctx, c.width / 2 - 60, 10, "🔥 FEVER!", {
+        font: "bold 20px system-ui, sans-serif",
+        box: "rgba(255, 150, 0, 0.95)",
+      });
+    }
+    
+    if (phase === "BOSS") {
+      drawPill(ctx, c.width / 2 - 80, 10, `👑 BOSS HP: ${bossHpRef.current}`, {
+        font: "bold 18px system-ui, sans-serif",
+        box: "rgba(200, 0, 200, 0.95)",
       });
     }
     // 현재 포인트 텍스트
@@ -2663,22 +3071,25 @@ style={{
             {/* 🕳 태핑 포인트에 올라오는 두더지 + 🫧 머리 위 비눗방울 */}
             {moleActive && molePos && (
               <>
-                {/* 1. 두더지 캐릭터 (필수!) */}
-                <img
-                  src={MOLE_FRAMES[moleFrame]}
-                  alt="moodtalk mole"
-                  style={{
-                    position: "absolute",
-                    left: `${molePos.x * 100}%`,
-                    top: `${molePos.y * 100}%`,
-                    transform: "translate(-50%, -80%)", // 두더지 위치 보정
-                    width: 128,
-                    height: 119,
-                    pointerEvents: "none",
-                    imageRendering: "pixelated",
-                    zIndex: 25,
-                  }}
-                />
+                {/* 1. 두더지 캐릭터 (필수!) + 스쿼시 애니메이션 */}
+                <img
+                  src={MOLE_FRAMES[moleFrame]}
+                  alt="moodtalk mole"
+                  style={{
+                    position: "absolute",
+                    left: `${molePos.x * 100}%`,
+                    top: `${molePos.y * 100}%`,
+                    transform: moleHitPhaseRef.current === "squash" 
+                      ? "translate(-50%, -50%) scale(0.85, 1.15)" 
+                      : "translate(-50%, -50%)",
+                    width: 128,
+                    height: 119,
+                    pointerEvents: "none",
+                    imageRendering: "pixelated",
+                    zIndex: 25,
+                    transition: moleHitPhaseRef.current === "squash" ? "transform 0.15s ease-out" : "none",
+                  }}
+                />
 
                 {/* 🫧 감정 단어 비눗방울 (안 터진 상태일 때만 보임) */}
                 {activeFocusWord && isBubbleVisible && (
@@ -2697,10 +3108,9 @@ style={{
                     }}
                     style={{
                       position: "absolute",
-                      left: `${molePos.x * 100}%`,
-                      top: `${molePos.y * 100}%`,
-                      // 두더지 머리 위쪽으로 비눗방울 배치 (-150% 위로 올림)
-                      transform: "translate(-50%, -50%)", 
+                    left: `${molePos.x * 100}%`,
+                    top: `${molePos.y * 100}%`,
+                    transform: "translate(-50%, -50%)",
                       width: "100px",
                       height: "100px",
                       borderRadius: "50%",
@@ -2858,13 +3268,17 @@ style={{
     <SUDSModal
       open={true}
       label="post"
-      onClose={() => setShowPostSUDS(false)}
-      onSubmit={async (score) => {
-        const intensityBefore = locationState?.intensity_before;
+      onClose={() => setShowPostSUDS(false)}
+      submitting={postSUDSSubmitting}
+      onSubmit={async (score) => {
+        if (postSUDSSubmitting) return;
+        setPostSUDSSubmitting(true);
+        try {
+        const intensityBefore = locationState?.intensity_before;
         if (locationState?.strictIntake) {
           const checkinPayload = {
-            session_id: "eft-session", // 나중에 실제 ID 변수로 교체 필요 (예: sessionId)
-            user_id: "user-id-placeholder", 
+            session_id: emotionSessionIdRef.current,
+            user_id: user?.uid ?? undefined,
             core_emotion: locationState.strictIntake.core_emotion,
             situation_context: locationState.strictIntake.situation_context,
             automatic_thought: locationState.strictIntake.automatic_thought,
@@ -2872,6 +3286,13 @@ style={{
             coping_attempt: locationState.strictIntake.behavioral_reaction,
             immediate_goal: locationState.strictIntake.immediate_goal,
             intensity_before: locationState.strictIntake.intensity,
+            session_type: "eftar",
+            ...(locationState.planStartResistance && {
+              plan_start_resistance: locationState.planStartResistance,
+            }),
+            ...(locationState.strictIntake.available_time != null && {
+              available_time: locationState.strictIntake.available_time,
+            }),
           };
 
           try {
@@ -2889,33 +3310,48 @@ style={{
 
         await fetch("/suds", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "manual",
-            score,
-            session_id: "eft-session", // 필요시 실제 session_id 사용
-          }),
-        });
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "manual",
+          score,
+            session_id: emotionSessionIdRef.current,
+            user_id: user?.uid,
+            session_type: "eftar",
+        }),
+      });
 
         // Notion 기록 (선택사항)
-        if (intensityBefore && locationState?.strictIntake) {
-          await fetch("/api/notion/create-emotion-page", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              user_email: "user@example.com", // 실제 이메일로 변경
-              strict_intake: locationState.strictIntake,
-              intensity_after: score,
-              solution: "EFT 탭핑"
-            }),
-          });
+        if (typeof intensityBefore === "number" && locationState?.strictIntake) {
+      await fetch("/api/notion/create-emotion-page", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_email: "user@example.com", // 실제 이메일로 변경
+            strict_intake: locationState.strictIntake,
+            intensity_after: score,
+            plan_start_resistance: locationState.planStartResistance,
+					  session_type: "eftar",
+            solution: "EFT 탭핑"
+          }),
+        });
         }
 
-        setShowPostSUDS(false);
-        navigate("/dashboard"); // 완료 후 대시보드로 이동
-      }}
-    />
-  )}
+        setShowPostSUDS(false);
+        navigate("/session/advice", {
+          state: {
+            sessionType: "eftar",
+            strictIntake: locationState?.strictIntake,
+            intensityBefore: typeof intensityBefore === "number" ? intensityBefore : locationState?.strictIntake?.intensity,
+            intensityAfter: score,
+          },
+        });
+        } catch (err) {
+          console.error("Post-SUDS 저장 중 오류:", err);
+          setPostSUDSSubmitting(false); // 실패 시 재시도 가능
+        }
+      }}
+    />
+  )}
 
     </div>
   );

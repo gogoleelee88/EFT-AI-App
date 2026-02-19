@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Firebase Auth 403 테스트</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 0;
+    }
+    button:hover {
+      background: #357abd;
+    }
+    .log {
+      background: #f9f9f9;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 20px;
+      font-family: monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success { color: green; }
+    .error { color: red; }
+    .info { color: blue; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔥 Firebase Auth 403 오류 테스트</h1>
+    <p>이 페이지는 Firebase Auth 설정을 테스트합니다.</p>
+    
+    <button onclick="testFirebaseConfig()">1. Firebase 설정 확인</button>
+    <button onclick="testGoogleLogin()">2. Google 로그인 테스트</button>
+    <button onclick="clearStorage()">3. 로컬 스토리지 초기화</button>
+    
+    <div class="log" id="log"></div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDs6clGYhwNP9BP5FKWwbC0oNGmKL9TqxQ",
+      authDomain: "totemic-cursor-447402-e7.firebaseapp.com",
+      projectId: "totemic-cursor-447402-e7",
+      storageBucket: "totemic-cursor-447402-e7.firebasestorage.app",
+      messagingSenderId: "205804764856",
+      appId: "1:205804764856:web:95ff79f27762c923c3be4d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    window.testFirebaseConfig = function() {
+      const log = document.getElementById('log');
+      log.innerHTML = '';
+      
+      const addLog = (msg, type = 'info') => {
+        const span = document.createElement('div');
+        span.className = type;
+        span.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        log.appendChild(span);
+      };
+
+      addLog('📋 Firebase 설정 테스트 시작...', 'info');
+      addLog(`✅ API Key: ${firebaseConfig.apiKey}`, 'success');
+      addLog(`✅ Auth Domain: ${firebaseConfig.authDomain}`, 'success');
+      addLog(`✅ Project ID: ${firebaseConfig.projectId}`, 'success');
+      addLog(`✅ Current URL: ${window.location.href}`, 'info');
+      addLog(`\n📊 필수 확인사항:`, 'info');
+      addLog(`1. Firebase Console에서 "${window.location.hostname}" 도메인이 승인되어 있어야 합니다.`, 'info');
+      addLog(`2. Google Cloud Console에서 OAuth Client ID에 이 도메인이 추가되어 있어야 합니다.`, 'info');
+      addLog(`\n🔗 Firebase Console 링크:`, 'info');
+      addLog(`https://console.firebase.google.com/project/totemic-cursor-447402-e7/authentication/settings`, 'info');
+    };
+
+    window.testGoogleLogin = async function() {
+      const log = document.getElementById('log');
+      log.innerHTML = '';
+      
+      const addLog = (msg, type = 'info') => {
+        const span = document.createElement('div');
+        span.className = type;
+        span.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        log.appendChild(span);
+      };
+
+      try {
+        addLog('🚀 Google 로그인 시도 중...', 'info');
+        
+        const provider = new GoogleAuthProvider();
+        provider.addScope('profile');
+        provider.addScope('email');
+        
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        
+        addLog('✅ 로그인 성공!', 'success');
+        addLog(`👤 사용자: ${user.displayName} (${user.email})`, 'success');
+        addLog(`🆔 UID: ${user.uid}`, 'info');
+        
+        const idToken = await user.getIdToken();
+        addLog(`🎫 ID Token 획득 성공 (길이: ${idToken.length})`, 'success');
+        
+        addLog('\n✅ 403 오류가 발생하지 않았습니다!', 'success');
+        
+      } catch (error) {
+        addLog(`❌ 오류 발생: ${error.message}`, 'error');
+        addLog(`오류 코드: ${error.code}`, 'error');
+        
+        if (error.code === 'auth/popup-blocked') {
+          addLog('\n💡 해결: 브라우저 팝업 차단을 해제하세요.', 'info');
+        } else if (error.code === 'auth/unauthorized-domain') {
+          addLog('\n💡 해결: Firebase Console에서 이 도메인을 승인하세요.', 'info');
+          addLog(`현재 도메인: ${window.location.hostname}`, 'info');
+        }
+      }
+    };
+
+    window.clearStorage = function() {
+      const log = document.getElementById('log');
+      log.innerHTML = '';
+      
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      const addLog = (msg, type = 'info') => {
+        const span = document.createElement('div');
+        span.className = type;
+        span.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        log.appendChild(span);
+      };
+      
+      addLog('🗑️ 로컬 스토리지 초기화 완료', 'success');
+      addLog('🗑️ 세션 스토리지 초기화 완료', 'success');
+      addLog('\n💡 F5를 눌러 페이지를 새로고침하세요.', 'info');
+    };
+  </script>
+</body>
+</html>

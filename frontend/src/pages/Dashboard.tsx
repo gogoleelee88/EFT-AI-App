@@ -1,611 +1,468 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '../components/ui/Button';
-import Card from '../components/ui/Card';
-import PWAInstallPrompt from '../components/feature/PWAInstallPrompt';
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Card from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import PWAInstallPrompt from "../components/feature/PWAInstallPrompt";
+import { useAuth } from "../hooks/useAuth";
 
-// 레벨별 색상 및 이모티콘 정의 (설계서 기반)
-const LEVEL_STYLES = {
-  1: { color: '#CD7F32', emoji: '🌱', title: '새싹 탐험가' },
-  2: { color: '#CD7F32', emoji: '🌿', title: '마음 탐험가' },
-  3: { color: '#C0C0C0', emoji: '🌳', title: '심리 마스터' },
-  4: { color: '#FFD700', emoji: '🏆', title: '통찰 전문가' },
-  5: { color: '#E5E4E2', emoji: '💎', title: '마음 현자' }
+type EmotionRecordPreview = {
+  id: number;
+  created_at: string;
+  core_emotion: string;
+  intensity: number;
+  situation_context: string;
 };
 
-// 통찰 데이터 (설계서의 32개 공통 통찰 예시)
-const COMMON_INSIGHTS = [
-  { id: 1, title: '미루기 습관 완전 끝내는 법', progress: 100, category: 'productivity' },
-  { id: 2, title: '나의 기본 성격 패턴 분석', progress: 100, category: 'personality' },
-  { id: 3, title: '스트레스를 힘으로 바꾸는 법', progress: 100, category: 'stress' },
-  { id: 4, title: '연애 패턴 분석', progress: 82, category: 'relationship' },
-  { id: 5, title: '돈 걱정 해결법', progress: 15, category: 'finance' },
-  { id: 6, title: '갈등→기회 대화법', progress: 8, category: 'communication' },
-];
+type EmotionStats = {
+  total_records: number;
+  emotion_distribution: Record<string, number>;
+  average_intensity: number;
+};
 
-// 개인 맞춤 통찰 데이터 (설계서 기반)
-const PERSONAL_INSIGHTS = [
-  { id: 'p1', title: '권위자 관계 치유법', confidence: 89, category: 'personal' },
-  { id: 'p2', title: '완벽주의 극복 나만의 방법', confidence: 76, category: 'personal' },
-];
+type EmotionWeeklyReport = {
+  template_type: string;
+  template_title: string;
+  week_start: string;
+  week_end: string;
+  total_records: number;
+  confidence: number;
+  source: string;
+  model: string;
+  generated_at: string;
+  summary_text: string;
+  recommendations: string[];
+  fields: Record<string, any>;
+};
 
-interface EFTUser {
-  uid: string;
-  email: string | null;
-  name: string | null;
-  photoURL: string | null;
-  level: number;
-  xp: number;
-  nextLevelXp: number;
-  gems: number;
-  badges: number;
-  streak: number;
-  createdAt: Date;
-  lastLogin: Date;
-  privacySettings: {
-    dataCollection: boolean;
-    aiLearning: boolean;
-  };
-  completedQuests: string[];
-  unlockedInsights: string[];
-}
-
-interface DashboardProps {
-  user?: EFTUser | null;
-}
-
-const Dashboard: React.FC<DashboardProps> = ({ user }) => {
+const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  
-  // 사용자 데이터가 없으면 기본값 사용 (로딩 중이거나 오류 상황)
-  const currentUser = user || {
-    uid: 'demo',
-    email: null,
-    name: '마음탐험가',
-    photoURL: null,
-    level: 3,
-    xp: 2847,
-    nextLevelXp: 4000,
-    gems: 127,
-    badges: 7,
-    streak: 5,
-    createdAt: new Date(),
-    lastLogin: new Date(),
-    privacySettings: {
-      dataCollection: true,
-      aiLearning: true
-    },
-    completedQuests: [],
-    unlockedInsights: []
-  };
-  const [newInsightAlert, setNewInsightAlert] = useState(true);
-  const [showMenu, setShowMenu] = useState(false);
-  const [dailyQuests, setDailyQuests] = useState({
-    emotionCheck: true,
-    aiChat: true,
-    affirmationEFT: false
-  });
+  const { user, loading: authLoading } = useAuth();
 
-  // 레벨 진행률 계산
-  const levelProgress = (currentUser.xp / currentUser.nextLevelXp) * 100;
-  const currentLevelStyle = LEVEL_STYLES[currentUser.level as keyof typeof LEVEL_STYLES] || LEVEL_STYLES[1];
+  const [records, setRecords] = useState<EmotionRecordPreview[]>([]);
+  const [stats, setStats] = useState<EmotionStats | null>(null);
+  const [adaptiveReport, setAdaptiveReport] = useState<any | null>(null);
+  const [weeklyReport, setWeeklyReport] = useState<EmotionWeeklyReport | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 완료된 일일 퀘스트 수 계산
-  const completedQuests = Object.values(dailyQuests).filter(Boolean).length;
-  const totalQuests = Object.keys(dailyQuests).length;
-
-  // 완료된 통찰 수 계산
-  const completedInsights = COMMON_INSIGHTS.filter(insight => insight.progress === 100).length;
-  const inProgressInsights = COMMON_INSIGHTS.filter(insight => insight.progress > 0 && insight.progress < 100);
-
-  // 메뉴 토글
-  const toggleMenu = () => {
-    setShowMenu(!showMenu);
-  };
-
-  // 통찰 해제 알림 닫기
-  const handleCloseInsightAlert = () => {
-    setNewInsightAlert(false);
-  };
-
-  // 각 액션 버튼 핸들러들
-  const handleStartAIChat = () => {
-    console.log('AI 대화 시작');
-    setShowMenu(false);
-    navigate('/ai-chat');
-  };
-
-  const handleEmotionCheck = () => {
-    console.log('감정 체크인 시작');
-    setShowMenu(false);
-  };
-
-  const handleAffirmationEFT = () => {
-    console.log('확언 EFT 시작');
-    setShowMenu(false);
-  };
-
-  const handle3DGuide = () => {
-    console.log('3D/AR EFT 가이드 시작');
-    setShowMenu(false);
-    navigate('/ar-holistic'); // EFT AR 홀리스틱 가이드로 이동 (2025-10-01 핫픽스)
-  };
-
-  const handleViewInsight = (insightId: string | number) => {
-    console.log('통찰 보기:', insightId);
-    setShowMenu(false);
-  };
-
-  const handleStartStressSession = () => {
-    console.log('스트레스 완화 세션 시작');
-  };
-
-  const handleMenuItemClick = (item: string) => {
-    console.log(`메뉴 클릭: ${item}`);
-    setShowMenu(false);
-    
-    // 메뉴 항목별 네비게이션 처리
-    switch (item) {
-      case 'AI 상담':
-        navigate('/ai-chat');
-        break;
-      case 'EFT 세션':
-        navigate('/ar-holistic'); // EFT AR 홀리스틱 가이드로 이동
-        break;
-      case '감정 구조화':
-        navigate('/eft-strict'); // STRICT6 감정 입력
-        break;
-      case '감정 체크인':
-        handleEmotionCheck();
-        break;
-      case '나의 통찰':
-        // 통찰 페이지로 이동 (추후 구현)
-        console.log('통찰 페이지로 이동');
-        break;
-      case '내 프로필':
-        // 프로필 페이지로 이동 (추후 구현)
-        console.log('프로필 페이지로 이동');
-        break;
-      default:
-        console.log(`${item} 메뉴 - 추후 구현 예정`);
-    }
-  };
-
-  // 메뉴 외부 클릭 시 닫기
   useEffect(() => {
-    const handleClickOutside = () => {
-      if (showMenu) {
-        setShowMenu(false);
-      }
-    };
-
-    if (showMenu) {
-      document.addEventListener('click', handleClickOutside);
+    if (authLoading) return;
+    if (!user?.uid) {
+      setRecords([]);
+      setStats(null);
+      setAdaptiveReport(null);
+      setWeeklyReport(null);
+      setLoadingData(false);
+      return;
     }
+
+    let cancelled = false;
+    setLoadingData(true);
+    setLoadError(null);
+
+    (async () => {
+      try {
+        const [recentRes, statsRes, adaptiveReportRes, weeklyReportRes] = await Promise.all([
+          fetch("/api/emotion/recent?limit=5", { credentials: "include" }),
+          fetch("/api/emotion/stats", { credentials: "include" }),
+          fetch("/api/emotion/adaptive-report", { credentials: "include" }),
+          fetch("/api/emotion/weekly-report", { credentials: "include" }),
+        ]);
+
+        if (!recentRes.ok || !statsRes.ok || !adaptiveReportRes.ok) {
+          throw new Error(
+            `dashboard load failed: ${recentRes.status}/${statsRes.status}/${adaptiveReportRes.status}`
+          );
+        }
+
+        const [recentData, statsData] = await Promise.all([
+          recentRes.json() as Promise<EmotionRecordPreview[]>,
+          statsRes.json() as Promise<EmotionStats>,
+        ]);
+        const adaptiveData = (await adaptiveReportRes.json()) as any;
+        let weeklyData: EmotionWeeklyReport | null = null;
+        if (weeklyReportRes.ok) {
+          try {
+            weeklyData = (await weeklyReportRes.json()) as EmotionWeeklyReport;
+          } catch (err) {
+            console.warn("weekly report parse failed:", err);
+          }
+        } else {
+          console.warn(`weekly report not available: ${weeklyReportRes.status}`);
+        }
+
+        if (!cancelled) {
+          setRecords(Array.isArray(recentData) ? recentData : []);
+          setStats(statsData ?? null);
+          setAdaptiveReport(adaptiveData ?? null);
+          setWeeklyReport(weeklyData ?? null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("dashboard data load failed:", error);
+          setLoadError("데이터를 불러오지 못했습니다.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingData(false);
+        }
+      }
+    })();
 
     return () => {
-      document.removeEventListener('click', handleClickOutside);
+      cancelled = true;
     };
-  }, [showMenu]);
+  }, [authLoading, user?.uid]);
+
+  const todayEmotionChecked = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return records.some((r) => {
+      try {
+        return new Date(r.created_at).toISOString().slice(0, 10) === today;
+      } catch {
+        return false;
+      }
+    });
+  }, [records]);
+
+  const formatDate = (raw: string) => {
+    try {
+      return new Date(raw).toLocaleString("ko-KR", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return raw;
+    }
+  };
+
+  const formatNumber = (value: number) => (Number.isFinite(value) ? value.toFixed(1) : "-");
+
+  const formatPercent = (value: number) => `${formatNumber(value)}%`;
+
+  const formatWeeklyRange = (start: string, end: string) => {
+    try {
+      const startAt = new Date(start);
+      const endAt = new Date(end);
+      const dateFormatter = new Intl.DateTimeFormat("ko-KR", {
+        month: "2-digit",
+        day: "2-digit",
+      });
+      return `${dateFormatter.format(startAt)}~${dateFormatter.format(endAt)}`;
+    } catch {
+      return `${start.slice(0, 10)} ~ ${end.slice(0, 10)}`;
+    }
+  };
+
+  const renderAdaptiveReport = () => {
+    if (!adaptiveReport) return null;
+
+    const fields: Record<string, any> = adaptiveReport.fields || {};
+    const cardTone =
+      adaptiveReport.template_type === "core_pattern"
+        ? "from-sky-50 to-blue-50 text-sky-800 border-sky-200"
+        : adaptiveReport.template_type === "intervention_effect"
+          ? "from-violet-50 to-fuchsia-50 text-violet-800 border-violet-200"
+          : adaptiveReport.template_type === "prediction_recovery"
+            ? "from-emerald-50 to-teal-50 text-emerald-800 border-emerald-200"
+            : "from-gray-50 to-gray-100 text-gray-700 border-gray-200";
+
+    const commonRows = Object.entries(fields).slice(0, 8);
+    return (
+      <Card>
+        <div className={`rounded-lg bg-gradient-to-br ${cardTone} -m-1 p-4 space-y-2 border`}>
+          <div className="font-bold">{adaptiveReport.template_title || "감정 리포트"}</div>
+          <div className="text-sm opacity-90">{adaptiveReport.summary_text || adaptiveReport.summary || ""}</div>
+          <div className="text-xs opacity-80">
+            총 {adaptiveReport.total_records}건 / 신뢰도 {(adaptiveReport.confidence || 0).toFixed(2)}
+          </div>
+        </div>
+        <div className="mt-3 space-y-2">
+          {adaptiveReport.template_type === "core_pattern" && (
+            <>
+              <div className="text-sm">핵심 감정: {fields.core_emotion_top || "-"}</div>
+              <div className="text-sm">상황: {fields.situation_context_top || "-"}</div>
+              <div className="text-sm">자동사고: {fields.automatic_thought_top || "-"}</div>
+              <div className="text-sm">신체 반응: {fields.physical_sensation_top || "-"}</div>
+              <div className="text-sm">평균 강도: {formatNumber(fields.avg_intensity)}</div>
+              <div className="text-sm">강도 8 이상 비율: {formatNumber(fields.high_ratio)}%</div>
+              <div className="text-sm">흐름: {fields.loop_summary || "-"}</div>
+            </>
+          )}
+          {adaptiveReport.template_type === "intervention_effect" && (
+            <>
+              <div className="text-sm">전체 평균 감소폭: {formatNumber(fields.avg_drop)}</div>
+              <div className="text-sm">EFT: {formatNumber(fields.eft_drop)} / 회복률 {formatNumber(fields.eft_success_rate)}%</div>
+              <div className="text-sm">명상: {formatNumber(fields.meditation_drop)} / 회복률 {formatNumber(fields.meditation_success_rate)}%</div>
+              <div className="text-sm">물 한 잔: {formatNumber(fields.water_drop)} / 회복률 {formatNumber(fields.water_success_rate)}%</div>
+              <div className="text-sm">최적 개입: {fields.best_method || "-"}</div>
+              <div className="text-sm">평균 대기시간: {formatNumber(fields.avg_delay)}분</div>
+              <div className="text-sm">회복 속도 차이: {formatNumber(fields.speed_effect)}%</div>
+            </>
+          )}
+          {adaptiveReport.template_type === "prediction_recovery" && (
+            <>
+              <div className="text-sm">예측 정확도: {formatNumber(fields.model_accuracy)}%</div>
+              <div className="text-sm">기대 회복시간: {formatNumber(fields.expected_recovery_time)}분</div>
+              <div className="text-sm">패턴1: {fields.situation_context_1 || "-"} / {fields.emotion_1 || "-"} ({formatNumber(fields.prob_1)}%)</div>
+              <div className="text-sm">추천개입: {fields.recommended_intervention_1 || "-"}</div>
+              <div className="text-sm">패턴2: {fields.situation_context_2 || "-"} / {fields.emotion_2 || "-"} ({formatNumber(fields.prob_2)}%)</div>
+              <div className="text-sm">추천개입: {fields.recommended_intervention_2 || "-"}</div>
+              <div className="text-sm">핵심 패턴: {fields.trigger_pattern || "-"}</div>
+              <div className="text-sm">예상 제안: {fields.expected_recovery_rate || 0}%</div>
+            </>
+          )}
+          {adaptiveReport.template_type === "warming_up" &&
+            commonRows.map(([key, value]) => (
+              <div key={key} className="text-sm">
+                {key}: {typeof value === "number" ? formatNumber(value) : String(value ?? "-")}
+              </div>
+            ))}
+        </div>
+      </Card>
+    );
+  };
+
+  const renderWeeklyReport = () => {
+    if (!weeklyReport) return null;
+
+    const fields: Record<string, any> = weeklyReport.fields || {};
+    const cardTone =
+      weeklyReport.template_type === "weekly_intervention"
+        ? "from-sky-50 to-blue-100 text-sky-800 border-sky-200"
+        : weeklyReport.template_type === "weekly_no_intervention"
+          ? "from-amber-50 to-orange-100 text-amber-800 border-amber-200"
+          : weeklyReport.template_type === "weekly_minimal"
+            ? "from-gray-50 to-slate-100 text-gray-700 border-gray-200"
+            : "from-emerald-50 to-teal-100 text-emerald-800 border-emerald-200";
+
+    return (
+      <Card>
+        <div className={`rounded-lg bg-gradient-to-br ${cardTone} -m-1 p-4 space-y-2 border`}>
+          <div className="font-bold">주간 리포트</div>
+          <div className="font-semibold">{weeklyReport.template_title || "주간 감정 리포트"}</div>
+          <div className="text-xs opacity-80">
+            기간: {formatWeeklyRange(weeklyReport.week_start, weeklyReport.week_end)}
+          </div>
+          <div className="text-sm opacity-90">{weeklyReport.summary_text || "-"}</div>
+          <div className="text-xs opacity-80">
+            총 {weeklyReport.total_records}건 / 신뢰도 {formatPercent(weeklyReport.confidence * 100)}
+          </div>
+        </div>
+        <div className="mt-3 space-y-2 text-sm">
+          <div>핵심 감정: {fields.dominant_emotion || "-"}</div>
+          <div>핵심 감정 비율: {formatPercent(fields.dominant_emotion_ratio || 0)}</div>
+          <div>평균 강도: {formatNumber(fields.average_intensity || 0)}</div>
+          <div>주요 집중 시간대: {fields.hour_block_top_high_intensity || fields.time_window_fatigue || "-"}</div>
+          <div>재발 방해 패턴: {fields.trigger_recurrence_level || "-"}</div>
+          <div>최적 개입: {fields.best_intervention_method || "-"}</div>
+          <div>회복 개입 효과: {formatPercent(fields.best_method_success_rate || 0)} / 감소 {formatNumber(fields.best_method_avg_drop || 0)}</div>
+          {weeklyReport.recommendations?.length ? (
+            <div className="pt-1">
+              <div className="text-xs font-semibold">추천 행동</div>
+              <ul className="list-disc pl-4 text-sm space-y-1">
+                {weeklyReport.recommendations.slice(0, 3).map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </Card>
+    );
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-cyan-50">
+        <div className="max-w-md mx-auto px-4 py-10">
+          <Card>
+            <div className="py-8 text-center text-gray-500">로그인 상태를 확인 중입니다.</div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-cyan-50">
+        <div className="max-w-md mx-auto px-4 py-10">
+          <Card>
+            <div className="space-y-4 text-center py-6">
+              <div className="text-gray-700 font-semibold">로그인이 필요합니다.</div>
+              <Button onClick={() => navigate("/login")} fullWidth>
+                로그인 하기
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen lg:min-h-0 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 lg:bg-transparent">
-      {/* RPG 헤더 (설계서 § 3. 메인 대시보드) */}
-      <div className="bg-white shadow-lg border-b-2 border-indigo-100 sticky top-0 z-40">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-cyan-50">
+      <div className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-20">
         <div className="max-w-md mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <span className="text-2xl">{currentLevelStyle.emoji}</span>
-              <div>
-                <div className="text-sm text-gray-600">Lv.{currentUser.level}</div>
-                <div className="font-bold text-gray-800">{currentUser.name}</div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className="text-sm text-amber-600">💎 {currentUser.gems}</div>
-              </div>
-              {/* 햄버거 메뉴 (설계서 § 10. 네비게이션 설계) */}
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleMenu();
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
-              >
-                <div className="w-6 h-6 flex flex-col justify-center items-center space-y-1">
-                  <div className="w-5 h-0.5 bg-gray-600"></div>
-                  <div className="w-5 h-0.5 bg-gray-600"></div>
-                  <div className="w-5 h-0.5 bg-gray-600"></div>
-                </div>
-                {newInsightAlert && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></div>
-                )}
-              </button>
-            </div>
-          </div>
+          <div className="text-sm text-gray-500">최근 접속</div>
+          <div className="font-semibold text-gray-800">{user.name || user.email || user.uid}</div>
+          <div className="text-xs text-gray-500">{user.uid}</div>
         </div>
       </div>
 
-      {/* 슬라이드 메뉴 (설계서 § 10. 네비게이션 설계 - ☰ 메뉴 구조 상세) */}
-      {showMenu && (
-        <>
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-40"
-            onClick={() => setShowMenu(false)}
-          ></div>
-          
-          <div 
-            className="fixed top-0 right-0 h-full w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-800">메뉴</h2>
-                <button 
-                  onClick={() => setShowMenu(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <span className="text-xl text-gray-500">✕</span>
-                </button>
-              </div>
-
-              {/* 메뉴 항목들 (설계서 정확한 구조) */}
-              <div className="space-y-4">
-                <button 
-                  onClick={() => handleMenuItemClick('AI 상담')}
-                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-blue-50 rounded-lg transition-colors"
-                >
-                  <span className="text-xl">💬</span>
-                  <span className="font-medium">AI 상담</span>
-                  <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">핵심</span>
-                </button>
-
-                <button 
-                  onClick={() => handleMenuItemClick('감정 체크인')}
-                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-red-50 rounded-lg transition-colors"
-                >
-                  <span className="text-xl">❤️</span>
-                  <span className="font-medium">감정 체크인</span>
-                </button>
-
-                <button 
-                  onClick={() => handleMenuItemClick('EFT 세션')}
-                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-amber-50 rounded-lg transition-colors"
-                >
-                  <span className="text-xl">✨</span>
-                  <span className="font-medium">EFT 세션</span>
-                </button>
-
-                <button 
-                  onClick={() => handleMenuItemClick('감정 구조화')}
-                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-green-50 rounded-lg transition-colors"
-                >
-                  <span className="text-xl">📝</span>
-                  <span className="font-medium">감정 구조화</span>
-                  <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">신규</span>
-                </button>
-
-                <button 
-                  onClick={() => handleMenuItemClick('나의 통찰')}
-                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-purple-50 rounded-lg transition-colors"
-                >
-                  <span className="text-xl">🔮</span>
-                  <span className="font-medium">나의 통찰</span>
-                  {newInsightAlert && (
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  )}
-                </button>
-
-                <button 
-                  onClick={() => handleMenuItemClick('내 프로필')}
-                  className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  <span className="text-xl">👤</span>
-                  <span className="font-medium">내 프로필</span>
-                </button>
-
-                {/* 설정 섹션 (설계서 § 10. 네비게이션 - 설정 하위메뉴) */}
-                <div className="border-t pt-4 mt-6">
-                  <div className="text-sm font-medium text-gray-500 mb-3">설정</div>
-                  
-                  <button 
-                    onClick={() => handleMenuItemClick('알림 설정')}
-                    className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <span className="text-lg">🔔</span>
-                    <span className="text-sm">알림 설정</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleMenuItemClick('테마 설정')}
-                    className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <span className="text-lg">🎨</span>
-                    <span className="text-sm">테마 설정</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleMenuItemClick('개인정보')}
-                    className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <span className="text-lg">🔒</span>
-                    <span className="text-sm">개인정보</span>
-                  </button>
-
-                  <button 
-                    onClick={() => handleMenuItemClick('고객지원')}
-                    className="w-full flex items-center space-x-3 p-3 text-left hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <span className="text-lg">📞</span>
-                    <span className="text-sm">고객지원</span>
-                  </button>
-                </div>
-
-                {/* 로그아웃 */}
-                <div className="border-t pt-4 mt-6">
-                  <button 
-                    onClick={() => handleMenuItemClick('로그아웃')}
-                    className="w-full flex items-center space-x-3 p-3 text-left hover:bg-red-50 rounded-lg transition-colors text-red-600"
-                  >
-                    <span className="text-lg">🚪</span>
-                    <span className="text-sm font-medium">로그아웃</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* 메인 콘텐츠 (설계서 § 3. 메인 대시보드 최종 확정 레이아웃) */}
-      <div className="max-w-md mx-auto px-4 py-4 space-y-4 pb-6">
-        
-        {/* PWA 설치 프롬프트 */}
+        <div className="max-w-md mx-auto px-4 py-4 space-y-4 pb-10">
         <PWAInstallPrompt />
-        
-        {/* 일일 퀘스트 현황 (설계서 정확한 구조) */}
-        <Card className="bg-gradient-to-r from-violet-500 to-purple-600 text-white border-none">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-bold">⚡ 오늘의 일일 퀘스트 ({completedQuests}/{totalQuests} 완료) +50XP</div>
-            </div>
-          </div>
-          <div className="flex space-x-4 mt-2 text-sm">
-            <span className={dailyQuests.emotionCheck ? "text-green-300" : "text-white opacity-70"}>
-              {dailyQuests.emotionCheck ? "☑️" : "⬜"} 감정 체크인
-            </span>
-            <span className={dailyQuests.aiChat ? "text-green-300" : "text-white opacity-70"}>
-              {dailyQuests.aiChat ? "☑️" : "⬜"} AI 대화
-            </span>
-            <span className={dailyQuests.affirmationEFT ? "text-green-300" : "text-white opacity-70"}>
-              {dailyQuests.affirmationEFT ? "☑️" : "⬜"} 확언 EFT
-            </span>
-          </div>
-        </Card>
 
-        {/* 메인 퀘스트 진행도 (설계서 통찰 해제 퀘스트) */}
         <Card>
           <div className="space-y-3">
-            <div className="font-bold text-gray-800">🎯 메인 퀘스트: 진행 중</div>
-            <div>
-              <div className="text-lg font-medium">🔮 "연애 패턴 분석" 해제 중</div>
-              <div className="mt-2">
-                <div className="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>진행률</span>
-                  <span>82%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: '82%' }}
-                  ></div>
-                </div>
-                <div className="text-sm text-gray-600 mt-1">
-                  (AI 대화 2회 더!)
-                </div>
-              </div>
-              <div className="text-sm text-gray-600 mt-2">
-                💡 완료 시: +200XP + "연애전문가" 뱃지
-              </div>
+            <div className="font-bold text-gray-800">빠른 입력</div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Button
+                variant="outline"
+                className="h-16 text-xs"
+                onClick={() => navigate("/plan/day")}
+              >
+                플랜 입력
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 text-xs"
+                onClick={() => navigate("/checkin")}
+              >
+                체크인
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 text-xs"
+                onClick={() => navigate("/condition")}
+              >
+                Condition Hub
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 text-xs flex flex-col items-center justify-center gap-1"
+                onClick={() => navigate("/menstrual")}
+              >
+                <span className="text-base leading-none" aria-hidden="true">♀</span>
+                <span>월경 기록</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 text-xs"
+                onClick={() => navigate("/emotion-sessions")}
+                >
+                감정 기록
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 text-xs"
+                onClick={() => navigate("/work-guide-demo")}
+              >
+                작업 가이드
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 text-xs"
+                onClick={() => navigate("/eft-strict")}
+              >
+                EFT STRICT
+              </Button>
             </div>
           </div>
         </Card>
 
-        {/* 새로운 통찰 해제 알림 (설계서 통찰 해제 알림) */}
-        {newInsightAlert && (
-          <Card className="bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-none">
+        <Card>
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="font-bold">🎉 새로운 통찰 해제! 🔓</div>
-                <div className="text-sm opacity-90">💎 "미루기 습관 완전 끝내는 법" 생성됨!</div>
-              </div>
-              <div className="flex space-x-2">
-                <Button 
-                  size="sm" 
-                  className="bg-white text-amber-600 hover:bg-gray-100"
-                  onClick={() => handleViewInsight('procrastination')}
-                >
-                  지금 확인
-                </Button>
-                <button 
-                  onClick={handleCloseInsightAlert}
-                  className="text-white hover:text-gray-200"
-                >
-                  ✕
-                </button>
-              </div>
+              <div className="font-bold text-gray-800">감정 기록</div>
+              <button
+                type="button"
+                onClick={() => navigate("/emotion-sessions")}
+                className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+              >
+                전체 보기
+              </button>
             </div>
-          </Card>
-        )}
 
-        {/* 메인 액션 - AI 대화 (설계서 메인 액션) */}
-        <Card className="border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-purple-50">
-          <div className="text-center space-y-4">
-            <div className="text-lg font-bold text-gray-800">💬 마음 속 이야기를 들려주세요</div>
-            <Button 
-              variant="primary" 
-              size="lg" 
-              fullWidth
-              onClick={handleStartAIChat}
-              className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-4"
-            >
-              AI 동반자와 대화 시작
-            </Button>
-          </div>
-        </Card>
-
-        {/* 빠른 시작 (설계서 3가지 루트) */}
-        <Card>
-          <div className="space-y-3">
-            <div className="font-bold text-gray-800">🎯 빠른 시작</div>
-            <div className="grid grid-cols-3 gap-3">
-              <Button 
-                variant="outline" 
-                className="h-16 flex flex-col items-center justify-center space-y-1 border-red-200 text-red-600 hover:bg-red-50"
-                onClick={handleEmotionCheck}
-              >
-                <span className="text-lg">❤️</span>
-                <span className="text-xs">감정체크</span>
-              </Button>
-              <Button 
-                variant="outline" 
-                className="h-16 flex flex-col items-center justify-center space-y-1 border-amber-200 text-amber-600 hover:bg-amber-50"
-                onClick={handleAffirmationEFT}
-              >
-                <span className="text-lg">✨</span>
-                <span className="text-xs">확언EFT</span>
-              </Button>
-              <Button 
-                variant="outline" 
-                className="h-16 flex flex-col items-center justify-center space-y-1 border-blue-200 text-blue-600 hover:bg-blue-50"
-                onClick={handle3DGuide}
-              >
-                <span className="text-lg">🎧</span>
-                <span className="text-xs">3D가이드</span>
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        {/* 통찰 해제 현황 (설계서 32개 통찰 시스템) */}
-        <Card>
-          <div className="space-y-4">
-            <div className="font-bold text-gray-800">🔮 통찰 해제 현황 (혁신 기능!)</div>
-            
-            {/* 해제완료 통찰 */}
-            <div>
-              <div className="text-sm font-medium text-gray-600 mb-2">해제완료 ({completedInsights}/32)</div>
-              <div className="grid grid-cols-1 gap-2">
-                {COMMON_INSIGHTS.filter(insight => insight.progress === 100).slice(0, 3).map(insight => (
-                  <div 
-                    key={insight.id}
-                    className="flex items-center space-x-2 p-2 bg-green-50 rounded-lg cursor-pointer hover:bg-green-100 transition-colors"
-                    onClick={() => handleViewInsight(insight.id)}
+            {loadingData ? (
+              <div className="text-sm text-gray-500">불러오는 중...</div>
+            ) : loadError ? (
+              <div className="text-sm text-red-600">{loadError}</div>
+            ) : records.length === 0 ? (
+              <div className="text-sm text-gray-500">아직 기록이 없습니다.</div>
+            ) : (
+              <div className="space-y-2">
+                {records.map((record) => (
+                  <button
+                    key={record.id}
+                    type="button"
+                    onClick={() => navigate(`/emotion-sessions/${record.id}`)}
+                    className="w-full text-left p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
                   >
-                    <span className="text-green-600">✨</span>
-                    <span className="text-sm text-green-800 flex-1">{insight.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 진행중 통찰 */}
-            <div>
-              <div className="text-sm font-medium text-gray-600 mb-2">진행중</div>
-              <div className="grid grid-cols-1 gap-2">
-                {inProgressInsights.slice(0, 3).map(insight => (
-                  <div 
-                    key={insight.id}
-                    className="flex items-center space-x-2 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
-                    onClick={() => handleViewInsight(insight.id)}
-                  >
-                    <span className="text-gray-400">🔒</span>
-                    <div className="flex-1">
-                      <div className="text-sm text-gray-700">{insight.title}</div>
-                      <div className="text-xs text-gray-500">{insight.progress}% 완료</div>
+                    <div className="text-xs text-gray-500 mb-1">{formatDate(record.created_at)}</div>
+                    <div className="text-sm font-medium text-gray-800">
+                       {record.core_emotion}의 강도 {record.intensity}/10
                     </div>
-                  </div>
+                    <div className="text-xs text-gray-600 truncate">
+                      {record.situation_context || "-"}
+                    </div>
+                  </button>
                 ))}
               </div>
-            </div>
+            )}
           </div>
         </Card>
 
-        {/* 개인 맞춤 통찰 (설계서 AI 생성 통찰) */}
-        <Card className="bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200">
-          <div className="space-y-3">
-            <div className="font-bold text-gray-800">🌟 개인 맞춤 통찰 ({PERSONAL_INSIGHTS.length}개 생성!)</div>
-            <div className="space-y-2">
-              {PERSONAL_INSIGHTS.map(insight => (
-                <div 
-                  key={insight.id}
-                  className="flex items-center space-x-2 p-3 bg-white rounded-lg cursor-pointer hover:shadow-md transition-all border border-purple-100"
-                  onClick={() => handleViewInsight(insight.id)}
-                >
-                  <span className="text-purple-600">💎</span>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-gray-800">{insight.title}</div>
-                    <div className="text-xs text-purple-600">신뢰도 {insight.confidence}%</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-
-        {/* 성장 현황 (설계서 레벨업 진행도) */}
         <Card>
-          <div className="space-y-4">
-            <div className="font-bold text-gray-800">📊 성장현황</div>
-            
-            <div>
-              <div className="flex justify-between text-sm text-gray-600 mb-1">
-                <span>다음 레벨까지</span>
-                <span>{Math.round(levelProgress)}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
-                <div 
-                  className="h-3 rounded-full transition-all duration-500"
-                  style={{ 
-                    width: `${levelProgress}%`,
-                    background: `linear-gradient(to right, ${currentLevelStyle.color}, #6366F1)`
-                  }}
-                ></div>
-              </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {currentUser.xp.toLocaleString()} / {currentUser.nextLevelXp.toLocaleString()} XP
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-center">
-              <div className="p-3 bg-amber-50 rounded-lg">
-                <div className="text-2xl">🏆</div>
-                <div className="text-sm font-medium text-gray-700">뱃지 {currentUser.badges}개</div>
-              </div>
-              <div className="p-3 bg-red-50 rounded-lg">
-                <div className="text-2xl">🔥</div>
-                <div className="text-sm font-medium text-gray-700">연속 {currentUser.streak}일</div>
-              </div>
-            </div>
+          <div className="space-y-3">
+            <div className="font-bold text-gray-800">감정 리포트</div>
+            {loadingData ? (
+              <div className="text-sm text-gray-500">리포트 불러오는 중...</div>
+            ) : adaptiveReport ? (
+              renderAdaptiveReport()
+            ) : (
+              <div className="text-sm text-gray-500">리포트 데이터가 없습니다.</div>
+            )}
           </div>
         </Card>
 
-        {/* AI 개인화 추천 (설계서 AI 추천) */}
-        <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+        <Card>
           <div className="space-y-3">
-            <div className="font-bold text-gray-800">💡 AI 개인화 추천</div>
-            <div className="text-sm text-gray-700">
-              "최근 패턴 분석 결과, 목요일 오후 스트레스 관리가 필요해 보여요"
-            </div>
-            <Button 
-              variant="primary" 
-              fullWidth
-              onClick={handleStartStressSession}
-              className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
-            >
-              스트레스 완화 세션 🎯
-            </Button>
+            <div className="font-bold text-gray-800">독립 주간 리포트</div>
+            {loadingData ? (
+              <div className="text-sm text-gray-500">주간 리포트 불러오는 중...</div>
+            ) : weeklyReport ? (
+              renderWeeklyReport()
+            ) : (
+              <div className="text-sm text-gray-500">주간 리포트 데이터가 없습니다.</div>
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <div className="space-y-2">
+            <div className="font-bold text-gray-800">감정 통계</div>
+            {loadingData ? (
+              <div className="text-sm text-gray-500">불러오는 중...</div>
+            ) : (
+              <>
+                <div className="text-sm text-gray-700">
+                  총 감정 기록: <span className="font-semibold">{stats?.total_records ?? 0}</span>
+                </div>
+                <div className="text-sm text-gray-700">
+                  평균 강도: <span className="font-semibold">{stats?.average_intensity ?? 0}</span>/10
+                </div>
+                <div className="text-sm text-gray-700">
+                  오늘 감정 체크: {" "}
+                  <span className={`font-semibold ${todayEmotionChecked ? "text-green-600" : "text-gray-600"}`}>
+                    {todayEmotionChecked ? "완료" : "미완료"}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </Card>
       </div>

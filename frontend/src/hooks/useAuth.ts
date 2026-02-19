@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { resolveBackendUrl } from '@/services/http';
 
 interface EFTUser {
   uid: string;
@@ -22,45 +23,59 @@ interface EFTUser {
 }
 
 export const useAuth = () => {
-  // 🔧 12월 5일 발표용: 즉시 로그인 상태로 시작
-  const [user, setUser] = useState<EFTUser | null>({
-    uid: 'dev-user-001',
-    email: 'dev@test.com',
-    name: '개발자',
-    photoURL: null,
-    level: 1,
-    xp: 0,
-    nextLevelXp: 100,
-    gems: 0,
-    badges: 0,
-    streak: 0,
-    createdAt: new Date(),
-    lastLogin: new Date(),
-    privacySettings: {
-      dataCollection: true,
-      aiLearning: true,
-    },
-    completedQuests: [],
-    unlockedInsights: [],
-  });
-  const [loading, setLoading] = useState(false); // 즉시 false로 시작
+  const [user, setUser] = useState<EFTUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // 🔧 기존 코드 (주석 처리)
-  // useEffect(() => {
-  //   setTimeout(() => {
-  //     setUser({ ... });
-  //     setLoading(false);
-  //   }, 500);
-  // }, []);
+  const hydrateFromBackend = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(resolveBackendUrl('/api/auth/me'), { credentials: 'include' });
+      const data = await res.json();
+      if (res.ok && data?.authenticated && data?.user) {
+        setUser({
+          uid: data.user.id,
+          email: data.user.email ?? null,
+          name: data.user.name ?? null,
+          photoURL: data.user.photo_url ?? null,
+          level: 1,
+          xp: 0,
+          nextLevelXp: 100,
+          gems: 50,
+          badges: 0,
+          streak: 0,
+          createdAt: new Date(),
+          lastLogin: new Date(),
+          privacySettings: { dataCollection: true, aiLearning: true },
+          completedQuests: [],
+          unlockedInsights: [],
+        });
+      } else {
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const logout = () => {
-    setUser(null);
-  };
+  useEffect(() => {
+    hydrateFromBackend();
+  }, [hydrateFromBackend]);
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch(resolveBackendUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
+    } finally {
+      setUser(null);
+    }
+  }, []);
 
   return {
     user,
     loading,
     isAuthenticated: !!user,
-    logout
+    logout,
+    refresh: hydrateFromBackend,
   };
 };

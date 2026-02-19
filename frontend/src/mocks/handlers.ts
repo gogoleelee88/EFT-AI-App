@@ -33,13 +33,13 @@ export const handlers = [
     // ComparisonResponse 형식으로 반환
     return HttpResponse.json({
       llama3_response: {
-        model: "meta-llama/Meta-Llama-3-8B-Instruct",
+        model: "gpt-5.2",
         response: intake,
         processing_time: 1.5,
         success: true
       },
       qwen25_response: {
-        model: "Qwen/Qwen2.5-7B-Instruct",
+        model: "gpt-5.2",
         response: intake,
         processing_time: 2.0,
         success: true

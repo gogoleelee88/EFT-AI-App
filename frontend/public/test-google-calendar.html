@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Google 캘린더 연동 테스트</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    button {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #357abd;
+    }
+    .log {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 20px;
+      font-family: monospace;
+      font-size: 14px;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success { color: green; }
+    .error { color: red; }
+    .info { color: blue; }
+  </style>
+</head>
+<body>
+  <h1>🔧 Google 캘린더 연동 테스트</h1>
+  
+  <div>
+    <button onclick="testAuth()">1. 인증 URL 받기</button>
+    <button onclick="testStatus()">2. 연동 상태 확인</button>
+    <button onclick="testConnect()">3. Google 연동 시작</button>
+    <button onclick="clearLog()">로그 지우기</button>
+  </div>
+  
+  <div class="log" id="log"></div>
+
+  <script>
+    const log = document.getElementById('log');
+    
+    function addLog(msg, type = 'info') {
+      const div = document.createElement('div');
+      div.className = type;
+      div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+    
+    function clearLog() {
+      log.innerHTML = '';
+    }
+    
+    async function testAuth() {
+      addLog('📡 /api/spec/google/auth 호출 중...', 'info');
+      try {
+        const res = await fetch('/api/spec/google/auth', {
+          credentials: 'include'
+        });
+        
+        addLog(`응답 상태: ${res.status} ${res.statusText}`, res.ok ? 'success' : 'error');
+        
+        if (res.ok) {
+          const data = await res.json();
+          addLog('✅ authUrl 받기 성공!', 'success');
+          addLog(`authUrl: ${data.authUrl.substring(0, 100)}...`, 'info');
+          
+          // URL 분석
+          const url = new URL(data.authUrl);
+          addLog(`\n📊 URL 분석:`, 'info');
+          addLog(`- client_id: ${url.searchParams.get('client_id')}`, 'info');
+          addLog(`- redirect_uri: ${url.searchParams.get('redirect_uri')}`, 'info');
+          addLog(`- scope: ${url.searchParams.get('scope')}`, 'info');
+          
+          return data.authUrl;
+        } else {
+          const text = await res.text();
+          addLog(`❌ 오류: ${text}`, 'error');
+        }
+      } catch (e) {
+        addLog(`❌ 예외 발생: ${e.message}`, 'error');
+      }
+    }
+    
+    async function testStatus() {
+      addLog('📡 /api/spec/google/status 호출 중...', 'info');
+      try {
+        const res = await fetch('/api/spec/google/status', {
+          credentials: 'include'
+        });
+        
+        addLog(`응답 상태: ${res.status} ${res.statusText}`, res.ok ? 'success' : 'error');
+        
+        if (res.ok) {
+          const data = await res.json();
+          addLog(`✅ 연동 상태: ${data.connected ? '연결됨' : '연결 안 됨'}`, 'success');
+        } else {
+          const text = await res.text();
+          addLog(`❌ 오류: ${text}`, 'error');
+        }
+      } catch (e) {
+        addLog(`❌ 예외 발생: ${e.message}`, 'error');
+      }
+    }
+    
+    async function testConnect() {
+      addLog('🚀 Google 캘린더 연동 시작!', 'info');
+      try {
+        const authUrl = await testAuth();
+        if (authUrl) {
+          addLog('\n⏰ 3초 후 Google 로그인 페이지로 이동합니다...', 'info');
+          setTimeout(() => {
+            addLog('🔄 리다이렉트 중...', 'info');
+            window.location.href = authUrl;
+          }, 3000);
+        }
+      } catch (e) {
+        addLog(`❌ 연동 실패: ${e.message}`, 'error');
+      }
+    }
+    
+    // 페이지 로드 시 자동으로 상태 확인
+    window.addEventListener('load', () => {
+      addLog('📱 테스트 페이지 로드 완료', 'success');
+      addLog('💡 버튼을 클릭하여 테스트를 시작하세요.', 'info');
+      testStatus();
+    });
+  </script>
+</body>
+</html>

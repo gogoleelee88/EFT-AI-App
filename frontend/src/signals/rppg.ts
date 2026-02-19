@@ -32,37 +32,100 @@ export function calculateRppgConfidence(
   return Math.min(faceQuality * 1.2, 1);
 }
 
+/** ImageData에서 녹색 채널 평균 (rPPG 신호에 가장 유리) */
+function greenMean(im: ImageData): number {
+  const { data } = im;
+  let g = 0;
+  const n = data.length / 4;
+  for (let i = 1; i < data.length; i += 4) g += data[i];
+  return g / n;
+}
+
+/** 단순 이동평균 제거 (드리프트 제거) */
+function detrend(signal: number[], windowMs: number, fps: number): number[] {
+  const w = Math.max(1, Math.floor((windowMs / 1000) * fps));
+  const out: number[] = [];
+  for (let i = 0; i < signal.length; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = Math.max(0, i - w); j <= Math.min(signal.length - 1, i + w); j++) {
+      sum += signal[j];
+      count += 1;
+    }
+    out.push(signal[i] - sum / count);
+  }
+  return out;
+}
+
+/** 실수 DFT로 주파수별 크기 (0 ~ N/2) */
+function magnitudeSpectrum(signal: number[]): number[] {
+  const N = signal.length;
+  const half = Math.floor(N / 2) + 1;
+  const mag: number[] = [];
+  for (let k = 0; k < half; k++) {
+    let re = 0;
+    let im = 0;
+    for (let n = 0; n < N; n++) {
+      const angle = (-2 * Math.PI * k * n) / N;
+      re += signal[n] * Math.cos(angle);
+      im += signal[n] * Math.sin(angle);
+    }
+    mag.push(Math.sqrt(re * re + im * im));
+  }
+  return mag;
+}
+
 /**
- * Extract heart rate from video frames using rPPG
+ * Extract heart rate from video frames using rPPG (Phase 4)
+ * Green channel temporal signal → detrend → bandpass(0.7–4 Hz) via FFT → peak → BPM
  *
- * @param frames - Array of recent video frames (ImageData)
- * @param fps - Frame rate of video
+ * @param frames - Array of recent video frames (ImageData, ROI)
+ * @param fps - Effective frame rate (e.g. 10 for 100ms sampling)
  * @returns { hr: number, confidence: number } or null
  */
 export function extractHeartRate(
   frames: ImageData[],
   fps: number
 ): { hr: number; confidence: number } | null {
-  if (frames.length < fps * 10) {
-    // Need at least 10 seconds of data
-    return null;
+  const minFrames = Math.ceil(fps * 10); // 10초
+  if (frames.length < minFrames) return null;
+
+  const greenSignal = frames.map(greenMean);
+  const detrended = detrend(greenSignal, 2000, fps);
+  const mag = magnitudeSpectrum(detrended);
+  const N = detrended.length;
+
+  // 0.7 Hz = 42 BPM, 4 Hz = 240 BPM. bin k = k * fps / N
+  const binLow = Math.max(1, Math.floor((0.7 * N) / fps));
+  const binHigh = Math.min(mag.length - 1, Math.ceil((4 * N) / fps));
+
+  let peakBin = binLow;
+  let peakVal = mag[binLow];
+  for (let k = binLow; k <= binHigh; k++) {
+    if (mag[k] > peakVal) {
+      peakVal = mag[k];
+      peakBin = k;
+    }
   }
 
-  // TODO: Implement rPPG heart rate extraction
-  // 1. Extract forehead/cheek ROI from each frame
-  // 2. Spatial averaging of RGB channels
-  // 3. Build temporal signal (green channel most reliable)
-  // 4. Detrending (remove slow drifts)
-  // 5. Bandpass filter (0.7-4 Hz)
-  // 6. FFT to find dominant frequency
-  // 7. Convert frequency to BPM
-  // 8. Calculate confidence from SNR
+  const freqHz = (peakBin * fps) / N;
+  const bpm = Math.round(freqHz * 60);
+  const clampedBpm = Math.max(42, Math.min(240, bpm));
 
-  // Placeholder
-  return {
-    hr: 72, // Average resting heart rate
-    confidence: 0.5,
-  };
+  let snr = 0;
+  let sumOther = 0;
+  let countOther = 0;
+  for (let k = binLow; k <= binHigh; k++) {
+    if (k !== peakBin) {
+      sumOther += mag[k];
+      countOther += 1;
+    }
+  }
+  const meanOther = countOther > 0 ? sumOther / countOther : 0;
+  snr = meanOther > 0 ? peakVal / meanOther : 1;
+  const confidence = Math.min(1, Math.max(0.2, 0.3 + (snr - 1) * 0.2));
+
+  return { hr: clampedBpm, confidence };
 }
 
 /**
