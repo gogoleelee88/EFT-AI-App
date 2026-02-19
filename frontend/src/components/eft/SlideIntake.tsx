@@ -1,6 +1,5 @@
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
-import { useNavigate } from "react-router-dom" 
 import { motion, AnimatePresence } from "framer-motion"
 import { Sparkles, ArrowRight, Check, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
 import { Button } from "../ui/Button"
@@ -94,7 +93,6 @@ const SIX_W_CHIPS = {
 }
 
 export function SlideIntake({ onComplete }: SlideIntakeProps) {
-  const navigate = useNavigate() 
   const [currentStep, setCurrentStep] = useState(0)
   const [inputValue, setInputValue] = useState("")
   // 7번째 단계(대화형 템플릿) 전용 상태 데이터
@@ -198,13 +196,9 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
       setTimeout(() => {
         setShowEmpathy(false)
         setTimeout(() => {
-          // 부모 콜백 호출
+          // 부모 콜백 호출 (EFTStrictPage가 API 호출 후 EFT AR/명상 선택 화면 표시)
           onComplete(finalData)
-
-          // EFT-AR 페이지로 즉시 이동
-          navigate('/eft-ar', {
-            state: { intakeData: finalData }
-          })
+          // navigate 제거: EFTStrictPage가 handleSubmit으로 흐름 제어
         }, 300)
       }, 1200)
 

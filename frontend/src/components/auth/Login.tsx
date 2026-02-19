@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+
 import { auth } from '../../firebase/config';
 import Button from '../ui/Button';
+import { resolveBackendUrl } from '@/services/http';
 
 interface LoginProps {
   onSuccess?: (user: any) => void;
@@ -14,30 +16,57 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [agreedToMarketing, setAgreedToMarketing] = useState(false);
   const [showAgreements, setShowAgreements] = useState(false);
-  const [isAgreed, setIsAgreed] = useState(false);
+  const [connectNotion, setConnectNotion] = useState(false);
+
+  const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const inviteToken = searchParams.get('invite_token');
+  const nextPath = searchParams.get('next');
+
+  const redirectAfterLogin = async (mode: 'login' | 'signup') => {
+    if (inviteToken) {
+      const joinResp = await fetch(resolveBackendUrl('/api/chat/rooms/join'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invite_token: inviteToken }),
+      });
+      if (joinResp.ok) {
+        const payload = await joinResp.json();
+        if (payload?.room_id) {
+          window.location.href = `/chat/rooms/${payload.room_id}`;
+          return;
+        }
+      }
+    }
+
+    if (mode === 'signup' && connectNotion) {
+      const notionAuthUrl = resolveBackendUrl('/api/notion/oauth/authorize?next=/dashboard');
+      window.open(notionAuthUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    window.location.href = nextPath || '/dashboard';
+  };
 
   const handleGoogleAuth = async (mode: 'login' | 'signup') => {
     if (mode === 'signup') {
       setShowAgreements(true);
       if (!agreedToTerms || !agreedToPrivacy) {
-        alert('필수 약관에 동의해주세요.');
+        alert('필수 약관에 동의해 주세요.');
         return;
       }
     }
-    
+
     setIsLoading(true);
-    
+
     try {
       const provider = new GoogleAuthProvider();
       provider.addScope('profile');
       provider.addScope('email');
-      
+
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      
-      console.log('로그인 성공:', user);
-      
-      // 사용자 정보 저장 (Firebase Firestore에 추가 정보 저장 가능)
+      const idToken = await user.getIdToken();
+
       const userData = {
         uid: user.uid,
         email: user.email,
@@ -45,36 +74,49 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
         photoURL: user.photoURL,
         createdAt: new Date(),
         agreedToMarketing,
-        // EFT 앱 기본 설정
         level: 1,
         xp: 0,
-        gems: 50, // 초기 젬 지급
+        gems: 50,
         badges: 0,
         streak: 0,
         privacySettings: {
           dataCollection: true,
-          aiLearning: true
-        }
+          aiLearning: true,
+        },
       };
-      
+
+      const resp = await fetch(resolveBackendUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id_token: idToken }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        const detail = text?.trim() || `HTTP ${resp.status}`;
+        console.error('백엔드 로그인 실패 응답', { status: resp.status, detail });
+        throw new Error(`백엔드 로그인에 실패했습니다. (${detail})`);
+      }
+
       if (onSuccess) {
         onSuccess(userData);
       }
-      
+
+      await redirectAfterLogin(mode);
     } catch (error: any) {
       console.error('로그인 실패:', error);
       let errorMessage = '로그인에 실패했습니다.';
-      
+
       if (error.code === 'auth/popup-blocked') {
-        errorMessage = '팝업이 차단되었습니다. 팝업을 허용해주세요.';
+        errorMessage = '팝업이 차단되었습니다. 팝업을 허용해 주세요.';
       } else if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = '로그인이 취소되었습니다.';
       } else if (error.code === 'auth/network-request-failed') {
-        errorMessage = '네트워크 연결을 확인해주세요.';
+        errorMessage = '네트워크 연결을 확인해 주세요.';
       }
-      
+
       alert(errorMessage);
-      
       if (onError) {
         onError(error);
       }
@@ -89,17 +131,12 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
     <div className="min-h-screen lg:min-h-0 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 lg:bg-transparent flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-          {/* 로고 및 환영 메시지 */}
           <div className="mb-8">
-            <div className="text-4xl mb-4">🌿</div>
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">환영합니다!</h1>
-            <p className="text-gray-600 text-sm leading-relaxed">
-              "AI와 함께하는 마음 여행을<br />
-              지금 시작해보세요"
-            </p>
+            <div className="text-4xl mb-4">M</div>
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">MoodTalk 로그인</h1>
+            <p className="text-gray-600 text-sm leading-relaxed">Google 계정으로 빠르게 시작할 수 있습니다.</p>
           </div>
 
-          {/* 초기 상태: 로그인/회원가입 분리 */}
           {!showAgreements ? (
             <div className="mb-6 space-y-3">
               <Button
@@ -109,19 +146,7 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
                 size="lg"
                 className="bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center space-x-3 py-4 font-medium"
               >
-                {isLoading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>로그인 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-5 h-5 bg-white rounded flex items-center justify-center">
-                      <span className="text-blue-600 text-sm font-bold">G</span>
-                    </div>
-                    <span>Google로 로그인</span>
-                  </>
-                )}
+                {isLoading ? '로그인 중...' : 'Google로 로그인'}
               </Button>
 
               <Button
@@ -132,66 +157,56 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
                 size="lg"
                 className="border-blue-600 text-blue-700 hover:bg-blue-50 flex items-center justify-center space-x-3 py-4 font-medium"
               >
-                <div className="w-5 h-5 bg-blue-600 rounded flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">G</span>
-                </div>
-                <span>회원가입 (첫 방문이신가요?)</span>
+                회원가입 시작
               </Button>
             </div>
           ) : (
-            /* 회원가입 단계: 약관 표시 */
             <>
-              <div className="mb-4 text-left space-y-3">
+              <div className="mb-4 text-left space-y-2">
                 <h2 className="text-lg font-bold text-gray-800">서비스 이용 동의</h2>
-                <div className="h-32 overflow-y-auto bg-gray-100 p-3 rounded text-sm text-gray-600 border">
-                  제 1조 (목적)<br />
-                  본 약관은 MoodTalk 서비스의 이용 조건 및 절차...<br />
-                  (여기에 실제 약관 내용을 넣으세요)<br />
-                  ...
-                </div>
-              </div>
-
-              <div className="mb-4 text-left space-y-3">
-                <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <label className="flex items-start gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
                     checked={agreedToTerms}
-                    onChange={(e) => { setAgreedToTerms(e.target.checked); setIsAgreed(e.target.checked && agreedToPrivacy); }}
-                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    onChange={(event) => setAgreedToTerms(event.target.checked)}
+                    className="mt-1"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span>
                     <span className="text-red-500">*</span> 서비스 이용약관 동의 (필수)
                   </span>
                 </label>
 
-                <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <label className="flex items-start gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
                     checked={agreedToPrivacy}
-                    onChange={(e) => { setAgreedToPrivacy(e.target.checked); setIsAgreed(e.target.checked && agreedToTerms); }}
-                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    onChange={(event) => setAgreedToPrivacy(event.target.checked)}
+                    className="mt-1"
                   />
-                  <span className="text-sm text-gray-700">
+                  <span>
                     <span className="text-red-500">*</span> 개인정보 처리방침 동의 (필수)
                   </span>
                 </label>
 
-                <label className="flex items-start space-x-3 cursor-pointer select-none">
+                <label className="flex items-start gap-2 text-sm text-gray-700">
                   <input
                     type="checkbox"
                     checked={agreedToMarketing}
-                    onChange={(e) => setAgreedToMarketing(e.target.checked)}
-                    className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    onChange={(event) => setAgreedToMarketing(event.target.checked)}
+                    className="mt-1"
                   />
-                  <span className="text-sm text-gray-600">
-                    마케팅 수신 동의 (선택)
-                  </span>
+                  <span>마케팅 수신 동의 (선택)</span>
                 </label>
-              </div>
 
-              <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-700 mb-4">
-                💡 <strong>안전하고 빠른 구글 계정 로그인</strong><br />
-                개인정보는 최소한만 수집합니다
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={connectNotion}
+                    onChange={(event) => setConnectNotion(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>가입 후 Notion 연동도 진행</span>
+                </label>
               </div>
 
               <div className="space-y-3">
@@ -200,34 +215,23 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
                   disabled={!canProceed || isLoading}
                   fullWidth
                   size="lg"
-                  className={`
-                    ${canProceed && !isLoading
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    }
-                    flex items-center justify-center space-x-3 py-4 font-medium
-                  `}
+                  className="bg-blue-600 hover:bg-blue-700 text-white py-4 font-medium"
                 >
-                  {isLoading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>가입 진행 중...</span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-5 h-5 bg-white rounded flex items-center justify-center">
-                        <span className="text-blue-600 text-sm font-bold">G</span>
-                      </div>
-                      <span>동의하고 Google로 가입하기</span>
-                    </>
-                  )}
+                  {isLoading ? '가입 진행 중...' : '동의 후 Google로 가입'}
                 </Button>
 
                 <button
-                  onClick={() => { setShowAgreements(false); setAgreedToTerms(false); setAgreedToPrivacy(false); setAgreedToMarketing(false); setIsAgreed(false); }}
+                  onClick={() => {
+                    setShowAgreements(false);
+                    setAgreedToTerms(false);
+                    setAgreedToPrivacy(false);
+                    setAgreedToMarketing(false);
+                    setConnectNotion(false);
+                  }}
                   className="w-full text-sm text-gray-500 hover:underline"
+                  type="button"
                 >
-                  ← 로그인 화면으로 돌아가기
+                  로그인 화면으로 돌아가기
                 </button>
               </div>
             </>

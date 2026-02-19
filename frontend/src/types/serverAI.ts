@@ -92,6 +92,24 @@ export interface UserProfile {
   previous_sessions?: number;
 }
 
+/** STRICT6 인테이크 타입 (백엔드 StrictIntakeInput과 동기화) */
+export interface StrictIntakeInput {
+  core_emotion: string;
+  situation_context: string;
+  automatic_thought: string;
+  physical_sensation?: string | null;
+  behavioral_reaction?: string | null;
+  intensity: number;
+  available_time?: number | null;
+  immediate_goal?: string | null;
+  face_data?: Record<string, unknown> | null;
+  posture_data?: Record<string, unknown> | null;
+  guide_tone?: string | null;
+  arousal_level?: number | null;
+  /** 커스텀 음성 프로필 ID (없으면 기본 가이드 음성 사용) */
+  voice_id?: string | null;
+}
+
 // 감정 분석 결과
 export interface EmotionAnalysis {
   primary_emotion: EmotionType;

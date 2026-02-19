@@ -1,89 +1,84 @@
-/**
- * API 엔드포인트 환경별 설정
- * 개발 환경: localhost 직접 연결
- * 프로덕션 환경: Nginx 프록시 경로 사용
- */
-
-// 환경 감지
 const isDevelopment = import.meta.env.DEV;
 const isProduction = import.meta.env.PROD;
 
-// 🌐 프로덕션 도메인 (window.location 기준으로 자동 감지)
-const resolveProductionDomain = () => {
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin.replace(/\/+$/, '');
+const trimOrEmpty = (value: string | undefined | null): string => (value || '').trim();
+
+const toApiUrl = (raw: string): string => {
+  const candidate = trimOrEmpty(raw);
+  if (!candidate || candidate === '/') {
+    return '';
   }
 
-  const envOrigin = (import.meta.env.VITE_PRODUCTION_ORIGIN as string | undefined)?.trim();
-  if (envOrigin) {
-    return envOrigin.replace(/\/+$/, '');
-  }
-
-  // 기본값은 공개 서비스 도메인의 www 서브도메인을 사용
-  return 'https://www.moodtalk.app';
-};
-
-const PRODUCTION_DOMAIN = resolveProductionDomain();
-
-const toWebsocketUrl = (origin: string) => {
-  if (!origin) return 'wss://www.moodtalk.app';
+  const withScheme = /^https?:\/\//i.test(candidate) ? candidate : `http://${candidate}`;
   try {
-    const url = new URL(origin);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : url.protocol === 'http:' ? 'ws:' : url.protocol;
-    return url.toString().replace(/\/+$/, '') + '/api/ws';
+    const parsed = new URL(withScheme);
+    const host = trimOrEmpty(parsed.hostname);
+    if (!host) return '';
+    return `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, '');
   } catch {
-    return origin.replace(/^http/, 'ws');
+    return '';
   }
 };
 
-// ✅ 단일 설정으로 통일 (상대경로만 사용)
-// Vite proxy (개발) 또는 Cloudflare Workers/Nginx (운영)가 라우팅 처리
-export const API_CONFIG = {
-  // FastAPI 백엔드 (상대경로만 사용)
-  API_BASE_URL: '',
+const toWsOrigin = (base: string): string => {
+  if (!base) return '';
+  if (base.startsWith('https://')) return `wss://${base.slice('https://'.length)}`;
+  if (base.startsWith('http://')) return `ws://${base.slice('http://'.length)}`;
+  return '';
+};
 
-  // vLLM 엔진들 (프록시가 /v1/* 를 8001/8002로 라우팅)
+const hasExplicitApiBase = Boolean(trimOrEmpty(import.meta.env.VITE_API_BASE_URL));
+const envApiBase = toApiUrl(import.meta.env.VITE_API_BASE_URL || '');
+const fallbackApiBase = (() => {
+  if (!isDevelopment || typeof window === 'undefined') {
+    return '';
+  }
+  const host = trimOrEmpty(window.location.hostname);
+  if (!host) {
+    return '';
+  }
+  return `http://${host}:8000`;
+})();
+const envProdOrigin = toApiUrl(import.meta.env.VITE_PRODUCTION_ORIGIN || '');
+const API_BASE_URL = isProduction
+  ? envApiBase || envProdOrigin
+  : (hasExplicitApiBase || fallbackApiBase) ? (envApiBase || fallbackApiBase) : '';
+
+export const hasValidApiBase = Boolean(API_BASE_URL);
+
+const resolvedApiBase = API_BASE_URL || '';
+
+export const API_CONFIG = {
+  API_BASE_URL: resolvedApiBase,
   VLLM_ENGINE_A_URL: '/v1',
   VLLM_ENGINE_B_URL: '/v1',
-
-  // WebSocket (상대경로)
-  WS_URL: '/api/ws',
+  WS_URL: resolvedApiBase ? `${toWsOrigin(resolvedApiBase)}/api/ws` : '/api/ws',
 };
 
-// 📝 개별 엔드포인트들 (모두 상대경로)
 export const ENDPOINTS = {
-  // 🤖 AI 채팅 관련
-  CHAT: '/api/chat',
   CHAT_COMPARE: '/api/chat/compare',
   CHAT_COMPLETION: '/api/chat/completion',
-
-  // 📊 분석 관련
-  ANALYZE_EMOTION: '/api/analyze/emotion',
   RECOMMEND_EFT: '/api/recommend/eft',
-
-  // 📈 통계 및 모니터링
   HEALTH: '/api/health',
+  VERSION: '/api/version',
   STATS: '/api/stats',
-
-  // 🎯 vLLM 직접 연결 (프록시가 처리)
+  PROFILE: '/api/profile',
+  PROFILE_DAILY: '/api/profile/daily',
   VLLM_ENGINE_A: '/v1/chat/completions',
   VLLM_ENGINE_B: '/v1/chat/completions',
 };
 
-// 🔍 디버깅 정보
 if (isDevelopment) {
-  console.log('🔧 Development API Config:', API_CONFIG);
-  console.log('📡 API Endpoints:', ENDPOINTS);
+  console.log('🔧 API Config:', API_CONFIG);
+  console.log('🔧 API Endpoints:', ENDPOINTS);
 }
 
-// 🛡️ 타입 안전성
-export type ApiConfig = typeof API_CONFIG;
-export type EndpointsType = typeof ENDPOINTS;
-
-// 🌐 환경 정보 노출
 export const ENV_INFO = {
   isDevelopment,
   isProduction,
   mode: import.meta.env.MODE,
   baseUrl: import.meta.env.BASE_URL,
 } as const;
+
+export type ApiConfig = typeof API_CONFIG;
+export type EndpointsType = typeof ENDPOINTS;

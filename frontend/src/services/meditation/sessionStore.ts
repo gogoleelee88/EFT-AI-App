@@ -24,6 +24,7 @@ export interface SessionSummary {
     timestamp: number;
     actions: string[];
   }[];
+  selected_video_id?: string;
   notes?: string;
 }
 

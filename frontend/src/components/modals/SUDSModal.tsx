@@ -1,12 +1,5 @@
 /**
- * SUDS (Subjective Units of Distress Scale) Modal
- * - EFT ?�션 ?????�트?�스 ?��?(0~10) 측정
- * - props:
- *   open: boolean
- *   label: 'pre' | 'post'
- *   onSubmit: (score: number) => void
- *   onClose?: () => void
- *   currentValue?: number
+ * Generic SUDS (0~10) modal used by EFT and meditation flows.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -18,6 +11,10 @@ interface SUDSModalProps {
   onSubmit: (score: number) => void;
   onClose?: () => void;
   currentValue?: number;
+  submitting?: boolean;
+  contextName?: string;
+  submitLabelPre?: string;
+  submitLabelPost?: string;
 }
 
 const SUDSModal: React.FC<SUDSModalProps> = ({
@@ -26,6 +23,10 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
   onSubmit,
   onClose,
   currentValue = 5,
+  submitting = false,
+  contextName = 'EFT',
+  submitLabelPre,
+  submitLabelPost,
 }) => {
   const [score, setScore] = useState<number>(currentValue);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -34,7 +35,6 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
     if (open) setScore(currentValue);
   }, [open, currentValue]);
 
-  // ESC ?�기
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -47,16 +47,16 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
   if (!open) return null;
 
   const isPre = label === 'pre';
-  const title = isPre ? 'EFT 시작 전 상태' : 'EFT 적용 후 상태';
+  const title = isPre ? `${contextName} 시작 전 상태` : `${contextName} 종료 후 상태`;
   const description = isPre
-    ? 'EFT AR 가이드를 시작하기 전에 지금 느끼는 스트레스/불편의 정도를 선택해주세요 (0=매우 편안, 10=매우 불편).'
-    : 'EFT 적용 후 스트레스/불편함의 변화를 알려주세요.';
+    ? `${contextName} 시작 전에 현재 감정 강도를 선택해 주세요 (0 = 매우 편안, 10 = 매우 불편).`
+    : `${contextName} 종료 후 감정 강도의 변화를 기록해 주세요.`;
 
   const getScoreDescription = (v: number): string => {
     if (v <= 2) return '매우 편안';
-    if (v <= 4) return '약간 편안';
+    if (v <= 4) return '약간 불편';
     if (v <= 6) return '보통';
-    if (v <= 8) return '약소 불편';
+    if (v <= 8) return '꽤 불편';
     return '매우 불편';
   };
 
@@ -75,16 +75,14 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
         aria-modal="true"
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl outline-none"
       >
-        {/* ?�더 */}
         <div className="mb-6 text-center">
           <h3 className="mb-2 text-xl font-bold text-gray-800">
-            SUDS 측정 {isPre ? '(?�전)' : '(?�후)'}
+            SUDS 측정 {isPre ? '(사전)' : '(사후)'}
           </h3>
           <h4 className="mb-3 text-lg font-semibold text-gray-700">{title}</h4>
           <p className="text-sm text-gray-600">{description}</p>
         </div>
 
-        {/* 슬라이더 */}
         <div className="mb-6">
           <div className="mb-2 flex justify-between text-xs text-gray-500">
             <span>매우 편안</span>
@@ -125,7 +123,7 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
               [&::-moz-range-thumb]:border-white
               [&::-moz-range-thumb]:shadow
             "
-            aria-label="SUDS ?�수"
+            aria-label="SUDS 점수"
           />
 
           <div className="mt-1 flex justify-between text-xs text-gray-400">
@@ -135,7 +133,6 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
           </div>
         </div>
 
-        {/* 현재 점수 */}
         <div className="mb-6 rounded-xl bg-gray-50 p-4 text-center">
           <div className={`mb-2 text-3xl font-bold ${getScoreColor(score)}`}>
             {score}
@@ -145,27 +142,31 @@ const SUDSModal: React.FC<SUDSModalProps> = ({
           </div>
         </div>
 
-        {/* 가이드 */}
         <div className="mb-6 rounded-lg bg-blue-50 p-3">
           <h5 className="mb-2 text-sm font-semibold text-blue-800">SUDS 점수 가이드</h5>
           <div className="space-y-1 text-xs text-blue-700">
-            <div>0~2: 매우 편안 / 안정</div>
+            <div>0~2: 매우 편안</div>
             <div>3~4: 약간 불편하지만 견딜 만함</div>
             <div>5~6: 보통 수준의 불편감</div>
-            <div>7~8: 상당한 불편, 주의 필요</div>
-            <div>9~10: 매우 큰 고통 / 스트레스</div>
+            <div>7~8: 강한 불편감</div>
+            <div>9~10: 매우 강한 고통/스트레스</div>
           </div>
         </div>
 
-        {/* 버튼 */}
         <div className="flex gap-3">
           {onClose && (
-            <Button variant="outline" onClick={onClose} className="flex-1">
+            <Button variant="outline" onClick={onClose} className="flex-1" disabled={submitting}>
               취소
             </Button>
           )}
-          <Button onClick={() => onSubmit(score)} className="flex-1 bg-blue-600 text-white hover:bg-blue-700">
-            {isPre ? 'EFT ?�작?�기' : '?�료?�기'}
+          <Button
+            onClick={() => onSubmit(score)}
+            className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+            disabled={submitting}
+          >
+            {submitting
+              ? '저장 중...'
+              : (isPre ? (submitLabelPre ?? `${contextName} 시작하기`) : (submitLabelPost ?? '완료하기'))}
           </Button>
         </div>
       </div>

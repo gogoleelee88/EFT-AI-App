@@ -1,0 +1,85 @@
+.condition-page-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at -10% -10%, rgba(14, 116, 144, 0.18), transparent 55%),
+    radial-gradient(900px 520px at 110% 0%, rgba(249, 115, 22, 0.2), transparent 50%),
+    linear-gradient(140deg, #f8fafc 0%, #ecfeff 45%, #fff7ed 100%);
+}
+
+.condition-title {
+  font-family: "Space Grotesk", "Noto Sans KR", "Segoe UI", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.condition-subtitle {
+  font-family: "Noto Sans KR", "Segoe UI", sans-serif;
+}
+
+.condition-radar-wrap {
+  border-radius: 24px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(241, 245, 249, 0.78));
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.condition-radar-node {
+  cursor: pointer;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.condition-radar-node:hover {
+  transform: scale(1.04);
+  opacity: 0.92;
+}
+
+.condition-load-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.condition-module-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(1000px 620px at 0% 0%, rgba(2, 132, 199, 0.16), transparent 50%),
+    radial-gradient(820px 500px at 100% 100%, rgba(245, 158, 11, 0.18), transparent 48%),
+    linear-gradient(160deg, #f8fafc 0%, #eff6ff 45%, #fff7ed 100%);
+}
+
+.condition-slider-card {
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.condition-cta-btn {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.condition-cta-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+}
+
+.condition-cta-primary {
+  color: white;
+  border-color: transparent;
+  background: linear-gradient(130deg, #0e7490, #f97316);
+}
+
+.condition-cta-primary:hover {
+  filter: brightness(1.06);
+}
+

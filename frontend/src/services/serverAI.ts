@@ -51,7 +51,7 @@ function headersCompat(
 
 // Provider 타입 및 설정
 export type Provider = 'local_vllm' | 'openai' | 'anthropic' | 'qwen';
-const provider: Provider = (import.meta.env.VITE_PROVIDER as Provider) ?? 'local_vllm';
+const provider: Provider = (import.meta.env.VITE_PROVIDER as Provider) ?? 'openai';
 
 const NEGATIVE_SUDS_KEYWORDS = [
   '불안', '스트레스', '힘들', '힘들어', '힘들어요', '우울', '우울해', '우울하다',
@@ -111,6 +111,12 @@ function toChatResponseFromComparison(comp: any): ChatResponse {
     comp?.response ??
     comp?.reply ??
     'No response available';
+  const winnerResponse = comp?.winner_response ??
+    (comp?.faster_model === 'qwen25'
+      ? comp?.qwen25_response
+      : comp?.llama3_response);
+  const modelVersion = winnerResponse?.model ??
+    (comp?.faster_model === 'qwen25' ? comp?.qwen25_response?.model : comp?.llama3_response?.model);
 
   return {
     response: String(text),
@@ -137,6 +143,7 @@ function toChatResponseFromComparison(comp: any): ChatResponse {
     requires_followup: false,
     emergency_detected: false,
     professional_referral: false,
+    model_version: modelVersion,
     response_id: comp?.response_id ?? `cmp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
 
     // ChatResponse 인터페이스 선택 필드
@@ -163,6 +170,7 @@ interface ChatRequest {
 
 interface ChatResponse {
   response: string;
+  model_version?: string;
   emotion_analysis: EmotionAnalysis;
   eft_recommendations: EFTRecommendation[];
   suggested_actions: SuggestedAction[];
@@ -488,9 +496,13 @@ class ServerAI {
         : [];
 
       // 병렬 비교 결과를 ChatResponse 형태로 변환
-      const winnerResponse = comparisonResult.faster_model === 'llama3' 
-        ? comparisonResult.llama3_response 
+      const isWinnerA = comparisonResult.faster_model === 'llama3';
+      const winnerResponse = isWinnerA
+        ? comparisonResult.llama3_response
         : comparisonResult.qwen25_response;
+      const winnerModel = winnerResponse?.model ??
+        (isWinnerA ? comparisonResult.llama3_response?.model : comparisonResult.qwen25_response?.model) ??
+        'gpt-5.2';
 
       // 성공한 응답이 있는지 확인
       if (!winnerResponse.success) {
@@ -511,7 +523,7 @@ class ServerAI {
         suggested_actions: [],
         confidence_score: 0.85,
         processing_time: comparisonResult.comparison_time,
-        model_version: `Engine ${comparisonResult.faster_model === 'llama3' ? 'A (Llama-3)' : 'B (Qwen-2.5)'}`,
+        model_version: winnerModel,
         timestamp: comparisonResult.timestamp,
         tier: 'free',
         requires_followup: false,
@@ -774,8 +786,6 @@ export async function generateReplyAB(
   logCtx?: { sessionId: string; turnId: string },
   isPremium: boolean = false
 ) {
-  if (provider !== "local_vllm") throw new Error("Not local_vllm provider");
-
   const payload = {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -887,8 +897,6 @@ export async function generateReplyAB(
  * 간단한 A/B 응답 호출 (텔레메트리 없음)
  */
 export async function generateReplyAB_simple(message: string, isPremium: boolean = false) {
-  if (provider !== "local_vllm") throw new Error("Not local_vllm provider");
-
   const payload = {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
