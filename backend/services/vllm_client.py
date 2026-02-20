@@ -1,17 +1,17 @@
 # services/vllm_client.py
 from typing import List, Dict, Any, Optional, Tuple
 from openai import OpenAI
-from backend.config.settings import get_settings
-from backend.utils.logger import get_logger
+from config.settings import get_settings
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 class VLLMClient:
-    """vLLM(OpenAI 호환) 엔진 A/B(Llama/Qwen) 호출 클라이언트"""
+    """vLLM(OpenAI ?�환) ?�진 A/B(Llama/Qwen) ?�출 ?�라?�언??""
 
     def __init__(self) -> None:
-        logger.info("vLLM 클라이언트 초기화 완료")
+        logger.info("vLLM ?�라?�언??초기???�료")
 
     def _get_client_and_model(self, tier: Optional[str] = "free") -> Tuple[OpenAI, str]:
         """
@@ -34,18 +34,17 @@ class VLLMClient:
         tier: Optional[str] = "free",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """OpenAI Chat Completions 포맷 그대로 반환."""
-# [긴급 수정] 로컬 개발용 가짜 AI 모드 (GPU 없이 실행)
-        # settings.py에 USE_MOCK_AI = True가 있어야 작동합니다.
+        """OpenAI Chat Completions ?�맷 그�?�?반환."""
+# [긴급 ?�정] 로컬 개발??가�?AI 모드 (GPU ?�이 ?�행)
+        # settings.py??USE_MOCK_AI = True가 ?�어???�동?�니??
         if getattr(settings, "USE_MOCK_AI", False):
-            logger.warning(f"⚠️ [MOCK MODE] AI 요청을 가로챘습니다. (GPU 미사용): {messages[-1].get('content')}")
-            time.sleep(1) # AI가 생각하는 척 1초 딜레이
-            
+            logger.warning(f"?�️ [MOCK MODE] AI ?�청??가로챘?�니?? (GPU 미사??: {messages[-1].get('content')}")
+            time.sleep(1) # AI가 ?�각?�는 �?1�??�레??            
             return {
                 "choices": [{
                     "message": {
                         "role": "assistant",
-                        "content": "이것은 로컬 테스트용 가짜 응답입니다. (GPU 연결 안됨)\n\n[분석 결과]\n감정: 불안감 85%\n원인: 프로젝트 마감 압박\n\n[처방]\n박스 호흡을 3회 실시하고, '나는 안전하다'고 되뇌어보세요."
+                        "content": "?�것?� 로컬 ?�스?�용 가�??�답?�니?? (GPU ?�결 ?�됨)\n\n[분석 결과]\n감정: 불안�?85%\n?�인: ?�로?�트 마감 ?�박\n\n[처방]\n박스 ?�흡??3???�시?�고, '?�는 ?�전?�다'�??�뇌?�보?�요."
                     },
                     "finish_reason": "stop"
                 }],
@@ -60,21 +59,21 @@ class VLLMClient:
         try:
             resp = client.chat.completions.create(model=model, messages=messages, **kwargs)
             result = resp.model_dump()
-            # 디버깅에 도움 되는 메타 추가(원하면 빼도 됨)
+            # ?�버깅에 ?��? ?�는 메�? 추�?(?�하�?빼도 ??
             result["tier"] = tier
             result["model_used"] = model
             return result
         except Exception as e:
-            # Windows vLLM 호환성 문제로 인한 스마트 폴백 응답
+            # Windows vLLM ?�환??문제�??�한 ?�마???�백 ?�답
             last_message = messages[-1].get("content", "") if messages else ""
             
-            # 감정 기반 스마트 응답 생성
-            if "스트레스" in last_message or "힘들" in last_message:
-                fallback_response = f"'{last_message}'로 힘드시겠어요. 깊게 숨을 들이쉬고 천천히 내쉬어보세요. EFT 탭핑을 통해 이 감정을 다뤄볼까요? 머리 꼭대기를 부드럽게 탭핑하며 '이 스트레스를 인정하고 받아들입니다'라고 말해보세요."
-            elif "안녕" in last_message or "ping" in last_message:
-                fallback_response = "안녕하세요! EFT AI 상담사입니다. 현재 시뮬레이션 모드로 동작중이지만, 여전히 도움을 드릴 수 있어요. 오늘 어떤 감정이나 상황에 대해 이야기해볼까요?"
+            # 감정 기반 ?�마???�답 ?�성
+            if "?�트?�스" in last_message or "?�들" in last_message:
+                fallback_response = f"'{last_message}'�??�드?�겠?�요. 깊게 ?�을 ?�이?�고 천천???�쉬?�보?�요. EFT ??��???�해 ??감정???�뤄볼까?? 머리 �??기�? 부?�럽�???��?�며 '???�트?�스�??�정?�고 받아?�입?�다'?�고 말해보세??"
+            elif "?�녕" in last_message or "ping" in last_message:
+                fallback_response = "?�녕?�세?? EFT AI ?�담?�입?�다. ?�재 ?��??�이??모드�??�작중이지�? ?�전???��????�릴 ???�어?? ?�늘 ?�떤 감정?�나 ?�황???�???�야기해볼까??"
             else:
-                fallback_response = f"'{last_message}'에 대해 함께 이야기해봐요. 지금 이 순간 어떤 감정을 느끼고 계신가요? EFT는 감정을 있는 그대로 받아들이는 것부터 시작합니다."
+                fallback_response = f"'{last_message}'???�???�께 ?�야기해봐요. 지�????�간 ?�떤 감정???�끼�?계신가?? EFT??감정???�는 그�?�?받아?�이??것�????�작?�니??"
             
             return {
                 "choices": [{
@@ -85,12 +84,12 @@ class VLLMClient:
                     "finish_reason": "stop"
                 }],
                 "tier": tier,
-                "model_used": f"EFT 전문 폴백 시스템",
+                "model_used": f"EFT ?�문 ?�백 ?�스??,
                 "fallback": True,
-                "reason": "Windows vLLM 호환성 문제"
+                "reason": "Windows vLLM ?�환??문제"
             }
 
     def list_models(self, tier: Optional[str] = "free") -> Dict[str, Any]:
-        """엔진 헬스 확인용 /v1/models 호출"""
+        """?�진 ?�스 ?�인??/v1/models ?�출"""
         client, _ = self._get_client_and_model(tier)
         return client.models.list().model_dump()

@@ -1,8 +1,8 @@
 # backend/services/premium_vllm.py
 import random
 from typing import Literal, Tuple
-from backend.config.settings import get_settings
-from backend.clients.http import post_json
+from config.settings import get_settings
+from clients.http import post_json
 
 settings = get_settings()
 EngineSel = Literal["A", "B", "AB"]

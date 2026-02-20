@@ -12,8 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.routes.compare import (  # compare.py에서 이미 있는 것 재사용
-    SessionState,
+from routes.compare import (  # compare.py?�서 ?��? ?�는 �??�사??    SessionState,
     ChecklistItem,
     redis_client,
     ENGINE_A_URL,
@@ -46,7 +45,7 @@ def save_emotion_checkin(payload: EmotionCheckinRequest):
         raise HTTPException(status_code=500, detail=f"Failed to save emotion checkin: {e}")
 
 
-# ---- 1) 후보 레이어 모델 ----
+# ---- 1) ?�보 ?�이??모델 ----
 
 class EmotionInference(BaseModel):
     core_emotion_hypothesis: Optional[str] = None
@@ -59,7 +58,7 @@ class EmotionSelection(BaseModel):
     chosen_at: Optional[datetime] = None
 
 
-# ---- 2) 세션 로드 유틸 (compare.py와 동일 규칙 사용) ----
+# ---- 2) ?�션 로드 ?�틸 (compare.py?� ?�일 규칙 ?�용) ----
 
 def _load_session_state(session_id: str) -> SessionState:
     session_key = f"session:compare:{session_id}"
@@ -82,7 +81,7 @@ def _save_session_state(session_id: str, state: SessionState) -> None:
     redis_client.set(session_key, state.model_dump_json(), ex=3600)
 
 
-# ---- 3) 체크리스트 → intake dict 변환 ----
+# ---- 3) 체크리스????intake dict 변??----
 
 STRICT6_KEYS = [
     "core_emotion",
@@ -94,40 +93,40 @@ STRICT6_KEYS = [
 ]
 
 def _checklist_to_intake_dict(session_state: SessionState) -> Dict[str, Any]:
-    """compare.py의 checklist를 key:value dict로 변환 (STRICT 14키 스타일)"""
+    """compare.py??checklist�?key:value dict�?변??(STRICT 14???��???"""
     ck: Dict[str, Any] = {}
     for item in session_state.checklist:
         ck[item.key] = item.value
     return ck
 
 
-# ---- 4) LLM 프롬프트: 감정 후보만 뽑기 ----
+# ---- 4) LLM ?�롬?�트: 감정 ?�보�?뽑기 ----
 
 def _build_emotion_inference_prompt(intake: Dict[str, Any]) -> str:
     intake_json = json.dumps(intake, ensure_ascii=False, indent=2)
     return f"""
-너는 20년 경력의 한국어 임상심리학자이자 CBT/ACT 전문가다.
+?�는 20??경력???�국???�상?�리?�자?�자 CBT/ACT ?�문가??
 
-역할:
-- 아래 STRICT 인테이크 정보를 보고, 사용자가 느낄 법한 **핵심 감정 후보 3~4개**를 제안한다.
-- 이때 감정은 미리 정의된 리스트에서만 고른다.
-  예시: ["불안", "압도감", "짜증", "분노", "무기력", "슬픔", "수치심", "자괴감", "허무함", "외로움"]
+??��:
+- ?�래 STRICT ?�테?�크 ?�보�?보고, ?�용?��? ?�낄 법한 **?�심 감정 ?�보 3~4�?*�??�안?�다.
+- ?�때 감정?� 미리 ?�의??리스?�에?�만 고른??
+  ?�시: ["불안", "?�도�?, "짜증", "분노", "무기??, "?�픔", "?�치??, "?�괴�?, "?�무??, "?�로?�"]
 
 규칙:
-- core_emotion 값이 이미 있어도, 필요하다면 다시 평가할 수 있다.
-- 감정 후보는 서로 충분히 구분되는 것들로 고른다(서로 너무 비슷한 말만 3개 X).
-- reasoning에서는 왜 이런 후보가 나왔는지를 1~2문장으로 정리한다.
-- 출력은 반드시 JSON object 한 개만, 아래 스키마를 따른다.
+- core_emotion 값이 ?��? ?�어?? ?�요?�다�??�시 ?��??????�다.
+- 감정 ?�보???�로 충분??구분?�는 것들�?고른???�로 ?�무 비슷??말만 3�?X).
+- reasoning?�서?????�런 ?�보가 ?�왔?��?�?1~2문장?�로 ?�리?�다.
+- 출력?� 반드??JSON object ??개만, ?�래 ?�키마�? ?�른??
 
-입력 STRICT 인테이크 (예시 14키 구조):
+?�력 STRICT ?�테?�크 (?�시 14??구조):
 {intake_json}
 
-출력 형식(JSON only):
+출력 ?�식(JSON only):
 
 {{
-  "core_emotion_hypothesis": "가장 가능성이 높은 감정 하나",
-  "emotion_candidates": ["후보1", "후보2", "후보3"],
-  "reasoning": "왜 이런 후보들이 나왔는지에 대한 짧은 설명"
+  "core_emotion_hypothesis": "가??가?�성???��? 감정 ?�나",
+  "emotion_candidates": ["?�보1", "?�보2", "?�보3"],
+  "reasoning": "???�런 ?�보?�이 ?�왔?��????�??짧�? ?�명"
 }}
 """.strip()
 
@@ -169,7 +168,7 @@ async def _call_llm_emotion_inference(intake: Dict[str, Any]) -> EmotionInferenc
     return EmotionInference(**obj)
 
 
-# ---- 5) /emotion/candidates: 감정 후보 리스트 주기 ----
+# ---- 5) /emotion/candidates: 감정 ?�보 리스??주기 ----
 
 class EmotionCandidatesRequest(BaseModel):
     session_id: str
@@ -185,39 +184,34 @@ class EmotionCandidatesResponse(BaseModel):
 @router.post("/candidates", response_model=EmotionCandidatesResponse)
 async def get_emotion_candidates(req: EmotionCandidatesRequest):
     """
-    - compare.py에서 이미 쌓인 checklist를 읽어서
-    - STRICT 인테이크 dict로 변환한 뒤
-    - 감정 후보를 LLM으로부터 받아 프론트에 전달
+    - compare.py?�서 ?��? ?�인 checklist�??�어??    - STRICT ?�테?�크 dict�?변?�한 ??    - 감정 ?�보�?LLM?�로부??받아 ?�론?�에 ?�달
     """
     state = _load_session_state(req.session_id)
     intake = _checklist_to_intake_dict(state)
 
-    # core_emotion이 이미 꽤 잘 채워져 있으면 굳이 안 불러도 되지만,
-    # 1차 버전에서는 무조건 후보를 뽑도록 두고, 나중에 조건 추가해도 됨.
+    # core_emotion???��? �???채워???�으�?굳이 ??불러???��?�?
+    # 1�?버전?�서??무조�??�보�?뽑도�??�고, ?�중??조건 추�??�도 ??
     inference = await _call_llm_emotion_inference(intake)
 
-    # 후보 → 버튼 라벨/설명으로 변환
-    # 설명은 일단 심플하게; 나중에 감정별 고정 텍스트 매핑 추가 가능
-    candidates_out: List[Dict[str, str]] = []
+    # ?�보 ??버튼 ?�벨/?�명?�로 변??    # ?�명?� ?�단 ?�플?�게; ?�중??감정�?고정 ?�스??매핑 추�? 가??    candidates_out: List[Dict[str, str]] = []
     for label in inference.emotion_candidates:
-        desc = f"지금 상태를 '{label}' 쪽에 더 가깝게 느낄 때 선택하세요."
+        desc = f"지�??�태�?'{label}' 쪽에 ??가깝게 ?�낄 ???�택?�세??"
         candidates_out.append({"label": label, "description": desc})
 
-    # "잘 모르겠어요" 옵션은 백엔드에서 강제로 추가해도 됨
-    candidates_out.append({
-        "label": "잘 모르겠음",
-        "description": "딱 하나로 말하기 어렵거나 복잡하게 느껴질 때."
+    # "??모르겠어?? ?�션?� 백엔?�에??강제�?추�??�도 ??    candidates_out.append({
+        "label": "??모르겠음",
+        "description": "???�나�?말하�??�렵거나 복잡?�게 ?�껴�???"
     })
 
     return EmotionCandidatesResponse(
-        message="지금 감정, 후보를 같이 골라볼까요?",
+        message="지�?감정, ?�보�?같이 골라볼까??",
         candidates=candidates_out,
         core_emotion_hypothesis=inference.core_emotion_hypothesis,
         reasoning=inference.reasoning,
     )
 
 
-# ---- 6) /emotion/choice: 사용자가 고른 감정을 core_emotion에 반영 ----
+# ---- 6) /emotion/choice: ?�용?��? 고른 감정??core_emotion??반영 ----
 
 class EmotionChoiceRequest(BaseModel):
     session_id: str
@@ -232,12 +226,12 @@ class EmotionChoiceResponse(BaseModel):
 @router.post("/choice", response_model=EmotionChoiceResponse)
 async def set_emotion_choice(req: EmotionChoiceRequest):
     """
-    - 사용자가 고른 감정을 compare 세션의 체크리스트 core_emotion에 반영
-    - STRICT 14키 레이어 입장에서는 'runtime용 core_emotion'을 채우는 역할
+    - ?�용?��? 고른 감정??compare ?�션??체크리스??core_emotion??반영
+    - STRICT 14???�이???�장?�서??'runtime??core_emotion'??채우????��
     """
     state = _load_session_state(req.session_id)
 
-    # checklist에서 core_emotion 항목 찾기
+    # checklist?�서 core_emotion ??�� 찾기
     found = False
     for item in state.checklist:
         if item.key == "core_emotion":
@@ -246,7 +240,7 @@ async def set_emotion_choice(req: EmotionChoiceRequest):
             break
 
     if not found:
-        # 혹시 core_emotion이 checklist에 없으면 새로 추가
+        # ?�시 core_emotion??checklist???�으�??�로 추�?
         state.checklist.append(
             ChecklistItem(key="core_emotion", question="", value=req.user_choice, ask_count=1)
         )
@@ -265,3 +259,4 @@ def _get_supabase():
     if not url or not key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
     return create_client(url, key)
+

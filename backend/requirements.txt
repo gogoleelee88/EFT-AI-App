@@ -27,11 +27,22 @@ sqlalchemy==2.0.23
 # sqlite3  # Python 내장 라이브러리 (pip 설치 불필요)
 redis==5.0.1  # 캐싱용 (선택사항)
 
+# Auth (Firebase Admin)
+firebase-admin==6.5.0
+pywebpush==2.0.3
+
 # 유틸리티
 python-dotenv==1.0.0
 httpx==0.25.2
+cryptography==41.0.7
 numpy==1.24.3
 pandas==2.1.4
+Pillow>=10.0.0
+
+# Google Calendar / OAuth (Phase 2)
+google-auth==2.28.2
+google-auth-oauthlib==1.2.0
+google-api-python-client==2.111.0
 
 # 로깅 및 모니터링
 loguru==0.7.2

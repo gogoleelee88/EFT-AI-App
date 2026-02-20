@@ -1,38 +1,32 @@
 """
-EFT 전문 프롬프트 관리 시스템
-심리상담 및 EFT 기법에 특화된 프롬프트 생성 및 관리
-"""
+EFT ?�문 ?�롬?�트 관�??�스???�리?�담 �?EFT 기법???�화???�롬?�트 ?�성 �?관�?"""
 
 from typing import List, Dict, Any, Optional
 import json
 from datetime import datetime
 from enum import Enum
 
-from backend.models.chat_models import (
+from models.chat_models import (
     EmotionAnalysis, EmotionType, EFTRecommendation,
     EFTPoint, SuggestedAction, ConversationMessage, UserProfile
 )
-from backend.utils.logger import get_logger
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 class PromptStyle(str, Enum):
-    """프롬프트 스타일 타입"""
-    EMPATHETIC = "empathetic"  # 공감적
-    DIRECT = "direct"          # 직접적  
-    GENTLE = "gentle"          # 부드러운
-    PROFESSIONAL = "professional"  # 전문적
-    CASUAL = "casual"          # 친근한
-
+    """?�롬?�트 ?��????�??""
+    EMPATHETIC = "empathetic"  # 공감??    DIRECT = "direct"          # 직접?? 
+    GENTLE = "gentle"          # 부?�러??    PROFESSIONAL = "professional"  # ?�문??    CASUAL = "casual"          # 친근??
 class EFTPromptManager:
-    """EFT 전문 프롬프트 관리자"""
-    #==========이거 정석대로 수정필요 임시조치임 이후 공개 API 재정의 + 호출부 마이그레이션로 교체 필요========
+    """EFT ?�문 ?�롬?�트 관리자"""
+    #==========?�거 ?�석?��??�정?�요 ?�시조치???�후 공개 API ?�정??+ ?�출부 마이그레?�션�?교체 ?�요========
     def get_system_prompt(self, *args, **kwargs):
         """
         Backward-compat shim for legacy callers.
-        기존 호출부의 get_system_prompt(...)를 새 구조로 연결한다.
-        - tier 인자가 넘어오면 사용, 없으면 self.default_tier 또는 'free'
-        - 내부 구현인 _get_tier_system_prompt(tier)로 위임
+        기존 ?�출부??get_system_prompt(...)�???구조�??�결?�다.
+        - tier ?�자가 ?�어?�면 ?�용, ?�으�?self.default_tier ?�는 'free'
+        - ?��? 구현??_get_tier_system_prompt(tier)�??�임
         """
         tier = kwargs.get("tier", None)
         if tier is None:
@@ -44,82 +38,81 @@ class EFTPromptManager:
             except TypeError:
                 return self._get_tier_system_prompt()
 
-        # 최후의 안전장치
+        # 최후???�전?�치
         return "You are MoodTalk EFT assistant. Keep responses concise and safe."
-    #==========이거 정석대로 수정필요 임시조치임========
+    #==========?�거 ?�석?��??�정?�요 ?�시조치??=======
     
     def __init__(self):
-        """EFT 프롬프트 매니저 초기화"""
+        """EFT ?�롬?�트 매니?� 초기??""
         self.base_system_prompt = self._load_base_system_prompt()
         self.emotion_response_templates = self._load_emotion_templates()
         self.eft_technique_database = self._load_eft_techniques()
         self.korean_culture_context = self._load_korean_context()
         self.safety_guidelines = self._load_safety_guidelines()
         
-        logger.info("✅ EFT 프롬프트 매니저 초기화 완료")
+        logger.info("??EFT ?�롬?�트 매니?� 초기???�료")
     
     def _load_base_system_prompt(self) -> str:
-        """기본 시스템 프롬프트 로드 - 5단계 Intake + Record + Action 시스템"""
+        """기본 ?�스???�롬?�트 로드 - 5?�계 Intake + Record + Action ?�스??""
         return """
-당신은 EFT(감정자유기법) 및 호흡 명상 전문 상담사입니다. 다음 원칙을 반드시 따라주세요:
+?�신?� EFT(감정?�유기법) �??�흡 명상 ?�문 ?�담?�입?�다. ?�음 ?�칙??반드???�라주세??
 
-🎯 **핵심 역할**:
-- 따뜻하고 공감적인 심리적 지지 제공
-- 사용자의 감정을 정확히 파악하고 검증
-- EFT/호흡 명상 기법을 활용한 실질적인 도움 제공
-- 한국 문화와 정서에 맞는 상담 진행
+?�� **?�심 ??��**:
+- ?�뜻?�고 공감?�인 ?�리??지지 ?�공
+- ?�용?�의 감정???�확???�악?�고 검�?- EFT/?�흡 명상 기법???�용???�질?�인 ?��? ?�공
+- ?�국 문화?� ?�서??맞는 ?�담 진행
 
-💙 **상담 스타일**:
-- 비판단적이고 수용적인 자세
-- 사용자의 감정을 무효화하지 않음
-- 구체적이고 실행 가능한 조언 제공
-- 전문적이면서도 친근한 어투 사용
+?�� **?�담 ?��???*:
+- 비판?�적?�고 ?�용?�인 ?�세
+- ?�용?�의 감정??무효?�하지 ?�음
+- 구체?�이�??�행 가?�한 조언 ?�공
+- ?�문?�이면서??친근???�투 ?�용
 
-🚨 **안전 규칙**:
-- 자해/자살 위험 신호 감지 시 즉시 전문기관 안내
-- 의학적 진단이나 처방은 절대 하지 않음
-- 과호흡/어지럼 보고 시 "1분 안정화 호흡 권유"만 (실행 X)
-- 사용자의 사생활과 비밀 보장
+?�� **?�전 규칙**:
+- ?�해/?�살 ?�험 ?�호 감�? ??즉시 ?�문기�? ?�내
+- ?�학??진단?�나 처방?� ?��? ?��? ?�음
+- 과호???��???보고 ??"1�??�정???�흡 권유"�?(?�행 X)
+- ?�용?�의 ?�생?�과 비�? 보장
 
-📋 **5단계 Intake + Record + Action 시스템**
+?�� **5?�계 Intake + Record + Action ?�스??*
 
-당신은 5단계 구조화된 상담 프로세스를 따릅니다:
+?�신?� 5?�계 구조?�된 ?�담 ?�로?�스�??�릅?�다:
 
-**S1 (공감·라포)**: 감정 표현 수용, 따뜻한 응대
-**S2 (Intake)**: 8가지 정보 수집 (감각/선호/시간여유/금기)
-**S3 (SUDS)**: 0~10 불편감 확인
-**S4 (분기 결정)**: EFT 또는 호흡 선택 + 근거 제시
-**S5 (일반 대화)**: 세션 실행은 프론트가 담당, AI는 대화로 복귀
-
----
-
-🔒 **출력 규칙 (CRITICAL)**:
-
-1. **S2 완료 시점**: Intake JSON을 **단 1회만** 출력
-2. **S4 분기 시점**: 다음 **두 개의 JSON**을 반드시 출력:
-   - ❶ **NOTION_RECORD_JSON**: 노션 기록용 (전체 세션 정보)
-   - ❷ **UI_ACTION_JSON**: 프론트엔드 라우팅용 (간단)
-3. **키 누락 금지**: 모르면 "미상" 입력
-4. **SUDS_before**: 0~10 정수 (UI Action의 `suds`와 동일 값)
+**S1 (공감·?�포)**: 감정 ?�현 ?�용, ?�뜻???��?
+**S2 (Intake)**: 8가지 ?�보 ?�집 (감각/?�호/?�간?�유/금기)
+**S3 (SUDS)**: 0~10 불편�??�인
+**S4 (분기 결정)**: EFT ?�는 ?�흡 ?�택 + 근거 ?�시
+**S5 (?�반 ?�??**: ?�션 ?�행?� ?�론?��? ?�당, AI???�?�로 복�?
 
 ---
 
-📝 **Intake JSON (S2 직후 1회)**:
+?�� **출력 규칙 (CRITICAL)**:
+
+1. **S2 ?�료 ?�점**: Intake JSON??**??1?�만** 출력
+2. **S4 분기 ?�점**: ?�음 **??개의 JSON**??반드??출력:
+   - ??**NOTION_RECORD_JSON**: ?�션 기록??(?�체 ?�션 ?�보)
+   - ??**UI_ACTION_JSON**: ?�론?�엔???�우?�용 (간단)
+3. **???�락 금�?**: 모르�?"미상" ?�력
+4. **SUDS_before**: 0~10 ?�수 (UI Action??`suds`?� ?�일 �?
+
+---
+
+?�� **Intake JSON (S2 직후 1??**:
 ```json
 {
-  "emotion_primary": "주 감정",
-  "trigger": "촉발 상황/사건",
-  "thought_pattern": "반복적 사고",
-  "body_signals": "신체 신호",
-  "behavior_response": "행동 패턴",
-  "context_detail": "상세 맥락",
+  "emotion_primary": "�?감정",
+  "trigger": "촉발 ?�황/?�건",
+  "thought_pattern": "반복???�고",
+  "body_signals": "?�체 ?�호",
+  "behavior_response": "?�동 ?�턴",
+  "context_detail": "?�세 맥락",
   "SUDS_before": 0,
   "preferred_modality": "EFT|BREATH|미상",
-  "contraindications": "과호흡 경향/어지럼/미상"
+  "contraindications": "과호??경향/?��???미상"
 }
 ```
 
-📝 **NOTION_RECORD_JSON (S4 시점)**:
+?�� **NOTION_RECORD_JSON (S4 ?�점)**:
 ```json
 {
   "emotion_primary": "...",
@@ -132,116 +125,115 @@ class EFTPromptManager:
   "preferred_modality": "EFT|BREATH|미상",
   "plan_modality": "EFT|BREATH",
   "rationale": "분기 결정 근거",
-  "session_notes": "세션 실행은 프론트에서 진행",
-  "cbt_action_steps": ["단계1", "단계2", "단계3"],
-  "user_feedback": "세션 전 느낌/메모",
+  "session_notes": "?�션 ?�행?� ?�론?�에??진행",
+  "cbt_action_steps": ["?�계1", "?�계2", "?�계3"],
+  "user_feedback": "?�션 ???�낌/메모",
   "timestamp_start": "미상",
   "timestamp_end": "미상",
   "duration": 0
 }
 ```
 
-📝 **UI_ACTION_JSON (S4 시점)**:
+?�� **UI_ACTION_JSON (S4 ?�점)**:
 ```json
 // EFT 분기
 {
   "action": "start_eftar",
   "route": "/eftar",
   "suds": 0,
-  "rationale": "특정 신념/사건에 감정 고정"
+  "rationale": "?�정 ?�념/?�건??감정 고정"
 }
 
-// 호흡 분기
+// ?�흡 분기
 {
   "action": "start_breath_page",
   "route": "/tri-modal",
   "suds": 0,
-  "rationale": "시간 제약 5분 이내 또는 신체 각성/막연 불안"
+  "rationale": "?�간 ?�약 5�??�내 ?�는 ?�체 각성/막연 불안"
 }
 ```
 
 ---
 
-🎯 **분기 정책**:
+?�� **분기 ?�책**:
 
-**EFT 선택** (`start_eftar`):
-- 특정 장면/사람/사고/신념이 뚜렷함
-- 재구조화 의지가 있음
-- 시간 여유 10분 이상
+**EFT ?�택** (`start_eftar`):
+- ?�정 ?�면/?�람/?�고/?�념???�렷??- ?�구조화 ?��?가 ?�음
+- ?�간 ?�유 10�??�상
 
-**호흡 선택** (`start_breath_page`):
-- 막연한 불안·신체 긴장
-- 빠른 진정 필요
-- **시간 제약: "5분 이내", "지금 급함", "빨리" 언급 시 무조건 호흡**
-- 선호가 명확하면 선호 우선
+**?�흡 ?�택** (`start_breath_page`):
+- 막연??불안·?�체 긴장
+- 빠른 진정 ?�요
+- **?�간 ?�약: "5�??�내", "지�?급함", "빨리" ?�급 ??무조�??�흡**
+- ?�호가 명확?�면 ?�호 ?�선
 
-**시간 기준 (CRITICAL)**:
-- "시간 없다/5분만 된다/급함" → **무조건 호흡 분기**
-- `rationale`에 시간 근거 명시 (예: "5분 이내 진정 필요")
-
----
-
-💬 **질문 가이드 (S2 Intake)**:
-- "그 감정이 커진 계기가 하나 있다면 뭐였을까요?"
-- "몸에서는 어떤 신호가 느껴져요?"
-- "지금은 빠르게 진정하고 싶으세요, 아니면 그 생각을 다뤄보고 싶으세요?"
-- "지금 불편감은 0~10 중 몇 점일까요?"
-- "시간은 어느 정도 가능하세요? 5분 정도 괜찮을까요?"
+**?�간 기�? (CRITICAL)**:
+- "?�간 ?�다/5분만 ?�다/급함" ??**무조�??�흡 분기**
+- `rationale`???�간 근거 명시 (?? "5�??�내 진정 ?�요")
 
 ---
 
-✅ **올바른 출력 예시**:
+?�� **질문 가?�드 (S2 Intake)**:
+- "�?감정??커진 계기가 ?�나 ?�다�?뭐�??�까??"
+- "몸에?�는 ?�떤 ?�호가 ?�껴?�요?"
+- "지금�? 빠르�?진정?�고 ?�으?�요, ?�니�?�??�각???�뤄보고 ?�으?�요?"
+- "지�?불편감�? 0~10 �?�??�일까요?"
+- "?�간?� ?�느 ?�도 가?�하?�요? 5�??�도 괜찮?�까??"
 
-**예시 1 - S1 (공감·라포)**:
+---
+
+??**?�바�?출력 ?�시**:
+
+**?�시 1 - S1 (공감·?�포)**:
 ```
-상사가 나를 무시해서 화가 나신다니, 정말 힘드셨겠어요.
-직장에서 그런 감정을 느끼는 건 너무 억울하고 답답한 일이에요.
+?�사가 ?��? 무시?�서 ?��? ?�신?�니, ?�말 ?�드?�겠?�요.
+직장?�서 그런 감정???�끼??�??�무 ?�울?�고 ?�답???�이?�요.
 ```
 
-**예시 2 - S2 (Intake 완료 시 JSON 1회 출력)**:
+**?�시 2 - S2 (Intake ?�료 ??JSON 1??출력)**:
 ```
-그 상황에서 어떤 생각이 반복되셨나요? 몸에서는 어떤 신호가 느껴지셨어요?
-시간은 어느 정도 가능하세요?
+�??�황?�서 ?�떤 ?�각??반복?�셨?�요? 몸에?�는 ?�떤 ?�호가 ?�껴지?�어??
+?�간?� ?�느 ?�도 가?�하?�요?
 
-[S2 완료 시 자동 출력]
+[S2 ?�료 ???�동 출력]
 {
   "emotion_primary": "분노",
-  "trigger": "상사의 무시",
-  "thought_pattern": "나는 인정받지 못한다",
-  "body_signals": "가슴 답답함, 주먹 쥐어짐",
-  "behavior_response": "회피, 말 줄임",
-  "context_detail": "회의 중 의견 무시됨",
+  "trigger": "?�사??무시",
+  "thought_pattern": "?�는 ?�정받�? 못한??,
+  "body_signals": "가???�답?? 주먹 쥐어�?,
+  "behavior_response": "?�피, �?줄임",
+  "context_detail": "?�의 �??�견 무시??,
   "SUDS_before": 8,
   "preferred_modality": "미상",
   "contraindications": "미상"
 }
 ```
 
-**예시 3 - S3 (SUDS 확인)**:
+**?�시 3 - S3 (SUDS ?�인)**:
 ```
-지금 그 불편감이 0~10 중 몇 점 정도일까요?
-0은 전혀 불편하지 않음, 10은 매우 심함입니다.
+지�?�?불편감이 0~10 �?�????�도?�까??
+0?� ?��? 불편?��? ?�음, 10?� 매우 ?�함?�니??
 ```
 
-**예시 4A - S4 (EFT 분기 - 두 개 JSON 출력)**:
+**?�시 4A - S4 (EFT 분기 - ??�?JSON 출력)**:
 ```
-8점이시군요. 상사와의 관계에서 "나는 인정받지 못한다"는 신념이 자리잡고 있네요.
-이럴 때는 EFT 탭핑으로 그 신념을 다루는 게 효과적일 것 같아요.
+8?�이?�군?? ?�사?�??관계에??"?�는 ?�정받�? 못한?????�념???�리?�고 ?�네??
+?�럴 ?�는 EFT ??��?�로 �??�념???�루??�??�과?�일 �?같아??
 
 [NOTION_RECORD_JSON]
 {
   "emotion_primary": "분노",
-  "trigger": "상사의 무시",
-  "thought_pattern": "나는 인정받지 못한다",
-  "body_signals": "가슴 답답함",
-  "behavior_response": "회피",
-  "context_detail": "회의 중 의견 무시",
+  "trigger": "?�사??무시",
+  "thought_pattern": "?�는 ?�정받�? 못한??,
+  "body_signals": "가???�답??,
+  "behavior_response": "?�피",
+  "context_detail": "?�의 �??�견 무시",
   "SUDS_before": 8,
   "preferred_modality": "미상",
   "plan_modality": "EFT",
-  "rationale": "특정 신념 고정 - 상사 관계 재구조화 필요",
-  "session_notes": "세션 실행은 프론트에서 진행",
-  "cbt_action_steps": ["탭핑 포인트 확인", "셋업 구문 반복", "SUDS 재측정"],
+  "rationale": "?�정 ?�념 고정 - ?�사 관�??�구조화 ?�요",
+  "session_notes": "?�션 ?�행?� ?�론?�에??진행",
+  "cbt_action_steps": ["??�� ?�인???�인", "?�업 구문 반복", "SUDS ?�측??],
   "user_feedback": "미상",
   "timestamp_start": "미상",
   "timestamp_end": "미상",
@@ -253,29 +245,29 @@ class EFTPromptManager:
   "action": "start_eftar",
   "route": "/eftar",
   "suds": 8,
-  "rationale": "특정 신념 고정 - 상사 관계 재구조화 필요"
+  "rationale": "?�정 ?�념 고정 - ?�사 관�??�구조화 ?�요"
 }
 ```
 
-**예시 4B - S4 (호흡 분기 - 시간 제약)**:
+**?�시 4B - S4 (?�흡 분기 - ?�간 ?�약)**:
 ```
-7점이시군요. 5분 안에 진정해야 하신다니, 빠른 호흡 명상이 도움이 될 거예요.
-지금 바로 시작해볼게요.
+7?�이?�군?? 5�??�에 진정?�야 ?�신?�니, 빠른 ?�흡 명상???��?????거예??
+지�?바로 ?�작?�볼게요.
 
 [NOTION_RECORD_JSON]
 {
   "emotion_primary": "불안",
   "trigger": "미상",
   "thought_pattern": "미상",
-  "body_signals": "가슴 두근거림",
+  "body_signals": "가???�근거림",
   "behavior_response": "미상",
-  "context_detail": "급한 상황",
+  "context_detail": "급한 ?�황",
   "SUDS_before": 7,
   "preferred_modality": "미상",
   "plan_modality": "BREATH",
-  "rationale": "시간 제약 5분 이내 + 즉각 진정 필요",
-  "session_notes": "세션 실행은 프론트에서 진행",
-  "cbt_action_steps": ["3초 들숨", "3초 멈춤", "6초 날숨"],
+  "rationale": "?�간 ?�약 5�??�내 + 즉각 진정 ?�요",
+  "session_notes": "?�션 ?�행?� ?�론?�에??진행",
+  "cbt_action_steps": ["3�??�숨", "3�?멈춤", "6�??�숨"],
   "user_feedback": "미상",
   "timestamp_start": "미상",
   "timestamp_end": "미상",
@@ -287,95 +279,94 @@ class EFTPromptManager:
   "action": "start_breath_page",
   "route": "/tri-modal",
   "suds": 7,
-  "rationale": "시간 제약 5분 이내 + 즉각 진정 필요"
+  "rationale": "?�간 ?�약 5�??�내 + 즉각 진정 ?�요"
 }
 ```
 
-**예시 5 - S5 (일반 대화 복귀)**:
+**?�시 5 - S5 (?�반 ?�??복�?)**:
 ```
-세션을 완료하셨군요! 어떠셨나요?
-불편감이 조금 줄어들었다면 다행이에요.
+?�션???�료?�셨군요! ?�떠?�나??
+불편감이 조금 줄어?�었?�면 ?�행?�에??
 ```
 
 ---
 
-❌ **금지 사항**:
+??**금�? ?�항**:
 
-- S2 시점에 Intake JSON을 여러 번 출력
-- S4 시점에 JSON 두 개 중 하나만 출력 (반드시 NOTION + UI 모두)
-- JSON 키 누락 (모르면 "미상" 입력)
-- JSON 앞뒤 마크다운 코드블록 (```)
-- 허용되지 않은 action type
-- SUDS_before와 UI Action의 suds 값 불일치
-
+- S2 ?�점??Intake JSON???�러 �?출력
+- S4 ?�점??JSON ??�?�??�나�?출력 (반드??NOTION + UI 모두)
+- JSON ???�락 (모르�?"미상" ?�력)
+- JSON ?�뒤 마크?�운 코드블록 (```)
+- ?�용?��? ?��? action type
+- SUDS_before?� UI Action??suds �?불일�?
 **중요**:
-- S2 완료 시 Intake JSON **1회만**
-- S4 분기 시 NOTION_RECORD_JSON + UI_ACTION_JSON **두 개 모두**
-- 시간 제약 언급 시 **무조건 호흡 분기**
+- S2 ?�료 ??Intake JSON **1?�만**
+- S4 분기 ??NOTION_RECORD_JSON + UI_ACTION_JSON **??�?모두**
+- ?�간 ?�약 ?�급 ??**무조�??�흡 분기**
 """
 
     def _load_emotion_templates(self) -> Dict[EmotionType, Dict[str, str]]:
-        """감정별 응답 템플릿 로드"""
+        """감정�??�답 ?�플�?로드"""
         return {
             EmotionType.STRESS: {
-                "validation": "정말 많은 스트레스를 받고 계시는군요. 혼자 감당하기 어려우셨겠어요.",
-                "exploration": "어떤 상황이 특히 스트레스를 주고 있나요? 구체적으로 말씀해 주시면 함께 해결 방법을 찾아보아요.",
-                "transition": "스트레스를 줄이는 데 도움이 되는 EFT 기법을 함께 해보시는 건 어떨까요?"
+                "validation": "?�말 많�? ?�트?�스�?받고 계시?�군?? ?�자 감당?�기 ?�려?�셨겠어??",
+                "exploration": "?�떤 ?�황???�히 ?�트?�스�?주고 ?�나?? 구체?�으�?말�???주시�??�께 ?�결 방법??찾아보아??",
+                "transition": "?�트?�스�?줄이?????��????�는 EFT 기법???�께 ?�보?�는 �??�떨까요?"
             },
             EmotionType.ANXIETY: {
-                "validation": "불안한 마음이 정말 힘드시겠어요. 그런 감정이 드는 것이 당연해요.",
-                "exploration": "무엇이 가장 걱정되시나요? 불안의 원인을 함께 찾아보면서 마음을 달래보아요.",
-                "transition": "불안감을 진정시키는 탭핑 기법이 도움이 될 것 같아요."
+                "validation": "불안??마음???�말 ?�드?�겠?�요. 그런 감정???�는 것이 ?�연?�요.",
+                "exploration": "무엇??가??걱정?�시?�요? 불안???�인???�께 찾아보면??마음???�래보아??",
+                "transition": "불안감을 진정?�키????�� 기법???��?????�?같아??"
             },
             EmotionType.SADNESS: {
-                "validation": "마음이 많이 아프시군요. 슬픈 마음을 느끼는 것도 소중한 감정이에요.",
-                "exploration": "이런 슬픔이 언제부터 시작되었나요? 혼자 간직하지 마시고 함께 나누어 보아요.",
-                "transition": "마음의 아픔을 치유하는 EFT 방법을 안내해 드릴게요."
+                "validation": "마음??많이 ?�프?�군?? ?�픈 마음???�끼??것도 ?�중??감정?�에??",
+                "exploration": "?�런 ?�픔???�제부???�작?�었?�요? ?�자 간직?��? 마시�??�께 ?�누??보아??",
+                "transition": "마음???�픔??치유?�는 EFT 방법???�내???�릴게요."
             },
             EmotionType.ANGER: {
-                "validation": "화가 나시는 것이 충분히 이해돼요. 분노도 자연스러운 감정입니다.",
-                "exploration": "어떤 일로 인해 이렇게 화가 나셨나요? 억울한 마음을 들어볼게요.",
-                "transition": "분노를 건강하게 해소할 수 있는 탭핑 방법이 있어요."
+                "validation": "?��? ?�시??것이 충분???�해?�요. 분노???�연?�러??감정?�니??",
+                "exploration": "?�떤 ?�로 ?�해 ?�렇�??��? ?�셨?�요? ?�울??마음???�어볼게??",
+                "transition": "분노�?건강?�게 ?�소?????�는 ??�� 방법???�어??"
             },
             EmotionType.LONELINESS: {
-                "validation": "외로운 마음이 많이 힘드시겠어요. 혼자라는 느낌이 얼마나 괴로운지 이해해요.",
-                "exploration": "언제부터 이런 외로움을 느끼셨나요? 지금 이 순간, 저와 함께 있다는 것을 느껴보세요.",
-                "transition": "외로움을 달래주는 따뜻한 자기 치유법을 함께 해보아요."
+                "validation": "?�로??마음??많이 ?�드?�겠?�요. ?�자?�는 ?�낌???�마??괴로?��? ?�해?�요.",
+                "exploration": "?�제부???�런 ?�로?�???�끼?�나?? 지�????�간, ?�?� ?�께 ?�다??것을 ?�껴보세??",
+                "transition": "?�로?�???�래주는 ?�뜻???�기 치유법을 ?�께 ?�보?�요."
             },
             EmotionType.FRUSTRATION: {
-                "validation": "답답하고 막막한 마음이 정말 힘드시겠어요. 그런 감정이 드는 것이 자연스러워요.",
-                "exploration": "무엇이 가장 답답하게 느껴지시나요? 구체적인 상황을 함께 살펴보아요.",
-                "transition": "막힌 감정을 풀어주는 EFT 기법이 도움이 될 거예요."
+                "validation": "?�답?�고 막막??마음???�말 ?�드?�겠?�요. 그런 감정???�는 것이 ?�연?�러?�요.",
+                "exploration": "무엇??가???�답?�게 ?�껴지?�나?? 구체?�인 ?�황???�께 ?�펴보아??",
+                "transition": "막힌 감정???�?�주??EFT 기법???��?????거예??"
             }
         }
     
     def _load_eft_techniques(self) -> Dict[EmotionType, List[Dict[str, Any]]]:
-        """감정별 EFT 기법 데이터베이스"""
+        """감정�?EFT 기법 ?�이?�베?�스"""
         return {
             EmotionType.STRESS: [
                 {
-                    "name": "스트레스 해소 기본 시퀀스",
+                    "name": "?�트?�스 ?�소 기본 ?�퀀??,
                     "points": [EFTPoint.CROWN, EFTPoint.EYEBROW, EFTPoint.COLLARBONE],
-                    "setup_phrase": "이런 스트레스가 있지만, 나는 나 자신을 깊이 사랑하고 받아들입니다",
-                    "reminder": "이 스트레스를 놓아보내요",
+                    "setup_phrase": "?�런 ?�트?�스가 ?��?�? ?�는 ???�신??깊이 ?�랑?�고 받아?�입?�다",
+                    "reminder": "???�트?�스�??�아보내??,
                     "duration": 5,
                     "effectiveness": 0.85
                 },
                 {
-                    "name": "직장 스트레스 전용 기법",
+                    "name": "직장 ?�트?�스 ?�용 기법",
                     "points": [EFTPoint.SIDE_OF_EYE, EFTPoint.UNDER_NOSE, EFTPoint.CHIN],
-                    "setup_phrase": "직장에서의 압박감이 있지만, 나는 평온을 선택합니다",
-                    "reminder": "직장 스트레스를 해소해요",
+                    "setup_phrase": "직장?�서???�박감이 ?��?�? ?�는 ?�온???�택?�니??,
+                    "reminder": "직장 ?�트?�스�??�소?�요",
                     "duration": 7,
                     "effectiveness": 0.82
                 }
             ],
             EmotionType.ANXIETY: [
                 {
-                    "name": "불안 진정 시퀀스",
+                    "name": "불안 진정 ?�퀀??,
                     "points": [EFTPoint.EYEBROW, EFTPoint.UNDER_EYE, EFTPoint.UNDER_NOSE],
-                    "setup_phrase": "불안한 마음이 있지만, 나는 지금 이 순간 안전합니다",
-                    "reminder": "불안을 내려놓아요",
+                    "setup_phrase": "불안??마음???��?�? ?�는 지�????�간 ?�전?�니??,
+                    "reminder": "불안???�려?�아??,
                     "duration": 6,
                     "effectiveness": 0.88
                 }
@@ -384,8 +375,8 @@ class EFTPromptManager:
                 {
                     "name": "분노 조절 기법",
                     "points": [EFTPoint.SIDE_OF_EYE, EFTPoint.COLLARBONE, EFTPoint.UNDER_ARM],
-                    "setup_phrase": "이런 화가 있지만, 나는 평화를 선택합니다",
-                    "reminder": "분노를 건강하게 해소해요",
+                    "setup_phrase": "?�런 ?��? ?��?�? ?�는 ?�화�??�택?�니??,
+                    "reminder": "분노�?건강?�게 ?�소?�요",
                     "duration": 8,
                     "effectiveness": 0.83
                 }
@@ -393,42 +384,42 @@ class EFTPromptManager:
         }
     
     def _load_korean_context(self) -> Dict[str, Any]:
-        """한국 문화 맥락 정보"""
+        """?�국 문화 맥락 ?�보"""
         return {
             "family_dynamics": {
-                "description": "한국은 가족 중심 사회로 가족 관계가 개인 정체성에 큰 영향",
-                "considerations": ["효도 의무감", "가족 기대 부담", "세대 갈등", "형제 서열"]
+                "description": "?�국?� 가�?중심 ?�회�?가�?관계�? 개인 ?�체?�에 ???�향",
+                "considerations": ["?�도 ?�무�?, "가�?기�? 부??, "?��? 갈등", "?�제 ?�열"]
             },
             "work_culture": {
-                "description": "집단주의적 직장 문화와 위계 관계",
-                "considerations": ["상하 관계", "야근 문화", "동료 관계", "성과 압박"]
+                "description": "집단주의??직장 문화?� ?�계 관�?,
+                "considerations": ["?�하 관�?, "?�근 문화", "?�료 관�?, "?�과 ?�박"]
             },
             "emotional_expression": {
-                "description": "감정 표현에 대한 문화적 제약",
-                "considerations": ["체면 중시", "인내심 미덕화", "집단 조화", "감정 억제"]
+                "description": "감정 ?�현???�??문화???�약",
+                "considerations": ["체면 중시", "?�내??미덕??, "집단 조화", "감정 ?�제"]
             },
             "social_pressure": {
-                "description": "사회적 기대와 비교 문화",
-                "considerations": ["학력 중시", "결혼 압박", "경제적 성취", "외모 관심"]
+                "description": "?�회??기�??� 비교 문화",
+                "considerations": ["?�력 중시", "결혼 ?�박", "경제???�취", "?�모 관??]
             }
         }
     
     def _load_safety_guidelines(self) -> Dict[str, List[str]]:
-        """안전 가이드라인"""
+        """?�전 가?�드?�인"""
         return {
             "emergency_keywords": [
-                "죽고싶", "자살", "자해", "세상을 떠나고", "모든 것을 끝내고",
-                "해치고싶", "죽이고싶", "복수", "살인"
+                "죽고??, "?�살", "?�해", "?�상???�나�?, "모든 것을 ?�내�?,
+                "?�치고싶", "죽이고싶", "복수", "?�인"
             ],
             "professional_referral_keywords": [
-                "환청", "환각", "조현병", "양극성", "우울증", "공황장애",
-                "강박", "외상", "트라우마", "중독", "거식증", "폭식증"
+                "?�청", "?�각", "조현�?, "?�극??, "?�울�?, "공황?�애",
+                "강박", "?�상", "?�라?�마", "중독", "거식�?, "??���?
             ],
             "crisis_resources": [
-                "생명의전화: 1588-9191",
-                "청소년 상담전화: 1388", 
-                "정신건강 위기상담: 1577-0199",
-                "경찰청 신고센터: 112"
+                "?�명?�전?? 1588-9191",
+                "�?��???�담?�화: 1388", 
+                "?�신건강 ?�기?�담: 1577-0199",
+                "경찰�??�고?�터: 112"
             ]
         }
     
@@ -441,36 +432,36 @@ class EFTPromptManager:
         style: PromptStyle = PromptStyle.EMPATHETIC,
         tier: str = "free"
     ) -> str:
-        """EFT 전문 프롬프트 생성"""
+        """EFT ?�문 ?�롬?�트 ?�성"""
         
-        # 1. 시스템 프롬프트 (티어별 차별화)
+        # 1. ?�스???�롬?�트 (?�어�?차별??
         system_section = self._get_tier_system_prompt(tier)
         
-        # 2. 사용자 프로필 맥락 추가
+        # 2. ?�용???�로??맥락 추�?
         profile_context = self._build_profile_context(user_profile)
         
-        # 3. 감정 분석 맥락 추가
+        # 3. 감정 분석 맥락 추�?
         emotion_context = self._build_emotion_context(emotion_state)
         
-        # 4. 대화 히스토리 맥락
+        # 4. ?�???�스?�리 맥락
         history_context = self._build_history_context(conversation_history)
         
-        # 5. 안전성 체크
+        # 5. ?�전??체크
         safety_context = self._build_safety_context(user_message)
         
-        # 6. EFT 기법 컨텍스트
+        # 6. EFT 기법 컨텍?�트
         eft_context = self._build_eft_context(emotion_state)
         
-        # 7. 한국 문화 컨텍스트
+        # 7. ?�국 문화 컨텍?�트
         culture_context = self._build_culture_context(user_message)
         
-        # 8. 응답 스타일 가이드
+        # 8. ?�답 ?��???가?�드
         style_guide = self._build_style_guide(style, emotion_state)
         
-        # 9. 티어별 응답 가이드
+        # 9. ?�어�??�답 가?�드
         tier_guide = self._build_tier_guide(tier)
         
-        # 최종 프롬프트 조합
+        # 최종 ?�롬?�트 조합
         full_prompt = f"""
 {system_section}
 
@@ -490,48 +481,46 @@ class EFTPromptManager:
 
 {tier_guide}
 
-📝 **사용자 메시지**: "{user_message}"
+?�� **?�용??메시지**: "{user_message}"
 
-🎯 **5단계 프로세스 응답 지침**:
+?�� **5?�계 ?�로?�스 ?�답 지�?*:
 
-**현재 단계 확인**:
-- S1: 감정 표현 있음, Intake 미완료 → 공감·라포
-- S2: 정보 수집 중 → Intake 질문 + JSON 1회 출력
-- S3: Intake 완료, SUDS 미확인 → SUDS 질문
-- S4: SUDS 확인 완료 → 분기 결정 + 두 JSON 출력
-- S5: 세션 시작됨 → 일반 대화
+**?�재 ?�계 ?�인**:
+- S1: 감정 ?�현 ?�음, Intake 미완�???공감·?�포
+- S2: ?�보 ?�집 �???Intake 질문 + JSON 1??출력
+- S3: Intake ?�료, SUDS 미확????SUDS 질문
+- S4: SUDS ?�인 ?�료 ??분기 결정 + ??JSON 출력
+- S5: ?�션 ?�작?????�반 ?�??
+**S2 ?�료 ??(??1??**:
+- Intake JSON 출력 (모든 ???�함, 모르�?"미상")
+- ?�연?�러???�??+ JSON ?�식 준??
+**S4 분기 ??(반드????�?**:
+- ??NOTION_RECORD_JSON (?�체 ?�보)
+- ??UI_ACTION_JSON (?�우?�용)
+- ?�간 ?�약 ?�급 ??**무조�??�흡 분기**
 
-**S2 완료 시 (단 1회)**:
-- Intake JSON 출력 (모든 키 포함, 모르면 "미상")
-- 자연스러운 대화 + JSON 형식 준수
+**?�답 ?��???*:
+- ?�용?�의 마�?�?발화�?기반?�로 ?�연?�럽�?공감
+- 기법 즉시 강요 금�?, ?�진???�안
+- ?�??맥락 반영: ?? "?�이 ???�?? ??"?�이 ???�???�드?�군??
+- 반복 문구 ?�거: "?�께 ?�야기해봐요" 매번 ?�용 금�?
+- ?�스??지�?분석/?�그 출력 ?��? 금�?
+- ?�국 문화 맥락: 체면/?�치??관�?중심 ?�휘
+- {self._get_tier_response_length(tier)} ?? ?�연?�러??문단
 
-**S4 분기 시 (반드시 두 개)**:
-- ❶ NOTION_RECORD_JSON (전체 정보)
-- ❷ UI_ACTION_JSON (라우팅용)
-- 시간 제약 언급 → **무조건 호흡 분기**
+?�️ **CRITICAL 출력 규칙**:
+1. S2: Intake JSON **1?�만**
+2. S4: NOTION_RECORD_JSON + UI_ACTION_JSON **??�?모두**
+3. ???�락 금�? (모르�?"미상")
+4. SUDS_before = UI Action??suds (?�일 �?
+5. ?�간 ?�약 ("5�?, "급함") ??무조�?`action: "start_breath_page"`
 
-**응답 스타일**:
-- 사용자의 마지막 발화를 기반으로 자연스럽게 공감
-- 기법 즉시 강요 금지, 점진적 제안
-- 대화 맥락 반영: 예) "잠이 안 와요" → "잠이 안 와서 힘드시군요"
-- 반복 문구 제거: "함께 이야기해봐요" 매번 사용 금지
-- 시스템 지침/분석/태그 출력 절대 금지
-- 한국 문화 맥락: 체면/수치심/관계 중심 어휘
-- {self._get_tier_response_length(tier)} 내, 자연스러운 문단
-
-⚠️ **CRITICAL 출력 규칙**:
-1. S2: Intake JSON **1회만**
-2. S4: NOTION_RECORD_JSON + UI_ACTION_JSON **두 개 모두**
-3. 키 누락 금지 (모르면 "미상")
-4. SUDS_before = UI Action의 suds (동일 값)
-5. 시간 제약 ("5분", "급함") → 무조건 `action: "start_breath_page"`
-
-**S4 분기 예시**:
+**S4 분기 ?�시**:
 ```
-[자연스러운 응답]
+[?�연?�러???�답]
 
 [NOTION_RECORD_JSON]
-{{모든 키 포함}}
+{{모든 ???�함}}
 
 [UI_ACTION_JSON]
 {{"action":"start_eftar"|"start_breath_page","route":"/eftar"|"/tri-modal","suds":0-10,"rationale":"..."}}
@@ -541,46 +530,44 @@ class EFTPromptManager:
         return full_prompt.strip()
     
     def _build_profile_context(self, profile: UserProfile) -> str:
-        """사용자 프로필 컨텍스트 생성"""
+        """?�용???�로??컨텍?�트 ?�성"""
         if not profile:
             return ""
         
         context = f"""
-👤 **사용자 프로필**:
-- EFT 경험 수준: {profile.eft_experience_level}
-- 소통 스타일: {profile.communication_style}
-- 감정 민감도: {profile.emotional_sensitivity:.1f}/1.0
-- 이전 세션: {profile.previous_sessions}회
-"""
+?�� **?�용???�로??*:
+- EFT 경험 ?��?: {profile.eft_experience_level}
+- ?�통 ?��??? {profile.communication_style}
+- 감정 민감?? {profile.emotional_sensitivity:.1f}/1.0
+- ?�전 ?�션: {profile.previous_sessions}??"""
         return context
     
     def _build_emotion_context(self, emotion: EmotionAnalysis) -> str:
-        """감정 분석 컨텍스트 생성"""
+        """감정 분석 컨텍?�트 ?�성"""
         context = f"""
-🧠 **감정 분석 결과**:
+?�� **감정 분석 결과**:
 - 주요 감정: {emotion.primary_emotion.value} (강도: {emotion.intensity:.2f})
-- 보조 감정: {emotion.secondary_emotion.value if emotion.secondary_emotion else "없음"}
-- 분석 신뢰도: {emotion.confidence:.2f}
-- 감정 키워드: {', '.join(emotion.emotional_keywords)}
+- 보조 감정: {emotion.secondary_emotion.value if emotion.secondary_emotion else "?�음"}
+- 분석 ?�뢰?? {emotion.confidence:.2f}
+- 감정 ?�워?? {', '.join(emotion.emotional_keywords)}
 """
         return context
     
     def _build_history_context(self, history: List[ConversationMessage]) -> str:
-        """대화 히스토리 컨텍스트 생성"""
+        """?�???�스?�리 컨텍?�트 ?�성"""
         if not history or len(history) == 0:
-            return "📜 **대화 히스토리**: 첫 대화입니다."
+            return "?�� **?�???�스?�리**: �??�?�입?�다."
         
-        recent_messages = history[-3:]  # 최근 3개 메시지만
-        history_text = "📜 **최근 대화 맥락**:\n"
+        recent_messages = history[-3:]  # 최근 3�?메시지�?        history_text = "?�� **최근 ?�??맥락**:\n"
         
         for msg in recent_messages:
-            role_emoji = "👤" if msg.role == "user" else "🤖"
+            role_emoji = "?��" if msg.role == "user" else "?��"
             history_text += f"- {role_emoji} {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}\n"
         
         return history_text
     
     def _build_safety_context(self, message: str) -> str:
-        """안전성 체크 컨텍스트"""
+        """?�전??체크 컨텍?�트"""
         emergency_detected = any(
             keyword in message.lower() 
             for keyword in self.safety_guidelines["emergency_keywords"]
@@ -593,63 +580,60 @@ class EFTPromptManager:
         
         if emergency_detected:
             return """
-🚨 **응급상황 감지**: 자해/자살 위험 신호가 감지되었습니다.
-- 즉시 전문기관 안내 필수
-- 따뜻한 지지와 함께 구체적인 도움처 제공
-- EFT 기법보다는 안전 확보 우선
+?�� **?�급?�황 감�?**: ?�해/?�살 ?�험 ?�호가 감�??�었?�니??
+- 즉시 ?�문기�? ?�내 ?�수
+- ?�뜻??지지?� ?�께 구체?�인 ?��?�??�공
+- EFT 기법보다???�전 ?�보 ?�선
 """
         elif professional_needed:
             return """
-⚠️ **전문가 상담 권장**: 전문적 치료가 필요한 증상이 언급되었습니다.
-- 전문가 상담 권유
-- EFT는 보조적 도구로만 활용
-- 의학적 진단/처방 절대 금지
+?�️ **?�문가 ?�담 권장**: ?�문??치료가 ?�요??증상???�급?�었?�니??
+- ?�문가 ?�담 권유
+- EFT??보조???�구로만 ?�용
+- ?�학??진단/처방 ?��? 금�?
 """
         else:
-            return "✅ **안전성 체크**: 일반적인 상담 진행 가능"
+            return "??**?�전??체크**: ?�반?�인 ?�담 진행 가??
     
     def _build_eft_context(self, emotion: EmotionAnalysis) -> str:
-        """EFT 기법 컨텍스트 생성"""
+        """EFT 기법 컨텍?�트 ?�성"""
         techniques = self.eft_technique_database.get(emotion.primary_emotion, [])
         
         if not techniques:
-            return "⚡ **EFT 추천**: 기본 감정 조절 기법 적용"
+            return "??**EFT 추천**: 기본 감정 조절 기법 ?�용"
         
         best_technique = max(techniques, key=lambda x: x["effectiveness"])
         
         context = f"""
-⚡ **추천 EFT 기법**: {best_technique["name"]}
-- 탭핑 포인트: {', '.join([point.value for point in best_technique["points"]])}
-- 셋업 구문: "{best_technique["setup_phrase"]}"
-- 리마인더: "{best_technique["reminder"]}"
-- 예상 소요시간: {best_technique["duration"]}분
-- 효과성: {best_technique["effectiveness"]:.0%}
+??**추천 EFT 기법**: {best_technique["name"]}
+- ??�� ?�인?? {', '.join([point.value for point in best_technique["points"]])}
+- ?�업 구문: "{best_technique["setup_phrase"]}"
+- 리마?�더: "{best_technique["reminder"]}"
+- ?�상 ?�요?�간: {best_technique["duration"]}�?- ?�과?? {best_technique["effectiveness"]:.0%}
 """
         return context
     
     def _build_culture_context(self, message: str) -> str:
-        """한국 문화 컨텍스트 생성"""
+        """?�국 문화 컨텍?�트 ?�성"""
         cultural_themes = []
         
-        # 가족 관련
-        family_keywords = ["부모", "엄마", "아빠", "가족", "형제", "자매", "시댁", "처가"]
+        # 가�?관??        family_keywords = ["부�?, "?�마", "?�빠", "가�?, "?�제", "?�매", "?�댁", "처�?"]
         if any(keyword in message for keyword in family_keywords):
             cultural_themes.append("family_dynamics")
         
-        # 직장 관련
-        work_keywords = ["회사", "직장", "상사", "동료", "업무", "야근", "승진", "면접"]
+        # 직장 관??        work_keywords = ["?�사", "직장", "?�사", "?�료", "?�무", "?�근", "?�진", "면접"]
         if any(keyword in message for keyword in work_keywords):
             cultural_themes.append("work_culture")
         
-        # 사회적 압박
-        social_keywords = ["결혼", "연애", "학벌", "스펙", "취업", "비교", "남들"]
+        # ?�회???�박
+        social_keywords = ["결혼", "?�애", "?�벌", "?�펙", "취업", "비교", "?�들"]
         if any(keyword in message for keyword in social_keywords):
             cultural_themes.append("social_pressure")
         
         if not cultural_themes:
             return ""
         
-        context = "🇰🇷 **한국 문화 고려사항**:\n"
+        context = "?��?�� **?�국 문화 고려?�항**:\n"
         for theme in cultural_themes:
             theme_info = self.korean_culture_context[theme]
             context += f"- {theme_info['description']}\n"
@@ -657,12 +641,12 @@ class EFTPromptManager:
         return context
     
     def _build_style_guide(self, style: PromptStyle, emotion: EmotionAnalysis) -> str:
-        """응답 스타일 가이드 생성"""
+        """?�답 ?��???가?�드 ?�성"""
         
         templates = self.emotion_response_templates.get(emotion.primary_emotion, {})
         
         base_guide = f"""
-🎨 **응답 스타일 가이드**: {style.value}
+?�� **?�답 ?��???가?�드**: {style.value}
 """
         
         if templates:
@@ -671,15 +655,15 @@ class EFTPromptManager:
             transition = templates.get("transition", "")
             
             base_guide += f"""
-1. **감정 검증**: {validation}
-2. **탐색 질문**: {exploration}  
-3. **EFT 연결**: {transition}
+1. **감정 검�?*: {validation}
+2. **?�색 질문**: {exploration}  
+3. **EFT ?�결**: {transition}
 """
         
         return base_guide
     
     def recommend_eft_techniques(self, emotion_state: EmotionAnalysis) -> List[EFTRecommendation]:
-        """감정 상태 기반 EFT 기법 추천"""
+        """감정 ?�태 기반 EFT 기법 추천"""
         
         techniques = self.eft_technique_database.get(emotion_state.primary_emotion, [])
         recommendations = []
@@ -691,78 +675,74 @@ class EFTPromptManager:
                 setup_phrase=tech["setup_phrase"],
                 reminder_phrase=tech["reminder"],
                 duration_minutes=tech["duration"],
-                difficulty_level="beginner",  # 기본값
-                effectiveness_score=tech["effectiveness"],
-                additional_notes=f"{emotion_state.primary_emotion.value} 감정에 특화된 기법입니다."
+                difficulty_level="beginner",  # 기본�?                effectiveness_score=tech["effectiveness"],
+                additional_notes=f"{emotion_state.primary_emotion.value} 감정???�화??기법?�니??"
             )
             recommendations.append(recommendation)
         
-        # 효과성 순으로 정렬
+        # ?�과???�으�??�렬
         recommendations.sort(key=lambda x: x.effectiveness_score, reverse=True)
         
-        return recommendations[:3]  # 상위 3개만 반환
+        return recommendations[:3]  # ?�위 3개만 반환
     
     def _get_tier_system_prompt(self, tier: str) -> str:
-        """티어별 시스템 프롬프트 생성"""
+        """?�어�??�스???�롬?�트 ?�성"""
         base_prompt = self.base_system_prompt
         
         if tier == "premium":
             premium_addition = """
-💎 **프리미엄 상담 모드**:
-- 더 깊이 있는 감정 분석과 개인화된 접근
-- 고급 EFT 기법 및 복합적 접근법 활용  
-- 장기적 관점에서의 심리적 성장 지원
-- 개인별 패턴 분석을 통한 맞춤형 전략 제공
-- 보다 전문적이고 상세한 상담 제공
+?�� **?�리미엄 ?�담 모드**:
+- ??깊이 ?�는 감정 분석�?개인?�된 ?�근
+- 고급 EFT 기법 �?복합???�근�??�용  
+- ?�기??관?�에?�의 ?�리???�장 지??- 개인�??�턴 분석???�한 맞춤???�략 ?�공
+- 보다 ?�문?�이�??�세???�담 ?�공
 """
             return base_prompt + premium_addition
         elif tier == "enterprise":
             enterprise_addition = """
-🏢 **엔터프라이즈 상담 모드**:
-- 최고급 심리 분석 및 치료적 접근
-- 다차원적 감정 분석 및 통합적 치유 방법
-- 조직 및 단체를 위한 특화된 상담 기법
-- 무제한 깊이의 대화 및 지속적 추적 관리
-- 전문 심리상담사 수준의 고도화된 서비스
-"""
+?�� **?�터?�라?�즈 ?�담 모드**:
+- 최고�??�리 분석 �?치료???�근
+- ?�차?�적 감정 분석 �??�합??치유 방법
+- 조직 �??�체�??�한 ?�화???�담 기법
+- 무제??깊이???�??�?지?�적 추적 관�?- ?�문 ?�리?�담???��???고도?�된 ?�비??"""
             return base_prompt + enterprise_addition
         
-        return base_prompt  # 무료 티어는 기본 프롬프트
+        return base_prompt  # 무료 ?�어??기본 ?�롬?�트
     
     def _build_tier_guide(self, tier: str) -> str:
-        """티어별 응답 가이드 생성"""
+        """?�어�??�답 가?�드 ?�성"""
         if tier == "premium":
             return """
-💎 **프리미엄 서비스 특징**:
-- 보다 상세하고 구체적인 분석 제공
-- 개인화된 EFT 기법 조합 추천
-- 심층적인 감정 탐구 및 패턴 분석
-- 단계적 치유 계획 수립
+?�� **?�리미엄 ?�비???�징**:
+- 보다 ?�세?�고 구체?�인 분석 ?�공
+- 개인?�된 EFT 기법 조합 추천
+- ?�층?�인 감정 ?�구 �??�턴 분석
+- ?�계??치유 계획 ?�립
 """
         elif tier == "enterprise":
             return """
-🏢 **엔터프라이즈 서비스 특징**:
-- 최고 수준의 전문적 분석
-- 다각도 치료 접근법 통합
-- 장기적 심리 건강 관리 방안
-- 조직/단체 맞춤 솔루션 제공
+?�� **?�터?�라?�즈 ?�비???�징**:
+- 최고 ?��????�문??분석
+- ?�각??치료 ?�근�??�합
+- ?�기???�리 건강 관�?방안
+- 조직/?�체 맞춤 ?�루???�공
 """
         
         return """
-🆓 **무료 서비스 특징**:
-- 기본적인 감정 지지 및 공감
-- 표준 EFT 기법 안내
-- 간단하고 실용적인 조언
+?�� **무료 ?�비???�징**:
+- 기본?�인 감정 지지 �?공감
+- ?��? EFT 기법 ?�내
+- 간단?�고 ?�용?�인 조언
 """
     
     def _get_tier_response_length(self, tier: str) -> str:
-        """티어별 응답 길이 가이드"""
+        """?�어�??�답 길이 가?�드"""
         if tier == "premium":
-            return "400-800자"
+            return "400-800??
         elif tier == "enterprise":
-            return "800-1200자"
+            return "800-1200??
         else:
-            return "200-400자"  # 무료 티어
+            return "200-400??  # 무료 ?�어
     
     def post_process_response(
         self, 
@@ -770,18 +750,18 @@ class EFTPromptManager:
         emotion_analysis: EmotionAnalysis,
         tier: str = "free"
     ) -> Dict[str, Any]:
-        """AI 응답 후처리"""
+        """AI ?�답 ?�처�?""
         
-        # 1. 응답 정제
+        # 1. ?�답 ?�제
         cleaned_response = self._clean_ai_response(ai_response)
         
-        # 2. EFT 추천 생성
+        # 2. EFT 추천 ?�성
         eft_recommendations = self.recommend_eft_techniques(emotion_analysis)
         
-        # 3. 제안 액션 생성
+        # 3. ?�안 ?�션 ?�성
         suggested_actions = self._generate_suggested_actions(emotion_analysis)
         
-        # 4. 신뢰도 계산
+        # 4. ?�뢰??계산
         confidence = self._calculate_response_confidence(cleaned_response, emotion_analysis)
         
         return {
@@ -792,12 +772,12 @@ class EFTPromptManager:
         }
     
     def _clean_ai_response(self, response: str) -> str:
-        """AI 응답 정제"""
+        """AI ?�답 ?�제"""
         
-        # 불필요한 prefix 제거
+        # 불필?�한 prefix ?�거
         prefixes_to_remove = [
-            "EFT 전문 상담사로서 말씀드리면,",
-            "상담사:",
+            "EFT ?�문 ?�담?�로??말�??�리�?",
+            "?�담??",
             "Assistant:",
             "AI:"
         ]
@@ -806,7 +786,7 @@ class EFTPromptManager:
         for prefix in prefixes_to_remove:
             cleaned = cleaned.replace(prefix, "").strip()
         
-        # 길이 제한 (너무 긴 응답 방지)
+        # 길이 ?�한 (?�무 �??�답 방�?)
         if len(cleaned) > 800:
             sentences = cleaned.split('. ')
             cleaned = '. '.join(sentences[:4]) + '.'
@@ -814,35 +794,35 @@ class EFTPromptManager:
         return cleaned
     
     def _generate_suggested_actions(self, emotion: EmotionAnalysis) -> List[SuggestedAction]:
-        """제안 액션 생성"""
+        """?�안 ?�션 ?�성"""
         
         actions = []
         
-        # 감정별 맞춤 액션
+        # 감정�?맞춤 ?�션
         if emotion.primary_emotion in [EmotionType.STRESS, EmotionType.ANXIETY]:
             actions.append(SuggestedAction(
                 action_type="breathing",
-                title="심호흡 연습하기",
-                description="5분간 깊은 호흡으로 마음을 진정시켜보세요",
+                title="?�호???�습?�기",
+                description="5분간 깊�? ?�흡?�로 마음??진정?�켜보세??,
                 priority="high",
                 estimated_time_minutes=5
             ))
         
-        # EFT 세션 제안
+        # EFT ?�션 ?�안
         actions.append(SuggestedAction(
             action_type="eft_session",
-            title="EFT 탭핑 세션 시작",
-            description=f"{emotion.primary_emotion.value} 감정을 위한 맞춤 EFT 기법",
+            title="EFT ??�� ?�션 ?�작",
+            description=f"{emotion.primary_emotion.value} 감정???�한 맞춤 EFT 기법",
             priority="medium",
             estimated_time_minutes=10
         ))
         
-        # 높은 강도일 때 전문가 상담 권유
+        # ?��? 강도?????�문가 ?�담 권유
         if emotion.intensity > 0.8:
             actions.append(SuggestedAction(
                 action_type="professional_help", 
-                title="전문가 상담 고려하기",
-                description="감정 강도가 높아 전문가의 도움이 필요할 수 있습니다",
+                title="?�문가 ?�담 고려?�기",
+                description="감정 강도가 ?�아 ?�문가???��????�요?????�습?�다",
                 priority="high",
                 estimated_time_minutes=60
             ))
@@ -854,16 +834,16 @@ class EFTPromptManager:
         response: str, 
         emotion: EmotionAnalysis
     ) -> float:
-        """응답 신뢰도 계산"""
+        """?�답 ?�뢰??계산"""
         
-        confidence_score = 0.7  # 기본 점수
+        confidence_score = 0.7  # 기본 ?�수
         
-        # 응답 길이 체크
+        # ?�답 길이 체크
         if 50 <= len(response) <= 400:
             confidence_score += 0.1
         
-        # 감정 분석 신뢰도 반영
+        # 감정 분석 ?�뢰??반영
         confidence_score += emotion.confidence * 0.2
         
-        # 최대 1.0으로 제한
+        # 최�? 1.0?�로 ?�한
         return min(confidence_score, 1.0)

@@ -1,17 +1,27 @@
 """
-Notion 감정 기록 API 라우터
+Notion 감정 기록 API ?�우??
+- 로그?�한 ?�용??+ Notion OAuth ?�동 ???�용???�크?�페?�스??개인 DB??기록
+- (?�거?? ?�영??공용 ?�합?� notion_service.create_emotion_page�??��?
 """
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
+from typing import Literal, Optional
 
-from backend.models.chat_models import StrictIntakeInput
-from backend.services.notion_service import create_emotion_page
-from backend.utils.logger import get_logger
+from fastapi import APIRouter, HTTPException, Depends, Cookie
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from database import get_db
+from models.chat_models import StrictIntakeInput
+from models.user import User
+from services.auth_service import AuthService
+from services.notion_service import create_emotion_page_with_token
+from services.user_notion_service import get_user_notion_service
+from utils.logger import get_logger
 
 
 logger = get_logger(__name__)
+auth_service = AuthService()
+user_notion_service = get_user_notion_service()
 
 router = APIRouter(
     prefix="/api/notion",
@@ -20,19 +30,50 @@ router = APIRouter(
 )
 
 
+def get_current_user(
+    db: Session = Depends(get_db),
+    access_token: Optional[str] = Cookie(default=None, alias="access_token"),
+) -> User:
+    if not access_token:
+        raise HTTPException(status_code=401, detail="로그?�이 ?�요?�니??")
+    try:
+        payload = auth_service.decode_jwt(access_token)
+        if payload.get("type") != "access":
+            raise HTTPException(status_code=401, detail="?�못???�큰 ?�형?�니??")
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="?�큰???�용???�보가 ?�습?�다.")
+        user = db.query(User).filter(User.id == user_id).one_or_none()
+        if user is None:
+            raise HTTPException(status_code=401, detail="?�용?��? 찾을 ???�습?�다.")
+        return user
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="?�큰 검증에 ?�패?�습?�다.")
+
+
 class NotionSaveRequest(BaseModel):
-    """Notion 저장 요청 모델"""
-    user_email: str = Field(..., description="사용자 이메일")
-    strict_intake: StrictIntakeInput = Field(..., description="STRICT6 감정 인테이크 데이터")
-    intensity_after: int = Field(..., ge=0, le=10, description="개입 후 감정 강도 (0~10)")
+    """Notion ?�???�청 모델"""
+    # 과거 ?�환???�드(무시), ?�제 ?�메?��? 로그?�한 ?�용?�에??가?�온??
+    user_email: Optional[str] = Field(
+        default=None,
+        description="?�용???�메??(???�상 ?�용?��? ?�음)",
+    )
+    strict_intake: StrictIntakeInput = Field(..., description="STRICT6 감정 ?�테?�크 ?�이??)
+    intensity_after: int = Field(..., ge=0, le=10, description="개입 ??감정 강도 (0~10)")
+    session_type: Optional[Literal["eftar", "meditation"]] = Field(
+        default=None,
+        description="Session type marker (eftar or meditation)",
+    )
     solution: Optional[str] = Field(
-        default="EFT 탭핑 + 박스 호흡",
-        description="AI가 제안한 솔루션"
+        default="EFT ??�� + 박스 ?�흡",
+        description="AI가 ?�안???�루??,
     )
 
 
 class NotionSaveResponse(BaseModel):
-    """Notion 저장 응답 모델"""
+    """Notion ?�???�답 모델"""
     success: bool
     notion_page_id: Optional[str] = None
     message: str
@@ -41,60 +82,97 @@ class NotionSaveResponse(BaseModel):
 
 
 @router.post("/create-emotion-page", response_model=NotionSaveResponse)
-async def save_emotion_to_notion(request: NotionSaveRequest):
+async def save_emotion_to_notion(
+    request: NotionSaveRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """
-    STRICT6 감정 인테이크 + intensity_after를 Notion에 저장
+    STRICT6 감정 ?�테?�크 + intensity_after�?Notion???�??
+
+    - ?�용?��? Notion OAuth ?�동???�료?�다�? ?�당 ?�용?�의 ?�크?�페?�스 DB???�??    - ?�동???�다�? HTTP 400 ?�러 반환 (?�론?�에???�동 ?�도)
     """
     try:
+        email = user.email
         logger.info(
-            f"[Notion] 감정 기록 저장 시작: {request.user_email}, "
+            f"[Notion] 감정 기록 ?�???�작: {email}, "
             f"감정={request.strict_intake.core_emotion}, "
-            f"강도={request.strict_intake.intensity}→{request.intensity_after}"
+            f"강도={request.strict_intake.intensity}??request.intensity_after}"
         )
 
-        result = await create_emotion_page(
-            user_email=request.user_email,
+        # 1) ?�용??Notion ?�동 ?��? ?�인
+        if not user.notion_access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Notion ?�동???�어 ?��? ?�습?�다. ?�정?�서 Notion ?�동??먼�? 진행?�주?�요.",
+            )
+
+        # 2) ?�용???�크?�페?�스??감정 기록 DB ?�보 (?�으�??�성)
+        try:
+            user_db_id = await user_notion_service.ensure_user_database(db, user)
+        except Exception as db_err:
+            logger.exception(f"[Notion] ?�용??DB ?�보 ?�패: {email} - {db_err}")
+            raise HTTPException(
+                status_code=500,
+                detail="?�용??Notion ?�이?�베?�스�??�성/?�보?�는 �??�류가 발생?�습?�다.",
+            )
+
+        # 3) ?�용???�큰 복호??        try:
+            access_token = user_notion_service.get_decrypted_access_token(user)
+        except Exception as token_err:
+            logger.exception(f"[Notion] ?�용???�큰 복호???�패: {email} - {token_err}")
+            raise HTTPException(
+                status_code=500,
+                detail="?�용??Notion ?�큰??복호?�하??�??�류가 발생?�습?�다.",
+            )
+
+        # 4) ?�용???�용 DB??기록
+        result = await create_emotion_page_with_token(
+            access_token=access_token,
+            database_id=user_db_id,
+            user_email=email,
             strict_intake=request.strict_intake,
+            session_type=request.session_type,
             intensity_after=request.intensity_after,
-            solution=request.solution
+            solution=request.solution,
         )
 
         if result is None:
-            logger.error(f"[Notion] 저장 실패: {request.user_email}")
+            logger.error(f"[Notion] ?�???�패: {email}")
             raise HTTPException(
                 status_code=500,
-                detail="Notion 저장 실패. NOTION_API_KEY와 NOTION_DATABASE_ID를 확인해주세요."
+                detail="Notion ?�???�패. ?�용??Notion 권한 ?�는 DB ?�정???�인?�주?�요.",
             )
 
         delta = request.strict_intake.intensity - request.intensity_after
 
         logger.info(
-            f"[Notion] 저장 성공: 페이지 ID={result.get('id')}, "
-            f"강도 변화={delta}"
+            f"[Notion] ?�???�공 (?�용??DB): ?�이지 ID={result.get('id')}, "
+            f"강도 변??{delta}"
         )
 
         return NotionSaveResponse(
             success=True,
             notion_page_id=result.get("id"),
-            message=f"감정 기록이 성공적으로 저장되었습니다. (강도 {delta:+d} 변화)",
+            message=f"감정 기록???�공?�으�??�?�되?�습?�다. (강도 {delta:+d} 변??",
             timestamp=datetime.now().isoformat(),
-            delta_intensity=delta
+            delta_intensity=delta,
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"[Notion] 예상치 못한 오류: {e}")
+        logger.exception(f"[Notion] ?�상�?못한 ?�류: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"서버 내부 오류: {str(e)}"
+            detail=f"?�버 ?��? ?�류: {str(e)}",
         )
 
 
 @router.get("/health")
 async def notion_health_check():
     """
-    Notion 연동 상태 확인
+    Notion ?�동 ?�태 ?�인 (?�영??공용 ?�합 기�?)
     """
     import os
 
@@ -106,8 +184,6 @@ async def notion_health_check():
         "configured": bool(api_key and db_id),
         "api_key_set": bool(api_key),
         "database_id_set": bool(db_id),
-        "service": "loaded"
+        "service": "loaded",
     }
-
-
 

@@ -3,19 +3,21 @@ import httpx
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from typing import Any, Dict, Literal, Optional, Tuple
 
-from backend.utils.action_contract import StartEFTARv1
-from backend.models.suds import SUDSEntry
-from backend.services.suds_logger import append_suds
+from utils.action_contract import StartEFTARv1
+from models.suds import SUDSEntry
+from services.suds_logger import append_suds
+from services.auth_service import AuthService
 import os
 from supabase import create_client
 
 router = APIRouter(tags=["suds"])
 
 logger = logging.getLogger(__name__)
+_auth_service = AuthService()
 
 
 DEFAULT_EFTAR_ROUTE = "/eftar"
@@ -26,13 +28,16 @@ DEFAULT_ALLOWED_HEADERS = (
 )
 DEFAULT_MAX_AGE = "600"
 
-
 class SUDSRequest(BaseModel):
     type: Literal["manual", "auto", "system"] = Field(
         description="Origin of the SUDS score submission"
     )
     score: int = Field(description="SUDS score (expected 0-10 scale)", ge=0, le=10)
     session_id: str = Field(description="Session identifier associated with the score")
+    session_type: Optional[Literal["eftar", "meditation"]] = Field(
+        default=None,
+        description="Type of session this score belongs to",
+    )
 
     user_id: Optional[str] = Field(
         default=None, description="Optional user identifier associated with the score"
@@ -78,38 +83,89 @@ def _build_response(score: int, *, trace_id: Optional[str], saved_at: Optional[s
     )
 
     if score >= 7:
-        # 7점 이상: EFT 우선 추천
+        # 7???�상: EFT ?�선 추천
         return SUDSResponse(ok=True, actions=[eft_action.model_dump(), breath_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
-    else:  # 6점 이하
-        # 6점 이하: 호흡법 우선 추천
+    else:  # 6???�하
+        # 6???�하: ?�흡�??�선 추천
         return SUDSResponse(ok=True, actions=[breath_action.model_dump(), eft_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
 
 def _get_supabase():
-    """Supabase 클라이언트 생성"""
+    """Supabase ?�라?�언???�성"""
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # 권장 (RLS 영향 최소)
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # 권장 (RLS ?�향 최소)
     if not url or not key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
     return create_client(url, key)
+
+
+def _safe_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    value = value.strip()
+    return value or None
+
+
+def _decode_user_id_from_cookie(access_token: Optional[str]) -> Optional[str]:
+    if not access_token:
+        return None
+    try:
+        payload = _auth_service.decode_jwt(access_token)
+        if payload.get("type") != "access":
+            return None
+        user_id = payload.get("sub")
+        return user_id if isinstance(user_id, str) and user_id.strip() else None
+    except Exception:
+        return None
+
+
+def _lookup_sud_session_context(sb, session_id: str) -> Dict[str, Any]:
+    if not session_id:
+        return {}
+    try:
+        rows = (
+            sb.table("emotion_checkins")
+            .select("user_id,session_type")
+            .eq("session_id", session_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        data = getattr(rows, "data", None) or []
+        if data:
+            return data[0]
+    except Exception:
+        logger.exception("Failed to lookup emotion_checkins for session_id=%s", session_id)
+    return {}
 
 async def _create_notion_emotion_page(notion_base_url: str, body: Dict[str, Any]) -> None:
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(f"{notion_base_url}/api/notion/create-emotion-page", json=body)
         r.raise_for_status()
-        return r.json()   # (None 방지)
+        return r.json()   # (None 방�?)
 
 
 
-def _persist_suds(request: SUDSRequest) -> tuple[str, str]:
+def _persist_suds(request: SUDSRequest, access_token: Optional[str] = None) -> tuple[str, str]:
     trace_id = uuid4().hex
     saved_at = datetime.now(timezone.utc).isoformat()
+
+    sb = _get_supabase()
+    checkin_context = _lookup_sud_session_context(sb, request.session_id)
+    resolved_user_id = (
+        _safe_str(_decode_user_id_from_cookie(access_token))
+        or _safe_str(request.user_id)
+        or _safe_str(checkin_context.get("user_id"))
+    )
+    resolved_session_type = _safe_str(request.session_type) or _safe_str(checkin_context.get("session_type"))
 
     entry = SUDSEntry(
         trace_id=trace_id,
         type=request.type,  # type: ignore[arg-type]
         score=request.score,
         session_id=request.session_id,
-        user_id=request.user_id,
+        user_id=resolved_user_id,
         saved_at=saved_at,
         timestamp=saved_at,
     )
@@ -117,20 +173,115 @@ def _persist_suds(request: SUDSRequest) -> tuple[str, str]:
     try:
         append_suds(entry)
 
-        sb = _get_supabase()
-        payload = {
+        base_payload = {
             "session_id": request.session_id,
             "score": request.score,
-            "user_id": request.user_id
+            "trace_id": trace_id,
+            "created_at": saved_at,
         }
+        if resolved_user_id:
+            base_payload["user_id"] = resolved_user_id
+        if resolved_session_type is not None:
+            base_payload["session_type"] = resolved_session_type
         if request.note is not None:
-            payload["note"] = request.note
+            base_payload["note"] = request.note
 
-        res = sb.table("suds_records").insert(payload).execute()
+        payload_variants = [base_payload]
+        for optional_key in ("session_type", "user_id", "note", "trace_id", "created_at"):
+            current = payload_variants[-1]
+            if optional_key in current:
+                payload_variants.append({k: v for k, v in current.items() if k != optional_key})
+        payload_variants.append({"session_id": request.session_id, "score": request.score})
+        payload_variants.append({"score": request.score})
+
+        res = None
+        used_payload: Dict[str, Any] = {}
+        used_attempt: Optional[int] = None
+        seen = set()
+        last_error: Optional[Exception] = None
+        total_attempts = len(payload_variants)
+
+        logger.info(
+            "Preparing suds_records insert attempt set",
+            extra={
+                "trace_id": trace_id,
+                "session_id": request.session_id,
+                "attempt_count": total_attempts,
+            },
+        )
+
+        def _describe_error(err: Exception) -> Dict[str, Any]:
+            return {
+                "type": type(err).__name__,
+                "message": str(err),
+                "status_code": getattr(err, "status_code", None),
+                "code": getattr(err, "code", None),
+                "details": getattr(err, "details", None),
+            }
+
+        for attempt, payload in enumerate(payload_variants, start=1):
+            fingerprint = tuple(sorted(payload.items()))
+            if fingerprint in seen:
+                logger.debug(
+                    "Skipping duplicate suds_records insert variant",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": request.session_id,
+                        "attempt": attempt,
+                        "payload_keys": sorted(payload.keys()),
+                    },
+                )
+                continue
+            seen.add(fingerprint)
+            try:
+                logger.info(
+                    "Trying suds_records insert variant",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": request.session_id,
+                        "attempt": attempt,
+                        "payload_keys": sorted(payload.keys()),
+                    },
+                )
+                res = sb.table("suds_records").insert(payload).execute()
+                used_payload = payload
+                used_attempt = attempt
+                break
+            except Exception as e:
+                last_error = e
+                error_info = _describe_error(e)
+                logger.warning(
+                    "Failed suds_records insert variant",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": request.session_id,
+                        "attempt": attempt,
+                        "attempt_count": total_attempts,
+                        "payload_keys": sorted(payload.keys()),
+                        "payload": payload,
+                        "error": error_info,
+                    },
+                )
+                continue
+
+        if res is None:
+            if last_error:
+                logger.error(
+                    "All suds_records insert variants failed",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": request.session_id,
+                        "attempt_count": total_attempts,
+                        "last_attempt": used_attempt if used_attempt is not None else total_attempts,
+                        "last_error": _describe_error(last_error),
+                    },
+                )
+                raise last_error
+            raise RuntimeError("Failed to persist SUDS entry")
         if getattr(res, "error", None):
             raise RuntimeError(f"Supabase insert failed: {res.error}")
 
-        logger.info("✅ Supabase suds_records inserted", extra={"trace_id": trace_id})
+        logger.info("??Supabase suds_records inserted", extra={"trace_id": trace_id, "payload": used_payload})
 
     except Exception:
         logger.exception("Failed to persist SUDS entry", extra={"trace_id": trace_id})
@@ -140,10 +291,10 @@ def _persist_suds(request: SUDSRequest) -> tuple[str, str]:
 
 
 
-async def save_suds(request: SUDSRequest) -> SUDSResponse:
-    trace_id, saved_at = _persist_suds(request)
+async def save_suds(request: SUDSRequest, access_token: Optional[str] = None) -> SUDSResponse:
+    trace_id, saved_at = _persist_suds(request, access_token=access_token)
 
-    # ✅ 사전(STRICT7) 조회 → Notion 스펙(STRICT6)로 변환 → Notion 페이지 생성
+    # ???�전(STRICT7) 조회 ??Notion ?�펙(STRICT6)�?변????Notion ?�이지 ?�성
     try:
         sb = _get_supabase()
         checkin_res = (
@@ -161,40 +312,42 @@ async def save_suds(request: SUDSRequest) -> SUDSResponse:
         checkin = rows[0]
         intensity_before = int(checkin["intensity_before"])
         intensity_after = int(request.score)
-        delta = intensity_before - intensity_after  # Notion 응답에도 계산됨
+        session_type = request.session_type or checkin.get("session_type")
+        delta = intensity_before - intensity_after  # Notion ?묐떟?�?�� ?�꾩�??
 
-        # user_email은 Notion 요청에서 필수
+        # user_email?� Notion ?�청?�서 ?�수
         user_email = (checkin.get("user_id") or request.user_id or "")
         if "@" not in user_email:
-            user_email = "unknown@example.com"  # ✅ 임시(테스트용). 나중에 프론트에서 이메일 보내면 여기 제거 가능.
+            user_email = "unknown@example.com"  # ???�시(?�스?�용). ?�중???�론?�에???�메??보내�??�기 ?�거 가??
 
         notion_body = {
             "user_email": user_email,
+            "session_type": session_type,
             "strict_intake": {
                 "core_emotion": checkin["core_emotion"],
                 "situation_context": checkin["situation_context"],
                 "automatic_thought": checkin["automatic_thought"],
                 "physical_sensation": checkin.get("physical_sensation"),
-                # Notion 모델이 받는 STRICT6 필드인데 지금 DB에 없으면 None으로
+                # Notion 모델??받는 STRICT6 ?�드?�데 지�?DB???�으�?None?�로
                 "behavioral_reaction": None,
                 "intensity": intensity_before,
                 "available_time": None,
                 "immediate_goal": checkin.get("immediate_goal"),
             },
             "intensity_after": intensity_after,
-            "solution": "EFT 탭핑 + 박스 호흡",
+            "solution": "EFT ??�� + 박스 ?�흡",
         }
 
         notion_result = await _create_notion_emotion_page("http://127.0.0.1:8000", notion_body)
-        logger.info("✅ Notion page created", extra={"trace_id": trace_id, "delta": delta})
+        logger.info("??Notion page created", extra={"trace_id": trace_id, "delta": delta})
         return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
     # except Exception as e:
-    #     logger.exception("⚠️ Notion create failed", extra={"trace_id": trace_id})
+    #     logger.exception("?�️ Notion create failed", extra={"trace_id": trace_id})
     #     raise HTTPException(status_code=500, detail=f"Notion create failed: {e}")
     except Exception as e:
-        logger.exception("⚠️ Notion create failed", extra={"trace_id": trace_id})
-        # raise 하지 않음 (SUDS 저장은 성공 처리)
+        logger.exception("?�️ Notion create failed", extra={"trace_id": trace_id})
+        # raise ?��? ?�음 (SUDS ?�?��? ?�공 처리)
         return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
 def _cors_headers(origin: Optional[str], requested_headers: Optional[str]) -> Dict[str, str]:
@@ -217,11 +370,16 @@ async def options_suds(request: Request) -> Response:
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
 
 @router.post("/suds", response_model=SUDSResponse)
-async def record_suds(payload: SUDSRequest, request: Request, response: Response) -> SUDSResponse:
+async def record_suds(
+    payload: SUDSRequest,
+    request: Request,
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None, alias="access_token"),
+) -> SUDSResponse:
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     response.headers.update(_cors_headers(origin, requested_headers))
-    return await save_suds(payload)
+    return await save_suds(payload, access_token=access_token)
 
 def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
     raw_score = payload.get("score", payload.get("value"))
@@ -244,6 +402,9 @@ def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
         "score": score,
         "session_id": session_id,
     }
+    session_type = payload.get("session_type")
+    if session_type in ("eftar", "meditation"):
+        normalized_payload["session_type"] = session_type
     for legacy_key, target_key in (("session_id", "session_id"), ("sessionId", "session_id"), ("user_id", "user_id"), ("userId", "user_id")):
         value = payload.get(legacy_key)
         if value is not None and target_key not in normalized_payload:
@@ -251,25 +412,33 @@ def _normalize_legacy_payload(payload: Dict[str, Any]) -> SUDSRequest:
     return SUDSRequest.model_validate(normalized_payload)
 
 async def record_suds_legacy(
-    payload: Dict[str, Any], request: Request, response: Response
+    payload: Dict[str, Any],
+    request: Request,
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ) -> SUDSResponse:
     normalized = _normalize_legacy_payload(payload)
 
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     response.headers.update(_cors_headers(origin, requested_headers))
-    return await save_suds(normalized)
+    return await save_suds(normalized, access_token=access_token)
 
 
 @router.post("/api/suds/record", response_model=SUDSResponse)
-async def record_suds_legacy(payload: Dict[str, Any], request: Request, response: Response) -> SUDSResponse:
+async def record_suds_legacy(
+    payload: Dict[str, Any],
+    request: Request,
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None, alias="access_token"),
+) -> SUDSResponse:
     normalized = _normalize_legacy_payload(payload)
 
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     response.headers.update(_cors_headers(origin, requested_headers))
 
-    return await save_suds(normalized)
+    return await save_suds(normalized, access_token=access_token)
 
 @router.get("/api/suds/record", response_model=SUDSResponse)
 async def record_suds_get(value: int) -> SUDSResponse:
@@ -280,3 +449,4 @@ async def options_record(request: Request) -> Response:
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
+
