@@ -98,7 +98,7 @@ const extractText = (res: any): string => {
   // 留덉?留??섎떒: ?됰Ц 蹂??(吏㏐쾶)
   try {
     const s = JSON.stringify(res);
-    return s.length > 1000 ? s.slice(0, 1000) + '?? : s;
+    return s.length > 1000 ? s.slice(0, 1000) + "..." : s;
   } catch {
     return String(res);
   }
@@ -140,8 +140,9 @@ const diffSummary = (legacy: any, shadow: any) => {
   }
 };
 
-// ?ъ슜???뚮┝ ?좏떥 - ?묎렐??怨좊젮??鍮꾨툝濡쒗궧 ?쇰뱶諛?const notify = (message: string) => {
-  // SSR 媛??  if (typeof document === 'undefined') return;
+// Notify utility - client side toast.
+const notify = (message: string) => {
+  if (typeof document === "undefined") return;
 
   // 以묐났 ?좎뒪??諛⑹?
   const existing = document.querySelector('[data-toast="true"]');
@@ -188,7 +189,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
   const SHADOW_TEST = String(import.meta.env.VITE_SHADOW_TEST ?? 'false').toLowerCase() === 'true';
   const VLLM_ENGINE_B_MODEL = import.meta.env.VITE_VLLM_ENGINE_B_MODEL || 'llama-3.1-8b-instruct';
 
-  // ?썳截??덉쟾 議곕젰???⑥닔??  const joinUrl = (base: string, path: string) => {
+  // ?썳컯?덉쟾?깉?덉쟾?쒖떎
+  const joinUrl = (base: string, path: string) => {
     const b = (base || '').replace(/\/+$/, '');
     const p = (path || '').replace(/^\/+/, '');
     return `${b}/${p}`;
@@ -215,7 +217,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
   }
 
-  // EFT ?몄뀡 ?쒖옉 ?몃뱾??  const normalizeIntensity10 = (raw: unknown, fallback = 6) => {
+  // EFT ?몄뀡 ?쒖옉?쒖떎
+  const normalizeIntensity10 = (raw: unknown, fallback = 6) => {
     const value = Number(raw);
     if (!Number.isFinite(value)) return fallback;
     const adjusted = value > 10 ? value / 10 : value;
@@ -328,7 +331,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
   });
 
-  // ?ㅻ줈媛湲??몃뱾??  const handleGoBack = () => {
+  // ?ㅻ줈媛湲??몃뱾?섍쿂
+  const handleGoBack = () => {
     navigate('/');
   };
 
@@ -506,7 +510,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
     initializeAI();
     
-    // ?먮룞 ?ъ빱??    setTimeout(() => {
+    // ?먮룞 ?ъ빱??濡??뒗
+    setTimeout(() => {
       inputRef.current?.focus();
     }, 1000);
   }, [serverAI]);
@@ -568,7 +573,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     };
   }, [interventionTimer]);
 
-  // 硫붿떆吏 ?먮룞 ?ㅽ겕濡?  useEffect(() => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -579,7 +584,7 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
   }, [pendingSuds]);
 
-  // S3 吏꾩엯 ???ъ쟾 SUDS 紐⑤떖 ?꾩슦湲?  useEffect(() => {
+  useEffect(() => {
     if (session.state === 'S3' && suds.pre == null) {
       setShowPreSUDS(true);
     }
@@ -595,7 +600,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 1. 寃쎌껌怨?怨듦컧??理쒖슦?좎쑝濡??섏꽭??2. 2??洹쒖튃: 2踰덉㎏ ????댁쟾?먮뒗 湲곕쾿???쒖븞?섏? 留덉꽭??3. ?묐떟? 400-800??踰붿쐞濡??묒꽦?섍퀬 2?⑤씫?쇰줈 援ъ꽦?섏꽭??4. ?꾪뿕 ?좏샇 媛먯? ???덉쟾 ?덈궡瑜??ы븿?섏꽭??5. ?좏깮沅뚯쓣 ?쒓났?섏꽭??("?먰븯吏 ?딆쑝硫?吏?섍????⑸땲??)
 6. ?쒓뎅 臾명솕??留λ씫??怨좊젮?섏꽭??(?섍퀬, 梨낆엫媛? 寃쎄퀎 ??`;
 
-  // 媛쒖엯 ?좉????듭뀡??  const interventionOptions = [
+  // 媛쒖엯 ?좉????듭뀡?섍쿂
+  const interventionOptions = [
     { id: 'breathing', label: '?명씉 60珥?, duration: 60 },
     { id: 'tapping', label: '??븨 3?ъ씤??, duration: 75 },
     { id: 'grounding', label: '5媛?洹몃씪?대뵫', duration: 90 }
@@ -1007,7 +1013,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
   };
 
-  // 湲곗〈 handleSendMessage瑜?onSend濡??泥?  const handleSendMessage = () => onSend(inputMessage);
+  // 湲곗??? handleSendMessage onSend
+  const handleSendMessage = () => onSend(inputMessage);
 
   // 媛쒖엯 ?좉? ?쒖옉 ?⑥닔
   const startIntervention = (option: typeof interventionOptions[0]) => {
@@ -1123,7 +1130,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     return true;
   };
 
-  // ?㎨ SUDS 諛곕꼫 ?쒖텧 ?몃뱾??  const handleSubmitSuds = async () => {
+  // ?㎨ SUDS ?쇰? ?쒖텧?쒖떎
+  const handleSubmitSuds = async () => {
     if (typeof window === 'undefined') return;
     if (!pendingSuds) return;
 
@@ -1144,7 +1152,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
   };
 
-  // ?뵦 SUDS ?몃씪??移대뱶 ?쒖텧 ?몃뱾??  const handleSudsSubmit = async (score: number) => {
+  // ?뵦 SUDS ?몃씪??移대뱶 ?쒖텧?쒖떎
+  const handleSudsSubmit = async (score: number) => {
     if (!pendingSuds) return;
 
     const sessionId = session.sessionId;
@@ -1224,7 +1233,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
     }
   };
 
-  // ?쒓컙 ?щ㎎??  const formatTime = (timestamp: number) => {
+  // ?쒓컙 踰꾩쟾 ?쒖떎
+  const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString('ko-KR', { 
       hour: '2-digit', 
       minute: '2-digit' 
@@ -1782,4 +1792,3 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 };
 
 export default AIChat;
-
