@@ -1,6 +1,6 @@
 """
-EFT AI 엔진 - Llama 3 기반 심리상담 특화 AI
-transformers 라이브러리를 사용한 로컬/클라우드 LLM 추론
+EFT AI ?�진 - Llama 3 기반 ?�리?�담 ?�화 AI
+transformers ?�이브러리�? ?�용??로컬/?�라?�드 LLM 추론
 """
 
 import torch
@@ -19,15 +19,15 @@ import gc
 import psutil
 import GPUtil
 
-from backend.config.settings import get_settings
-from backend.utils.logger import get_logger
-from backend.models.chat_models import EmotionAnalysis, ModelStats
+from config.settings import get_settings
+from utils.logger import get_logger
+from models.chat_models import EmotionAnalysis, ModelStats
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 class EFTAIEngine:
-    """EFT 전문 AI 엔진"""
+    """EFT ?�문 AI ?�진"""
     
     def __init__(
         self, 
@@ -39,12 +39,12 @@ class EFTAIEngine:
         self.device = device if device != "auto" else self._detect_best_device()
         self.max_memory = max_memory or settings.MAX_MEMORY
         
-        # 모델 및 토크나이저 (초기화 후 로드)
+        # 모델 �??�크?�이?� (초기????로드)
         self.model = None
         self.tokenizer = None
         self.generation_pipeline = None
         
-        # 성능 통계
+        # ?�능 ?�계
         self.stats = {
             "total_requests": 0,
             "successful_requests": 0,
@@ -53,49 +53,49 @@ class EFTAIEngine:
             "errors": []
         }
         
-        logger.info(f"EFT AI Engine 초기화: {self.model_name} on {self.device}")
+        logger.info(f"EFT AI Engine 초기?? {self.model_name} on {self.device}")
     
     def _detect_best_device(self) -> str:
-        """최적 디바이스 자동 감지"""
+        """최적 ?�바?�스 ?�동 감�?"""
         if torch.cuda.is_available():
             gpu_count = torch.cuda.device_count()
-            logger.info(f"CUDA 사용 가능, GPU {gpu_count}개 감지")
+            logger.info(f"CUDA ?�용 가?? GPU {gpu_count}�?감�?")
             return "cuda"
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            logger.info("Apple Silicon MPS 사용")
+            logger.info("Apple Silicon MPS ?�용")
             return "mps"
         else:
-            logger.info("CPU 모드 사용")
+            logger.info("CPU 모드 ?�용")
             return "cpu"
     
     def _setup_quantization_config(self) -> Optional[BitsAndBytesConfig]:
-        """양자화 설정 (메모리 절약용) - bitsandbytes 패키지 없이 비활성화"""
-        logger.info("양자화 비활성화 (bitsandbytes 패키지 불필요)")
+        """?�자???�정 (메모�??�약?? - bitsandbytes ?�키지 ?�이 비활?�화"""
+        logger.info("?�자??비활?�화 (bitsandbytes ?�키지 불필??")
         return None
     
     async def initialize(self) -> None:
-        """모델 및 토크나이저 로드"""
+        """모델 �??�크?�이?� 로드"""
         try:
-            logger.info(f"🤖 모델 로드 시작: {self.model_name}")
+            logger.info(f"?�� 모델 로드 ?�작: {self.model_name}")
             start_time = time.time()
             
-            # 1. 토크나이저 로드
-            logger.info("📝 토크나이저 로드 중...")
+            # 1. ?�크?�이?� 로드
+            logger.info("?�� ?�크?�이?� 로드 �?..")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.model_name,
                 cache_dir=settings.MODEL_CACHE_DIR,
                 token=settings.HUGGINGFACE_TOKEN
             )
             
-            # 패딩 토큰 설정 (Llama는 기본적으로 없음)
+            # ?�딩 ?�큰 ?�정 (Llama??기본?�으�??�음)
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
-            # 2. 양자화 설정
+            # 2. ?�자???�정
             quantization_config = self._setup_quantization_config()
             
             # 3. 모델 로드
-            logger.info("🧠 언어모델 로드 중... (수 분 소요 가능)")
+            logger.info("?�� ?�어모델 로드 �?.. (??�??�요 가??")
             
             model_kwargs = {
                 "cache_dir": settings.MODEL_CACHE_DIR,
@@ -115,12 +115,11 @@ class EFTAIEngine:
                 **model_kwargs
             )
             
-            # CPU 모드에서는 직접 디바이스 이동
+            # CPU 모드?�서??직접 ?�바?�스 ?�동
             if self.device == "cpu":
                 self.model = self.model.to(self.device)
             
-            # 4. 생성 파이프라인 초기화
-            logger.info("⚡ 생성 파이프라인 초기화 중...")
+            # 4. ?�성 ?�이?�라??초기??            logger.info("???�성 ?�이?�라??초기??�?..")
             self.generation_pipeline = pipeline(
                 "text-generation",
                 model=self.model,
@@ -132,31 +131,30 @@ class EFTAIEngine:
             )
             
             load_time = time.time() - start_time
-            logger.info(f"✅ 모델 로드 완료! ({load_time:.1f}초 소요)")
+            logger.info(f"??모델 로드 ?�료! ({load_time:.1f}�??�요)")
             
-            # 메모리 사용량 로깅
+            # 메모�??�용??로깅
             self._log_memory_usage()
             
         except Exception as e:
-            logger.error(f"❌ 모델 로드 실패: {e}")
+            logger.error(f"??모델 로드 ?�패: {e}")
             raise e
     
     def _log_memory_usage(self):
-        """메모리 사용량 로깅"""
+        """메모�??�용??로깅"""
         try:
-            # RAM 사용량
-            ram = psutil.virtual_memory()
-            logger.info(f"💾 RAM 사용량: {ram.used / 1024**3:.1f}GB / {ram.total / 1024**3:.1f}GB")
+            # RAM ?�용??            ram = psutil.virtual_memory()
+            logger.info(f"?�� RAM ?�용?? {ram.used / 1024**3:.1f}GB / {ram.total / 1024**3:.1f}GB")
             
-            # GPU 메모리 사용량 (CUDA 사용 시)
+            # GPU 메모�??�용??(CUDA ?�용 ??
             if self.device == "cuda" and torch.cuda.is_available():
                 for i in range(torch.cuda.device_count()):
                     memory_allocated = torch.cuda.memory_allocated(i) / 1024**3
                     memory_reserved = torch.cuda.memory_reserved(i) / 1024**3
-                    logger.info(f"🎮 GPU {i} 메모리: {memory_allocated:.1f}GB allocated, {memory_reserved:.1f}GB reserved")
+                    logger.info(f"?�� GPU {i} 메모�? {memory_allocated:.1f}GB allocated, {memory_reserved:.1f}GB reserved")
             
         except Exception as e:
-            logger.warning(f"메모리 로깅 실패: {e}")
+            logger.warning(f"메모�?로깅 ?�패: {e}")
     
     async def generate_response(
         self,
@@ -166,16 +164,16 @@ class EFTAIEngine:
         top_p: float = 0.9,
         top_k: int = 50
     ) -> str:
-        """AI 응답 생성 (단일 응답)"""
+        """AI ?�답 ?�성 (?�일 ?�답)"""
         
         if not self.model or not self.tokenizer:
-            raise RuntimeError("모델이 로드되지 않았습니다. initialize()를 먼저 호출하세요.")
+            raise RuntimeError("모델??로드?��? ?�았?�니?? initialize()�?먼�? ?�출?�세??")
         
         self.stats["total_requests"] += 1
         start_time = time.time()
         
         try:
-            # 비동기 처리를 위해 스레드에서 실행
+            # 비동�?처리�??�해 ?�레?�에???�행
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None, 
@@ -187,11 +185,11 @@ class EFTAIEngine:
             self.stats["total_processing_time"] += processing_time
             self.stats["successful_requests"] += 1
             
-            logger.info(f"✅ 응답 생성 완료 ({processing_time:.2f}초)")
+            logger.info(f"???�답 ?�성 ?�료 ({processing_time:.2f}�?")
             return response
             
         except Exception as e:
-            error_msg = f"응답 생성 실패: {str(e)}"
+            error_msg = f"?�답 ?�성 ?�패: {str(e)}"
             logger.error(error_msg)
             self.stats["errors"].append({
                 "timestamp": datetime.now().isoformat(),
@@ -207,31 +205,31 @@ class EFTAIEngine:
         top_p: float, 
         top_k: int
     ) -> str:
-        """동기적 텍스트 생성 (내부 메서드)"""
+        """?�기???�스???�성 (?��? 메서??"""
         
         try:
-            # 모델별 프롬프트 포맷팅 (DialoGPT vs Llama 구분)
+            # 모델�??�롬?�트 ?�맷??(DialoGPT vs Llama 구분)
             if "DialoGPT" in self.model_name:
                 formatted_prompt = self._format_dialogpt_prompt(prompt)
-                # DialoGPT 토큰 길이 제한 (더 보수적으로 설정)
-                max_input_length = 200  # 매우 짧게 설정
-                safe_max_tokens = min(max_tokens, 100)  # 안전한 출력 길이
+                # DialoGPT ?�큰 길이 ?�한 (??보수?�으�??�정)
+                max_input_length = 200  # 매우 짧게 ?�정
+                safe_max_tokens = min(max_tokens, 100)  # ?�전??출력 길이
             else:
                 formatted_prompt = self._format_llama_prompt(prompt)
-                max_input_length = 4000  # Llama 모델은 더 여유롭게
+                max_input_length = 4000  # Llama 모델?� ???�유�?��
                 safe_max_tokens = max_tokens
             
-            # 입력 토큰 길이 체크 및 제한
+            # ?�력 ?�큰 길이 체크 �??�한
             input_tokens = self.tokenizer.encode(formatted_prompt, return_tensors="pt")
             
             if input_tokens.shape[1] > max_input_length:
-                logger.warning(f"입력 토큰 길이 초과 ({input_tokens.shape[1]} > {max_input_length}), 자르기 적용")
-                # 뒤에서부터 자르기 (최근 대화 유지)
+                logger.warning(f"?�력 ?�큰 길이 초과 ({input_tokens.shape[1]} > {max_input_length}), ?�르�??�용")
+                # ?�에?��????�르�?(최근 ?�???��?)
                 truncated_tokens = input_tokens[:, -max_input_length:]
                 formatted_prompt = self.tokenizer.decode(truncated_tokens[0], skip_special_tokens=True)
-                logger.info(f"토큰 길이 조정: {input_tokens.shape[1]} → {max_input_length}")
+                logger.info(f"?�큰 길이 조정: {input_tokens.shape[1]} ??{max_input_length}")
             
-            # 생성 파라미터
+            # ?�성 ?�라미터
             generation_params = {
                 "max_new_tokens": safe_max_tokens,
                 "temperature": temperature,
@@ -243,57 +241,56 @@ class EFTAIEngine:
                 "truncation": True
             }
             
-            # DialoGPT 전용 파라미터 추가
+            # DialoGPT ?�용 ?�라미터 추�?
             if "DialoGPT" in self.model_name:
-                generation_params["max_length"] = 1024  # 전체 길이 제한
+                generation_params["max_length"] = 1024  # ?�체 길이 ?�한
             
-            # 텍스트 생성
+            # ?�스???�성
             outputs = self.generation_pipeline(
                 formatted_prompt,
                 **generation_params
             )
             
-            # 응답 추출 및 후처리
-            generated_text = outputs[0]["generated_text"]
-            logger.info(f"🤖 DialoGPT 원본 출력: {repr(generated_text)}")
+            # ?�답 추출 �??�처�?            generated_text = outputs[0]["generated_text"]
+            logger.info(f"?�� DialoGPT ?�본 출력: {repr(generated_text)}")
             
             cleaned_response = self._clean_response(generated_text, formatted_prompt)
             
             return cleaned_response
             
         except Exception as e:
-            logger.error(f"동기 생성 실패: {e}")
+            logger.error(f"?�기 ?�성 ?�패: {e}")
             raise e
     
     def _format_llama_prompt(self, user_prompt: str) -> str:
-        """Llama 모델용 프롬프트 포맷팅"""
+        """Llama 모델???�롬?�트 ?�맷??""
         
-        # Llama-2/3 Chat 템플릿 적용
+        # Llama-2/3 Chat ?�플�??�용
         if "llama-2" in self.model_name.lower():
             formatted = f"<s>[INST] {user_prompt} [/INST]"
         elif "llama-3" in self.model_name.lower():
             formatted = f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n{user_prompt}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
         else:
-            # 기본 포맷
+            # 기본 ?�맷
             formatted = f"Human: {user_prompt}\n\nAssistant: "
         
         return formatted
     
     def _format_dialogpt_prompt(self, user_prompt: str) -> str:
-        """DialoGPT 모델용 프롬프트 포맷팅 (간단한 대화형)"""
+        """DialoGPT 모델???�롬?�트 ?�맷??(간단???�?�형)"""
         
-        # DialoGPT를 위한 간단하지만 명확한 EFT 상담사 설정
+        # DialoGPT�??�한 간단?��?�?명확??EFT ?�담???�정
         formatted = f"User: {user_prompt}{self.tokenizer.eos_token}EFT Counselor:"
         
         return formatted
     
     def _clean_response(self, generated_text: str, prompt: str) -> str:
-        """응답 후처리 및 정리"""
+        """?�답 ?�처�?�??�리"""
         
-        # 프롬프트 제거
+        # ?�롬?�트 ?�거
         cleaned = generated_text
         
-        # 특수 토큰 제거
+        # ?�수 ?�큰 ?�거
         special_tokens = [
             "<|eot_id|>", "<|end_of_text|>", "</s>", 
             "<|start_header_id|>", "<|end_header_id|>",
@@ -303,21 +300,20 @@ class EFTAIEngine:
         for token in special_tokens:
             cleaned = cleaned.replace(token, "")
         
-        # 공백 정리
+        # 공백 ?�리
         cleaned = cleaned.strip()
         
-        # 너무 긴 응답 자르기
-        if len(cleaned) > 1500:
+        # ?�무 �??�답 ?�르�?        if len(cleaned) > 1500:
             sentences = cleaned.split('. ')
             cleaned = '. '.join(sentences[:5]) + '.'
         
-        # 디버깅을 위한 로그 추가
-        logger.info(f"🔍 생성된 원본 텍스트: {repr(generated_text)}")
-        logger.info(f"🔍 정제된 텍스트: {repr(cleaned)}")
+        # ?�버깅을 ?�한 로그 추�?
+        logger.info(f"?�� ?�성???�본 ?�스?? {repr(generated_text)}")
+        logger.info(f"?�� ?�제???�스?? {repr(cleaned)}")
         
-        # 빈 응답 처리
+        # �??�답 처리
         if not cleaned:
-            cleaned = "죄송합니다. 응답을 생성하는데 문제가 있었습니다. 다시 말씀해 주시겠어요?"
+            cleaned = "죄송?�니?? ?�답???�성?�는??문제가 ?�었?�니?? ?�시 말�???주시겠어??"
         
         return cleaned
     
@@ -326,11 +322,10 @@ class EFTAIEngine:
         message: str, 
         emotion_state: EmotionAnalysis
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """스트리밍 응답 생성 (긴 응답용)"""
+        """?�트리밍 ?�답 ?�성 (�??�답??"""
         
-        # TODO: 실제 스트리밍 구현
-        # 현재는 청크로 나누어 시뮬레이션
-        
+        # TODO: ?�제 ?�트리밍 구현
+        # ?�재??�?���??�누???��??�이??        
         response = await self.generate_response(message)
         chunks = self._split_into_chunks(response, chunk_size=50)
         
@@ -342,11 +337,10 @@ class EFTAIEngine:
                 "is_final": i == len(chunks) - 1
             }
             
-            # 스트리밍 시뮬레이션을 위한 지연
-            await asyncio.sleep(0.1)
+            # ?�트리밍 ?��??�이?�을 ?�한 지??            await asyncio.sleep(0.1)
     
     def _split_into_chunks(self, text: str, chunk_size: int = 50) -> List[str]:
-        """텍스트를 청크로 분할"""
+        """?�스?��? �?���?분할"""
         words = text.split()
         chunks = []
         
@@ -357,14 +351,14 @@ class EFTAIEngine:
         return chunks
     
     async def get_performance_stats(self) -> ModelStats:
-        """모델 성능 통계 반환"""
+        """모델 ?�능 ?�계 반환"""
         
         uptime = time.time() - self.stats["start_time"]
         avg_response_time = (
             self.stats["total_processing_time"] / max(self.stats["successful_requests"], 1)
         )
         
-        # 메모리 사용량 계산
+        # 메모�??�용??계산
         memory_usage = 0.0
         gpu_utilization = None
         
@@ -372,7 +366,7 @@ class EFTAIEngine:
             if self.device == "cuda" and torch.cuda.is_available():
                 memory_usage = torch.cuda.memory_allocated(0) / 1024**3
                 
-                # GPU 사용률 (옵션)
+                # GPU ?�용�?(?�션)
                 try:
                     gpus = GPUtil.getGPUs()
                     if gpus:
@@ -380,12 +374,12 @@ class EFTAIEngine:
                 except:
                     pass
             else:
-                # CPU 메모리 사용량 추정
+                # CPU 메모�??�용??추정
                 process = psutil.Process()
                 memory_usage = process.memory_info().rss / 1024**3
                 
         except Exception as e:
-            logger.warning(f"메모리 사용량 계산 실패: {e}")
+            logger.warning(f"메모�??�용??계산 ?�패: {e}")
         
         return ModelStats(
             model_name=self.model_name,
@@ -399,8 +393,8 @@ class EFTAIEngine:
         )
     
     async def cleanup(self) -> None:
-        """리소스 정리"""
-        logger.info("🔄 AI 엔진 리소스 정리 중...")
+        """리소???�리"""
+        logger.info("?�� AI ?�진 리소???�리 �?..")
         
         try:
             if self.model:
@@ -415,22 +409,22 @@ class EFTAIEngine:
                 del self.generation_pipeline
                 self.generation_pipeline = None
             
-            # 메모리 정리
+            # 메모�??�리
             gc.collect()
             
             if self.device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            logger.info("✅ 리소스 정리 완료")
+            logger.info("??리소???�리 ?�료")
             
         except Exception as e:
-            logger.error(f"리소스 정리 실패: {e}")
+            logger.error(f"리소???�리 ?�패: {e}")
 
-# 전역 AI 엔진 인스턴스 (싱글톤)
+# ?�역 AI ?�진 ?�스?�스 (?��???
 _ai_engine_instance: Optional[EFTAIEngine] = None
 
 def get_ai_engine() -> EFTAIEngine:
-    """AI 엔진 인스턴스 반환 (싱글톤)"""
+    """AI ?�진 ?�스?�스 반환 (?��???"""
     global _ai_engine_instance
     if _ai_engine_instance is None:
         _ai_engine_instance = EFTAIEngine()

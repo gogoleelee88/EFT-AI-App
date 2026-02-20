@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-EFT AI 서버 시작 스크립트
-개발/운영 환경에 따른 설정 자동 적용
+EFT AI ?�버 ?�작 ?�크립트
+개발/?�영 ?�경???�른 ?�정 ?�동 ?�용
 """
 
 import os
@@ -11,78 +11,77 @@ import argparse
 import uvicorn
 from pathlib import Path
 
-# Windows 유니코드 출력 문제 해결
+# Windows ?�니코드 출력 문제 ?�결
 if sys.platform.startswith('win'):
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-# 현재 디렉토리를 Python 경로에 추가
+# ?�재 ?�렉?�리�?Python 경로??추�?
 sys.path.append(str(Path(__file__).parent))
 
-from backend.config.settings import get_settings, get_development_settings, get_production_settings, apply_model_preset
-from backend.utils.logger import get_logger
+from config.settings import get_settings, get_development_settings, get_production_settings, apply_model_preset
+from utils.logger import get_logger
 
 def parse_arguments():
-    """명령행 인수 파싱"""
-    parser = argparse.ArgumentParser(description="EFT AI 서버 시작")
+    """명령???�수 ?�싱"""
+    parser = argparse.ArgumentParser(description="EFT AI ?�버 ?�작")
     
     parser.add_argument(
         "--env", 
         choices=["dev", "prod"], 
         default="dev",
-        help="실행 환경 (기본값: dev)"
+        help="?�행 ?�경 (기본�? dev)"
     )
     
     parser.add_argument(
         "--host", 
         default=None,
-        help="서버 호스트 (기본값: 설정 파일 값)"
+        help="?�버 ?�스??(기본�? ?�정 ?�일 �?"
     )
     
     parser.add_argument(
         "--port", 
         type=int, 
         default=None,
-        help="서버 포트 (기본값: 설정 파일 값)"
+        help="?�버 ?�트 (기본�? ?�정 ?�일 �?"
     )
     
     parser.add_argument(
         "--model-preset",
         choices=["llama2-7b-quick", "llama3-8b-optimal", "llama3-70b-premium"],
-        help="모델 프리셋 선택"
+        help="모델 ?�리???�택"
     )
     
     parser.add_argument(
         "--reload",
         action="store_true",
-        help="자동 재로드 활성화 (개발용)"
+        help="?�동 ?�로???�성??(개발??"
     )
     
     parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="로그 레벨 오버라이드"
+        help="로그 ?�벨 ?�버?�이??
     )
     
     return parser.parse_args()
 
 def setup_environment(args):
-    """환경 설정"""
+    """?�경 ?�정"""
     
-    # 환경별 설정 로드
+    # ?�경�??�정 로드
     if args.env == "prod":
         settings = get_production_settings()
-        print(" 운영 환경으로 시작합니다")
+        print(" ?�영 ?�경?�로 ?�작?�니??)
     else:
         settings = get_development_settings()
-        print(" 개발 환경으로 시작합니다")
+        print(" 개발 ?�경?�로 ?�작?�니??)
     
-    # 모델 프리셋 적용
+    # 모델 ?�리???�용
     if args.model_preset:
         settings = apply_model_preset(args.model_preset)
-        print(f" 모델 프리셋 적용: {args.model_preset}")
+        print(f" 모델 ?�리???�용: {args.model_preset}")
     
-    # 명령행 인수 오버라이드
-    if args.host:
+    # 명령???�수 ?�버?�이??    if args.host:
         settings.HOST = args.host
     
     if args.port:
@@ -94,37 +93,37 @@ def setup_environment(args):
     return settings
 
 def check_prerequisites():
-    """사전 요구사항 체크"""
+    """?�전 ?�구?�항 체크"""
     
-    print(" 사전 요구사항 체크 중...")
+    print(" ?�전 ?�구?�항 체크 �?..")
     
     # Python 버전 체크
     if sys.version_info < (3, 8):
-        print("ERROR: Python 3.8 이상이 필요합니다")
+        print("ERROR: Python 3.8 ?�상???�요?�니??)
         sys.exit(1)
     
-    # 필요 디렉토리 생성
+    # ?�요 ?�렉?�리 ?�성
     dirs_to_create = ["./logs", "./models", "./data"]
     for dir_path in dirs_to_create:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
     
-    # .env 파일 체크
+    # .env ?�일 체크
     if not Path(".env").exists():
-        print(" .env 파일이 없습니다. .env.example을 참고하여 생성하세요")
-        print("   기본 설정으로 계속 진행합니다...")
+        print(" .env ?�일???�습?�다. .env.example??참고?�여 ?�성?�세??)
+        print("   기본 ?�정?�로 계속 진행?�니??..")
     
-    print("OK: 사전 요구사항 체크 완료")
+    print("OK: ?�전 ?�구?�항 체크 ?�료")
 
 def print_startup_info(settings):
-    """시작 정보 출력"""
+    """?�작 ?�보 출력"""
     
     print("\n" + "="*60)
-    print("EFT AI 서버 시작 정보")
+    print("EFT AI ?�버 ?�작 ?�보")
     print("="*60)
-    print(f" 환경: {'운영' if not settings.DEBUG else '개발'}")
+    print(f" ?�경: {'?�영' if not settings.DEBUG else '개발'}")
     print(f" 주소: http://{settings.HOST}:{settings.PORT}")
     print(f" 모델: {settings.MODEL_NAME}")
-    print(f" 디바이스: {settings.DEVICE}")
+    print(f" ?�바?�스: {settings.DEVICE}")
     print(f" 로그: {settings.LOG_LEVEL} -> {settings.LOG_FILE}")
     
     if settings.DEBUG:
@@ -135,21 +134,21 @@ def print_startup_info(settings):
     print()
 
 def main():
-    """메인 함수"""
+    """메인 ?�수"""
     
-    # 명령행 인수 파싱
+    # 명령???�수 ?�싱
     args = parse_arguments()
     
-    # 사전 요구사항 체크
+    # ?�전 ?�구?�항 체크
     check_prerequisites()
     
-    # 환경 설정
+    # ?�경 ?�정
     settings = setup_environment(args)
     
-    # 시작 정보 출력
+    # ?�작 ?�보 출력
     print_startup_info(settings)
     
-    # 서버 실행 설정
+    # ?�버 ?�행 ?�정
     uvicorn_config = {
         "app": "main:app",
         "host": settings.HOST,
@@ -161,16 +160,16 @@ def main():
     }
     
     try:
-        print(" 서버를 시작합니다...")
-        print("   중지하려면 Ctrl+C를 누르세요\n")
+        print(" ?�버�??�작?�니??..")
+        print("   중�??�려�?Ctrl+C�??�르?�요\n")
         
-        # Uvicorn 서버 시작
+        # Uvicorn ?�버 ?�작
         uvicorn.run(**uvicorn_config)
         
     except KeyboardInterrupt:
-        print("\n\n 서버가 사용자에 의해 중지되었습니다")
+        print("\n\n ?�버가 ?�용?�에 ?�해 중�??�었?�니??)
     except Exception as e:
-        print(f"\nERROR: 서버 시작 실패: {e}")
+        print(f"\nERROR: ?�버 ?�작 ?�패: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

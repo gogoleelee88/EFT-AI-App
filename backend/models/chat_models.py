@@ -84,7 +84,7 @@ class SuggestedAction(BaseModel):
 # === STRICT6 관련 모델들 (SPEC v1.1) ===
 
 class StrictIntakeInput(BaseModel):
-    """STRICT6 감정 인풋 모델 (SPEC v1.1)"""
+    """STRICT6 감정 인풋 모델 (SPEC v1.1). Scenario Adaptation: face_data 추가."""
     core_emotion: str = Field(..., description="핵심 감정 (불안, 분노, 슬픔 등)")
     situation_context: str = Field(..., description="상황 맥락")
     automatic_thought: str = Field(..., description="자동사고 (한 문장 기준)")
@@ -94,6 +94,37 @@ class StrictIntakeInput(BaseModel):
 
     available_time: Optional[int] = Field(None, description="사용 가능 시간 (분)")
     immediate_goal: Optional[str] = Field(None, description="즉시 목표")
+
+    # 시나리오 각색용: 카메라 분석 표정 (MVP에선 프론트 더미 전송)
+    face_data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="표정 데이터 예: { 'dominant_emotion': 'sad', 'intensity': 0.8 }",
+    )
+
+    # Grand Master v2: 가이드 톤 (사용자 선택). 없으면 테마별 기본값 적용.
+    posture_data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Posture summary. e.g. { 'posture_score': 0.62, 'bad_posture_sec': 9.2, 'cue': '어깨를 천천히 내려볼까요?' }",
+    )
+
+    guide_tone: Optional[str] = Field(
+        default=None,
+        description="warm(다정) | rational(건조) | strict(단호). null이면 테마별 Auto.",
+    )
+
+    # Grand Master v2: Timing Engine. 각성 수준 0~1. 없으면 intensity/face_data로 추정.
+    arousal_level: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="각성 수준(0=저각성, 1=고각성). 높을수록 hold_ms·silence_ms 증가(진정 페이스).",
+    )
+
+    # 사용자 커스텀 음성 프로필 ID (없으면 기본 가이드 음성 사용)
+    voice_id: Optional[str] = Field(
+        default=None,
+        description="Custom voice profile ID for TTS (voice cloning).",
+    )
 
 
 class EFTScript(BaseModel):
@@ -208,4 +239,3 @@ class HealthCheckResponse(BaseModel):
     version: str = Field(..., description="서버 버전")
     uptime_seconds: float = Field(..., description="가동 시간(초)")
 # === STRICT6 관련 모델들 (SPEC v1.1) ===
-

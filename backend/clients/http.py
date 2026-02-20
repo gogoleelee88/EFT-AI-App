@@ -2,7 +2,7 @@
 import asyncio
 from typing import Optional
 import httpx
-from backend.config.settings import get_settings
+from config.settings import get_settings
 
 settings = get_settings()
 _TIMEOUT = settings.PREMIUM_REQUEST_TIMEOUT

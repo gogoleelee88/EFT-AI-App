@@ -1,6 +1,5 @@
 """
-vLLM GPU 서버 프록시 클라이언트
-Engine A/B 병렬 요청 처리
+vLLM GPU ?�버 ?�록???�라?�언??Engine A/B 병렬 ?�청 처리
 """
 
 import httpx
@@ -8,22 +7,22 @@ import asyncio
 import time
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, Request
-from backend.config.settings import get_settings
-from backend.utils.logger import get_logger
-from backend.services.circuit_breaker import get_circuit_breaker, retry_with_exponential_backoff
-from backend.utils.action_builder import build_actions
+from config.settings import get_settings
+from utils.logger import get_logger
+from services.circuit_breaker import get_circuit_breaker, retry_with_exponential_backoff
+from utils.action_builder import build_actions
 
-import os  # ← 추가
+import os  # ??추�?
 
 def _normalize_api_base(url: str) -> str:
     u = (url or "").strip().rstrip("/")
-    # 완전 엔드포인트를 준 경우: .../v1/chat/completions  →  .../v1 로 절삭
+    # ?�전 ?�드?�인?��? 준 경우: .../v1/chat/completions  ?? .../v1 �??�삭
     if u.endswith("/v1/chat/completions"):
         return u[:-len("/chat/completions")]
-    # /v1 까지만 있으면 그대로 사용
+    # /v1 까�?�??�으�?그�?�??�용
     if u.endswith("/v1"):
         return u
-    # host:port나 베이스만 준 경우엔 /v1 붙여서 OpenAI 호환 베이스로
+    # host:port??베이?�만 준 경우??/v1 붙여??OpenAI ?�환 베이?�로
     return u + "/v1"
 
 
@@ -31,24 +30,23 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 class VLLMProxy:
-    """GPU 서버의 vLLM 엔진 A/B에 대한 프록시 클라이언트"""
+    """GPU ?�버??vLLM ?�진 A/B???�???�록???�라?�언??""
 
     def __init__(self):
-        # GPU 서버 URL 설정 (환경변수로 오버라이드 가능)
-        # 권장: VLLM_ENGINE_A_BASE / VLLM_ENGINE_B_BASE 를 .env에서 주입
+        # GPU ?�버 URL ?�정 (?�경변?�로 ?�버?�이??가??
+        # 권장: VLLM_ENGINE_A_BASE / VLLM_ENGINE_B_BASE �?.env?�서 주입
         self.engine_a_url = getattr(settings, "VLLM_ENGINE_A_BASE", None) or settings.FREE_AI_BASE_URL
         self.engine_b_url = getattr(settings, "VLLM_ENGINE_B_BASE", None) or settings.PREMIUM_AI_BASE_URL
 
-        # HTTP 클라이언트 설정
+        # HTTP ?�라?�언???�정
         self.timeout = httpx.Timeout(
             connect=settings.VLLM_CONNECT_TIMEOUT,
             read=settings.VLLM_READ_TIMEOUT,
-            write=30.0,  # 추가
-            pool=30.0    # 추가
+            write=30.0,  # 추�?
+            pool=30.0    # 추�?
         )
 
-        # 회로차단기 초기화
-        self.circuit_breaker_a = get_circuit_breaker(
+        # ?�로차단�?초기??        self.circuit_breaker_a = get_circuit_breaker(
             "engine_a",
             failure_threshold=5,
             recovery_timeout=60,
@@ -63,7 +61,7 @@ class VLLMProxy:
             half_open_successes_needed=3
         )
 
-        # 헬스체크용 회로차단기 (짧은 타임아웃)
+        # ?�스체크???�로차단�?(짧�? ?�?�아??
         self.health_cb_a = get_circuit_breaker(
             "health_engine_a",
             failure_threshold=3,
@@ -79,19 +77,19 @@ class VLLMProxy:
             half_open_successes_needed=2
         )
 
-        logger.info(f"vLLM 프록시 초기화 (회로차단기 포함) - Engine A: {self.engine_a_url}, Engine B: {self.engine_b_url}")
+        logger.info(f"vLLM ?�록??초기??(?�로차단�??�함) - Engine A: {self.engine_a_url}, Engine B: {self.engine_b_url}")
 
     async def health_check_engines(self, request: Optional[Request] = None) -> Dict[str, Any]:
-        """Engine A/B 헬스체크"""
+        """Engine A/B ?�스체크"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             results = {}
 
-            # 공용 핑 함수 (회로차단기 + 짧은 재시도)
+            # 공용 ???�수 (?�로차단�?+ 짧�? ?�시??
             async def ping_with_circuit_breaker(base: str, cb):
                 async def _do_ping():
                     async def _raw_ping():
                         t0 = time.perf_counter()
-                        r = await client.get(f"{base}/models", timeout=5.0)  # 헬스체크는 짧게
+                        r = await client.get(f"{base}/models", timeout=5.0)  # ?�스체크??짧게
                         r.raise_for_status()
                         dt = (time.perf_counter() - t0) * 1000
                         return {
@@ -109,7 +107,7 @@ class VLLMProxy:
                 try:
                     return await cb.call(_do_ping)
                 except Exception as e:
-                    logger.warning(f"헬스체크 실패 {base}: {e}")
+                    logger.warning(f"?�스체크 ?�패 {base}: {e}")
                     return {
                         "status": "unhealthy",
                         "url": base,
@@ -117,7 +115,7 @@ class VLLMProxy:
                         "circuit_breaker_state": cb.state
                     }
 
-            # 병렬 헬스체크 (회로차단기 적용)
+            # 병렬 ?�스체크 (?�로차단�??�용)
             results["engine_a"], results["engine_b"] = await asyncio.gather(
                 ping_with_circuit_breaker(self.engine_a_url, self.health_cb_a),
                 ping_with_circuit_breaker(self.engine_b_url, self.health_cb_b)
@@ -127,20 +125,20 @@ class VLLMProxy:
             return {"overall_status": overall, "upstreams": results}
 
     async def chat_ab_parallel(self, payload: Dict[str, Any], request: Optional[Request] = None) -> Dict[str, Any]:
-        """Engine A/B 병렬 채팅 요청"""
+        """Engine A/B 병렬 채팅 ?�청"""
         payload_a = {**payload, "model": "engine-a"}
         payload_b = {**payload, "model": "engine-b"}
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                # 개별 POST 계측 (회로차단기 + 재시도)
+                # 개별 POST 계측 (?�로차단�?+ ?�시??
                 async def post_with_circuit_breaker(url, body, cb):
                     async def _do_post():
                         async def _raw_post():
                             t0 = time.perf_counter()
                             r = await client.post(url, json=body)
                             dt = (time.perf_counter() - t0) * 1000
-                            r.raise_for_status()  # HTTP 오류 시 예외 발생
+                            r.raise_for_status()  # HTTP ?�류 ???�외 발생
                             return r, dt
                         return await retry_with_exponential_backoff(
                             _raw_post, max_retries=2, base_delay=0.25, max_delay=2.0
@@ -154,15 +152,15 @@ class VLLMProxy:
                         post_with_circuit_breaker(f"{self.engine_b_url}/chat/completions", payload_b, self.circuit_breaker_b),
                     )
                 except Exception as e:
-                    # 회로차단기나 네트워크 오류 시 적절한 HTTP 오류로 매핑
-                    if "circuit breaker" in str(e).lower() or "회로차단기" in str(e):
+                    # ?�로차단기나 ?�트?�크 ?�류 ???�절??HTTP ?�류�?매핑
+                    if "circuit breaker" in str(e).lower() or "?�로차단�? in str(e):
                         raise HTTPException(status_code=503, detail=f"Service temporarily unavailable: {e}")
                     else:
                         raise HTTPException(status_code=502, detail=f"Upstream error: {e}")
                 total_ms = (time.perf_counter() - t_start) * 1000
 
                 def build_side(resp, ms, model_label, model_id):
-                    # 회로차단기를 통과했으므로 성공 케이스
+                    # ?�로차단기�? ?�과?�으므�??�공 케?�스
                     if resp.status_code == 200:
                         data = resp.json()
                         return {
@@ -177,7 +175,7 @@ class VLLMProxy:
                             "circuit_breaker_used": True
                         }
                     else:
-                        # HTTP 오류 (회로차단기를 통과했지만 응답 오류)
+                        # HTTP ?�류 (?�로차단기�? ?�과?��?�??�답 ?�류)
                         try:
                             err = resp.json()
                         except Exception:
@@ -206,21 +204,21 @@ class VLLMProxy:
                 else:
                     faster = "none"
 
-                # 메시지 추출 (payload에서)
+                # 메시지 추출 (payload?�서)
                 user_message = ""
                 if "messages" in payload and isinstance(payload["messages"], list) and len(payload["messages"]) > 0:
                     last_msg = payload["messages"][-1]
                     if isinstance(last_msg, dict) and "content" in last_msg:
                         user_message = last_msg["content"]
 
-                # 간단한 감정 분석 (키워드 기반)
+                # 간단??감정 분석 (?�워??기반)
                 metadata = {}
                 if user_message:
                     emotion_keywords = {
-                        "불안": ["불안", "걱정", "두려", "무서"],
-                        "스트레스": ["스트레스", "힘들", "지쳐", "피곤"],
-                        "외로움": ["외로", "쓸쓸", "혼자"],
-                        "슬픔": ["슬프", "우울", "눈물"]
+                        "불안": ["불안", "걱정", "?�려", "무서"],
+                        "?�트?�스": ["?�트?�스", "?�들", "지�?, "?�곤"],
+                        "?�로?�": ["?�로", "?�쓸", "?�자"],
+                        "?�픔": ["?�프", "?�울", "?�물"]
                     }
 
                     detected_emotion = "중립"
@@ -238,7 +236,7 @@ class VLLMProxy:
                         "intensity": intensity
                     }
 
-                # 액션 생성
+                # ?�션 ?�성
                 actions = build_actions(user_message, metadata) if user_message else []
 
                 result = {
@@ -247,9 +245,9 @@ class VLLMProxy:
                     "faster_model": faster,
                     "comparison_time": total_ms,
                     "timestamp": time.time(),
-                    "actions": actions  # 액션 추가!
+                    "actions": actions  # ?�션 추�?!
                 }
-                logger.info(f"A/B 완료: total={total_ms:.1f}ms a={a_ms:.1f}ms b={b_ms:.1f}ms faster={faster} actions={len(actions)}")
+                logger.info(f"A/B ?�료: total={total_ms:.1f}ms a={a_ms:.1f}ms b={b_ms:.1f}ms faster={faster} actions={len(actions)}")
                 return result
 
             except httpx.TimeoutException as e:
@@ -260,7 +258,7 @@ class VLLMProxy:
                 raise HTTPException(status_code=502, detail=f"Engine A/B connection failed: {str(e)}")
 
     async def chat_single_engine(self, engine: str, payload: Dict[str, Any], request: Optional[Request] = None) -> Dict[str, Any]:
-        """단일 엔진 채팅 요청 (회로차단기 + 재시도)"""
+        """?�일 ?�진 채팅 ?�청 (?�로차단�?+ ?�시??"""
 
         if engine == "engine_a":
             url = f"{self.engine_a_url}/chat/completions"
@@ -281,7 +279,7 @@ class VLLMProxy:
                     t0 = time.perf_counter()
                     response = await client.post(url, json=payload_with_model)
                     processing_time = (time.perf_counter() - t0) * 1000
-                    response.raise_for_status()  # HTTP 오류 시 예외 발생
+                    response.raise_for_status()  # HTTP ?�류 ???�외 발생
 
                     result = response.json()
                     result["processing_time"] = processing_time
@@ -296,20 +294,21 @@ class VLLMProxy:
             try:
                 return await cb.call(_do_single_post)
             except Exception as e:
-                logger.error(f"Engine {engine} 요청 실패 (회로차단기 포함): {e}")
-                if "회로차단기" in str(e) or "circuit breaker" in str(e).lower():
+                logger.error(f"Engine {engine} ?�청 ?�패 (?�로차단�??�함): {e}")
+                if "?�로차단�? in str(e) or "circuit breaker" in str(e).lower():
                     raise HTTPException(status_code=503, detail=f"Engine {engine} temporarily unavailable: {e}")
                 elif "timeout" in str(e).lower():
                     raise HTTPException(status_code=504, detail=f"Engine {engine} timeout: {e}")
                 else:
                     raise HTTPException(status_code=502, detail=f"Engine {engine} connection failed: {e}")
 
-# 싱글톤 인스턴스
+# ?��????�스?�스
 _vllm_proxy = None
 
 def get_vllm_proxy() -> VLLMProxy:
-    """vLLM 프록시 인스턴스 반환"""
+    """vLLM ?�록???�스?�스 반환"""
     global _vllm_proxy
     if _vllm_proxy is None:
         _vllm_proxy = VLLMProxy()
     return _vllm_proxy
+

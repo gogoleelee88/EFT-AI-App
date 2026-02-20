@@ -1,29 +1,46 @@
 # backend/database.py
 
+from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# backend/.env ?�선 로드 (cwd??.env ?�을 ???��?
+_env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=_env_path)
+load_dotenv()  # cwd 기�? .env??로드
 
-# .env에서 가져옴
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+# .env?�서 가?�옴 (?�으�?로컬 SQLite ?�용)
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL") or "sqlite:///./eft_sessions.db"
 
-# 연결 엔진 생성
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# SQLite????check_same_thread=False (FastAPI 비동�??�환)
+_connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args)
 
-# 세션 생성기
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# ?�션 ?�성�?SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# 모델용 베이스 클래스
-Base = declarative_base()
+# 모델??베이???�래??Base = declarative_base()
 
-# 의존성 주입용 함수 (FastAPI Router에서 씀)
+# spec_loop ?�이�??�록 (create_all ???�께 ?�성)
+import spec_loop.models  # noqa: F401
+import spec_loop.google_calendar.models  # noqa: F401
+import models.user  # noqa: F401
+import models.refresh_token  # noqa: F401
+import models.proposal_os  # noqa: F401
+import models.menstrual  # noqa: F401
+import app.models.chat  # noqa: F401
+import app.models.coach  # noqa: F401
+import app.models.context_rag  # noqa: F401
+import meal_coach.models  # noqa: F401
+import focus.models  # noqa: F401
+
+# ?�존??주입???�수 (FastAPI Router?�서 ?�)
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+

@@ -1,260 +1,350 @@
-"""
-EFT AI 서버 설정 관리
-환경변수 및 모델 설정
-"""
+from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
-from typing import List, Optional, Dict
 import os
-from pathlib import Path
+from typing import Dict, List, Optional
+
+from pydantic import Field, ValidationInfo, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALLOWED_PREMIUM_MODE = {"proxy", "direct"}
 ALLOWED_ENGINE = {"A", "B", "AB"}
+ALLOWED_MODULE_MODE = {"lite", "pro"}
+ALLOWED_PROPOSAL_LLM_PROVIDER = {"auto", "openai", "vllm", "mock"}
+ALLOWED_SOFT_NUDGE_MODE = {"prod", "demo"}
+
 
 class Settings(BaseSettings):
-    """서버 설정 클래스"""
-    
+    """Application settings."""
+
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
-    
-    # 서버 기본 설정
+
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     DEBUG: bool = True
-    
-    # CORS 설정 (개발/운영 분리)
-    # 기본 개발용 화이트리스트 + 환경변수로 추가 도메인 주입 권장 (쉼표구분)
-    ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "https://www.moodtalk.app",  # 운영 도메인
-        "https://moodtalk.app",       # apex 도메인 (리다이렉트 전 대비)
-    ]
-    EXTRA_ALLOWED_ORIGINS: Optional[str] = None  # "https://example.com,https://app.example.com"
-    
-    # AI 모델 설정 (티어별 모델 시스템)
-    MODEL_NAME: str = "microsoft/DialoGPT-medium"  # 기본 무료 모델
-    MODEL_CACHE_DIR: str = "./models"  # 모델 캐시 디렉토리
-    
-    # 티어별 모델 설정 (DialoGPT 완전 폐기!)
-    FREE_TIER_MODEL: str = "ENGINE_AB_ONLY"  # 무료: Engine A/B 병렬 비교만 사용
-    PREMIUM_TIER_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"  # 프리미엄: Llama 3.1
-    ENTERPRISE_TIER_MODEL: str = "meta-llama/Llama-3.1-70B-Instruct"  # 기업: 최고급
-    
-    # A/B 테스트용 무료 모델 엔진들
-    FREE_ENGINES: dict = {
-        "engine_a": {
-            "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-            "port": 8001,
-            "description": "Llama-3-8B 엔진 A"
-        },
-        "engine_b": {
-            "model": "Qwen/Qwen2.5-7B-Instruct",
-            "port": 8002,
-            "description": "Qwen2.5-7B 엔진 B"
+
+    ALLOWED_ORIGINS: List[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+            "https://www.moodtalk.app",
+            "https://moodtalk.app",
+        ]
+    )
+    EXTRA_ALLOWED_ORIGINS: Optional[str] = None
+
+    MODEL_NAME: str = "microsoft/DialoGPT-medium"
+    MODEL_CACHE_DIR: str = "./models"
+
+    FREE_TIER_MODEL: str = "ENGINE_AB_ONLY"
+    PREMIUM_TIER_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"
+    ENTERPRISE_TIER_MODEL: str = "meta-llama/Llama-3.1-70B-Instruct"
+
+    FREE_ENGINES: Dict[str, Dict[str, object]] = Field(
+        default_factory=lambda: {
+            "engine_a": {
+                "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+                "port": 8001,
+                "description": "Llama-3-8B engine A",
+            },
+            "engine_b": {
+                "model": "Qwen/Qwen2.5-7B-Instruct",
+                "port": 8002,
+                "description": "Qwen2.5-7B engine B",
+            },
         }
-    }
-    
-    # A/B 테스트 로드밸런싱 전략 (4가지 지원)
-    AB_TEST_STRATEGY: str = "round_robin"  # "round_robin", "random", "weighted", "sticky"
-    
-    # 현재 사용자 티어 (개발용 - 추후 사용자별 설정으로 변경)
-    USER_TIER: str = "premium"  # "free", "premium", "enterprise" - Llama 3.1 승인 완료!
-    
-    # GPU/CPU 설정
-    DEVICE: str = "auto"  # "cuda", "cpu", "auto"
-    MAX_MEMORY: Optional[str] = None  # "12GiB" 형태로 설정 가능
-    LOAD_IN_8BIT: bool = False  # 메모리 절약용 (비활성화)
-    LOAD_IN_4BIT: bool = False   # 양자화 비활성화 (bitsandbytes 패키지 없음)
-    
-    # 생성 파라미터 기본값
+    )
+
+    AB_TEST_STRATEGY: str = "round_robin"
+    USER_TIER: str = "premium"
+
+    DEVICE: str = "auto"
+    MAX_MEMORY: Optional[str] = None
+    LOAD_IN_8BIT: bool = False
+    LOAD_IN_4BIT: bool = False
+
     DEFAULT_MAX_TOKENS: int = 400
     DEFAULT_TEMPERATURE: float = 0.7
     DEFAULT_TOP_P: float = 0.9
     DEFAULT_TOP_K: int = 50
-    
-    # EFT 전문 설정
-    EFT_EXPERTISE_LEVEL: str = "advanced"  # "basic", "intermediate", "advanced"
+
+    MODULE_MODE: str = Field("lite", env="MODULE_MODE")
+
+    EFT_EXPERTISE_LEVEL: str = "advanced"
     KOREAN_CULTURE_CONTEXT: bool = True
     SAFETY_CHECK_ENABLED: bool = True
-    
-    # 데이터베이스 설정
+
     DATABASE_URL: str = "sqlite:///./eft_sessions.db"
-    
-    # 로깅 설정
+
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "./logs/eft_ai_server.log"
-    
-    # API 키 (필요한 경우)
-    HUGGINGFACE_TOKEN: str | None = None
-    OPENAI_API_KEY: str | None = None  # 폴백용
 
-    # 간단 API Key 검증 (프론트 X-API-Key)
-    API_KEY: str = Field("eft-ai-moodtalk-2025!", env="API_KEY")
+    HUGGINGFACE_TOKEN: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = Field("gpt-5.2", env="OPENAI_MODEL")
+    PROPOSAL_LLM_PROVIDER: str = Field("auto", env="PROPOSAL_LLM_PROVIDER")
+    PROPOSAL_OPENAI_MODEL: str = Field("gpt-5.2", env="PROPOSAL_OPENAI_MODEL")
+    PROPOSAL_VLLM_BASE_URL: str = Field("http://127.0.0.1:8001", env="PROPOSAL_VLLM_BASE_URL")
+    PROPOSAL_VLLM_MODEL: str = Field(
+        "meta-llama/Llama-3.1-8B-Instruct",
+        env="PROPOSAL_VLLM_MODEL",
+    )
+    PROPOSAL_LLM_TIMEOUT_SEC: float = Field(20.0, env="PROPOSAL_LLM_TIMEOUT_SEC")
+    YOUTUBE_API_KEY: Optional[str] = Field(default=None, env="YOUTUBE_API_KEY")
+    GOOGLE_MAPS_API_KEY: Optional[str] = Field(default=None, env="GOOGLE_MAPS_API_KEY")
+    KAKAO_REST_API_KEY: Optional[str] = Field(default=None, env="KAKAO_REST_API_KEY")
 
-    # 프리미엄 전용 API Key
-    PREMIUM_API_KEY: str = Field("premium-eft-ai-moodtalk-2025!", env="PREMIUM_API_KEY")
-    
-    # vLLM 서버 URL/모델 (기본값은 로컬, .env로 덮어쓰기)
+    QWEN_TTS_API_KEY: Optional[str] = Field(default=None, env="Qwen_TTS_API_KEY")
+    QWEN_TTS_BASE_URL: str = Field(
+        default="https://dashscope-intl.aliyuncs.com/api/v1",
+        env="QWEN_TTS_BASE_URL",
+    )
+    QWEN_TTS_MODEL: str = Field(default="qwen3-tts-flash", env="QWEN_TTS_MODEL")
+    QWEN_TTS_VOICE: str = Field(default="Cherry", env="QWEN_TTS_VOICE")
+    QWEN_TTS_LANGUAGE_TYPE: str = Field(
+        default="Korean",
+        env="QWEN_TTS_LANGUAGE_TYPE",
+    )
+
+    API_KEY: Optional[str] = Field(default=None, env="API_KEY")
+    PREMIUM_API_KEY: Optional[str] = Field(default=None, env="PREMIUM_API_KEY")
+
     FREE_AI_BASE_URL: str = Field("http://localhost:8001/v1", env="FREE_AI_BASE_URL")
     PREMIUM_AI_BASE_URL: str = Field("http://localhost:8002/v1", env="PREMIUM_AI_BASE_URL")
     FREE_AI_MODEL: str = Field("meta-llama/Llama-3.1-8B-Instruct", env="FREE_AI_MODEL")
     PREMIUM_AI_MODEL: str = Field("Qwen/Qwen2.5-7B-Instruct", env="PREMIUM_AI_MODEL")
-    
-    # 성능 최적화 설정
+
     BATCH_SIZE: int = 1
     MAX_CONCURRENT_REQUESTS: int = 10
 
-    # 🎛️ 프리미엄 티어 라우팅 설정
-    PREMIUM_MODE: str = Field("proxy", env="PREMIUM_MODE")  # "proxy" | "direct"
-    VLLM_PREMIUM_ENGINE: str = Field("B", env="VLLM_PREMIUM_ENGINE")  # "A" | "B" | "AB"
+    PREMIUM_MODE: str = Field("proxy", env="PREMIUM_MODE")
+    VLLM_PREMIUM_ENGINE: str = Field("B", env="VLLM_PREMIUM_ENGINE")
 
-    # vLLM 엔진 URL 설정
     VLLM_ENGINE_A_URL: str = Field("http://127.0.0.1:8001", env="VLLM_ENGINE_A_URL")
     VLLM_ENGINE_B_URL: str = Field("http://127.0.0.1:8002", env="VLLM_ENGINE_B_URL")
 
-    # 프리미엄 요청 타임아웃 및 재시도
-    PREMIUM_REQUEST_TIMEOUT: int = Field(30, env="PREMIUM_REQUEST_TIMEOUT")  # 30초
-    PREMIUM_MAX_RETRIES: int = Field(1, env="PREMIUM_MAX_RETRIES")  # 1회 재시도
+    PREMIUM_REQUEST_TIMEOUT: int = Field(30, env="PREMIUM_REQUEST_TIMEOUT")
+    PREMIUM_MAX_RETRIES: int = Field(1, env="PREMIUM_MAX_RETRIES")
 
-    # 메모리 시스템 설정
-    MEMORY_STATS_RECENT_K: int = Field(10, description="메모리 통계에서 조회할 최근 턴 수")
-    MEMORY_MAX_TURNS: int = Field(100, description="세션당 최대 저장 턴 수")
+    MEMORY_STATS_RECENT_K: int = Field(10, description="Recent memory stats size")
+    MEMORY_MAX_TURNS: int = Field(100, description="Max number of memory turns")
 
-    # 🛡️ 밸리데이터 (오타 방지)
+    MEMORY_FILE_PATH: str = Field(
+        "./data/memory/conversations.jsonl",
+        description="Conversation memory path",
+    )
+    MEMORY_SUMMARY_PATH: str = Field(
+        "./data/memory/summaries.json",
+        description="Summary memory path",
+    )
+    REQUEST_TIMEOUT: int = 120
+
+    VLLM_CONNECT_TIMEOUT: float = 10.0
+    VLLM_READ_TIMEOUT: float = 120.0
+    VLLM_HEALTH_CHECK_TIMEOUT: float = 5.0
+
+    STICKY_SESSION_TTL: int = 3600
+    STICKY_SESSIONS: Dict[str, str] = Field(default_factory=dict)
+
+    REDIS_URL: Optional[str] = None
+    USE_REDIS_FOR_STICKY: bool = False
+    USE_REDIS_FOR_RATE_LIMIT: bool = False
+
+    INTERNAL_NETWORKS: List[str] = Field(default_factory=lambda: ["127.0.0.1", "localhost", "::1"])
+    ADMIN_API_KEY: Optional[str] = None
+
+    ENABLE_REQUEST_LOGGING: bool = True
+    RESPONSE_CACHE_TTL: int = 3600
+
+    ENABLE_PROMETHEUS: bool = True
+    PROMETHEUS_PORT: int = 8001
+
+    SECRET_KEY: Optional[str] = Field(default=None, env="SECRET_KEY")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    JWT_ALG: str = "HS256"
+
+    COOKIE_NAME_ACCESS: str = "access_token"
+    COOKIE_NAME_REFRESH: str = "refresh_token"
+    COOKIE_SECURE: bool = True
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_DOMAIN: Optional[str] = None
+
+    FIREBASE_PROJECT_ID: Optional[str] = None
+    FIREBASE_CREDENTIALS_JSON: Optional[str] = None
+
+    NOTION_CLIENT_ID: Optional[str] = None
+    NOTION_CLIENT_SECRET: Optional[str] = None
+    NOTION_REDIRECT_URI: Optional[str] = None
+    NOTION_OAUTH_BASE_URL: str = "https://api.notion.com/v1/oauth"
+    NOTION_API_BASE_URL: str = "https://api.notion.com/v1"
+    NOTION_API_VERSION: str = "2022-06-28"
+    NOTION_USER_DB_NAME: str = "MoodTalk Users"
+
+    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_DASHBOARD_URL: str = "http://localhost:5173/dashboard"
+    SOFT_NUDGE_MODE: str = Field("prod", env="SOFT_NUDGE_MODE")
+    SOFT_NUDGE_PROD_MIN_SESSION_SECONDS: int = Field(15 * 60, env="SOFT_NUDGE_PROD_MIN_SESSION_SECONDS")
+    SOFT_NUDGE_DEMO_MIN_SESSION_SECONDS: int = Field(30, env="SOFT_NUDGE_DEMO_MIN_SESSION_SECONDS")
+    SOFT_NUDGE_MOVEMENT_WINDOW_SECONDS: int = Field(180, env="SOFT_NUDGE_MOVEMENT_WINDOW_SECONDS")
+    SOFT_NUDGE_COOLDOWN_MINUTES: int = Field(15, env="SOFT_NUDGE_COOLDOWN_MINUTES")
+    SOFT_NUDGE_MAX_PER_SESSION: int = Field(1, env="SOFT_NUDGE_MAX_PER_SESSION")
+    ENCRYPTION_KEY: Optional[str] = None
+    SECURITY_STRICT_MISSION_RUN: bool = Field(False, env="SECURITY_STRICT_MISSION_RUN")
+
+    REMINDER_DEFAULT_TZ: str = Field("Asia/Seoul", env="REMINDER_DEFAULT_TZ")
+    REMINDER_IN_PROCESS_ENABLED: bool = Field(True, env="REMINDER_IN_PROCESS_ENABLED")
+    REMINDER_TICK_SECONDS: int = Field(60, env="REMINDER_TICK_SECONDS")
+    REMINDER_CLAIM_LIMIT: int = Field(100, env="REMINDER_CLAIM_LIMIT")
+    REMINDER_LOCK_SECONDS: int = Field(55, env="REMINDER_LOCK_SECONDS")
+    REMINDER_MAX_ATTEMPTS: int = Field(3, env="REMINDER_MAX_ATTEMPTS")
+    REMINDER_BACKOFF_BASE_SECONDS: int = Field(60, env="REMINDER_BACKOFF_BASE_SECONDS")
+
+    WEBPUSH_VAPID_PUBLIC_KEY: Optional[str] = Field(default=None, env="WEBPUSH_VAPID_PUBLIC_KEY")
+    WEBPUSH_VAPID_PRIVATE_KEY: Optional[str] = Field(default=None, env="WEBPUSH_VAPID_PRIVATE_KEY")
+    WEBPUSH_VAPID_CLAIMS_SUB: str = Field("mailto:admin@example.com", env="WEBPUSH_VAPID_CLAIMS_SUB")
+    ENABLE_FCM_PUSH: bool = Field(True, env="ENABLE_FCM_PUSH")
+
     @field_validator("PREMIUM_MODE")
     @classmethod
-    def _check_premium_mode(cls, v: str) -> str:
-        v2 = (v or "").lower()
-        if v2 not in ALLOWED_PREMIUM_MODE:
-            raise ValueError(f"PREMIUM_MODE must be one of {ALLOWED_PREMIUM_MODE}, got: {v}")
-        return v2
+    def _check_premium_mode(cls, value: str) -> str:
+        v = (value or "").lower()
+        if v not in ALLOWED_PREMIUM_MODE:
+            raise ValueError(f"PREMIUM_MODE must be one of {ALLOWED_PREMIUM_MODE}, got: {value}")
+        return v
+
+    @field_validator("MODULE_MODE")
+    @classmethod
+    def _check_module_mode(cls, value: str) -> str:
+        v = (value or "lite").lower()
+        if v not in ALLOWED_MODULE_MODE:
+            raise ValueError(f"MODULE_MODE must be one of {ALLOWED_MODULE_MODE}, got: {value}")
+        return v
 
     @field_validator("VLLM_PREMIUM_ENGINE")
     @classmethod
-    def _check_engine(cls, v: str) -> str:
-        v2 = (v or "").upper()
-        if v2 not in ALLOWED_ENGINE:
-            raise ValueError(f"VLLM_PREMIUM_ENGINE must be one of {ALLOWED_ENGINE}, got: {v}")
-        return v2
+    def _check_engine(cls, value: str) -> str:
+        v = (value or "").upper()
+        if v not in ALLOWED_ENGINE:
+            raise ValueError(f"VLLM_PREMIUM_ENGINE must be one of {ALLOWED_ENGINE}, got: {value}")
+        return v
+
+    @field_validator("PROPOSAL_LLM_PROVIDER")
+    @classmethod
+    def _check_proposal_llm_provider(cls, value: str) -> str:
+        v = (value or "auto").lower()
+        if v not in ALLOWED_PROPOSAL_LLM_PROVIDER:
+            raise ValueError(
+                f"PROPOSAL_LLM_PROVIDER must be one of {ALLOWED_PROPOSAL_LLM_PROVIDER}, got: {value}"
+            )
+        return v
+
+    @field_validator("SOFT_NUDGE_MODE")
+    @classmethod
+    def _check_soft_nudge_mode(cls, value: str) -> str:
+        v = (value or "prod").lower()
+        if v not in ALLOWED_SOFT_NUDGE_MODE:
+            raise ValueError(f"SOFT_NUDGE_MODE must be one of {ALLOWED_SOFT_NUDGE_MODE}, got: {value}")
+        return v
 
     @field_validator("VLLM_ENGINE_A_URL", "VLLM_ENGINE_B_URL")
     @classmethod
-    def _strip_trailing_slash(cls, v: str) -> str:
-        return (v or "").rstrip("/")
-    MEMORY_FILE_PATH: str = Field("./data/memory/conversations.jsonl", description="메모리 파일 경로")
-    MEMORY_SUMMARY_PATH: str = Field("./data/memory/summaries.json", description="요약 파일 경로")
-    REQUEST_TIMEOUT: int = 120  # 초
-    
-    # vLLM 프록시 설정
-    VLLM_CONNECT_TIMEOUT: float = 10.0  # 연결 타임아웃
-    VLLM_READ_TIMEOUT: float = 120.0    # 읽기 타임아웃
-    VLLM_HEALTH_CHECK_TIMEOUT: float = 5.0  # 헬스체크 타임아웃
-    
-    # Sticky 세션 설정 (사용자별 엔진 고정)
-    STICKY_SESSION_TTL: int = 3600  # sticky 세션 유지 시간 (초)
-    STICKY_SESSIONS: Dict[str, str] = {}  # 메모리 기반 sticky 매핑
-    
-    # Sticky 세션 설정 (사용자별 엔진 고정)
-    STICKY_SESSION_TTL: int = 3600  # sticky 세션 유지 시간 (초)
-    STICKY_SESSIONS: Dict[str, str] = {}  # 메모리 기반 sticky 매핑
-    
-    # Redis 설정 (다중 워커 환경 지원)
-    REDIS_URL: Optional[str] = None  # "redis://localhost:6379/0"
-    USE_REDIS_FOR_STICKY: bool = False
-    USE_REDIS_FOR_RATE_LIMIT: bool = False
-    
-    # 운영 보안 설정
-    INTERNAL_NETWORKS: List[str] = ["127.0.0.1", "localhost", "::1"]
-    ADMIN_API_KEY: Optional[str] = None  # 관리자 API 키
-    
-    # 로깅 설정 확장
-    ENABLE_REQUEST_LOGGING: bool = True  # 요청 로깅 개별 제어
-    
-    # 캐싱 설정
-    RESPONSE_CACHE_TTL: int = 3600  # 1시간
-    
-    # 모니터링 설정
-    ENABLE_PROMETHEUS: bool = True
-    PROMETHEUS_PORT: int = 8001
-    
-    # 보안 설정
-    SECRET_KEY: str = "your-secret-key-change-this"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+    def _strip_trailing_slash(cls, value: str) -> str:
+        return (value or "").rstrip("/")
 
-# 설정 싱글톤
-_settings = None
+    @field_validator("COOKIE_SECURE", mode="after")
+    @classmethod
+    def _normalize_cookie_secure(cls, value: bool, info: ValidationInfo) -> bool:
+        """
+        Development 환경에서는 기본적으로 Secure 쿠키를 비활성화해
+        http://localhost 테스트에서 로그인 쿠키가 소실되는 문제를 방지한다.
+        """
+        if "COOKIE_SECURE" in os.environ:
+            return value
+
+        if info.data.get("DEBUG", False):
+            return False
+        return value
+
+
+    @field_validator("COOKIE_SAMESITE", mode="after")
+    @classmethod
+    def _normalize_cookie_samesite(cls, value: str, info: ValidationInfo) -> str:
+        normalized = (value or "lax").strip().lower()
+        if normalized == "none" and not bool(info.data.get("COOKIE_SECURE", False)):
+            return "lax"
+        if normalized in {"strict", "lax"}:
+            return normalized
+        return "lax"
+
+
+_settings: Optional[Settings] = None
+
 
 def get_settings() -> Settings:
-    """설정 인스턴스 반환 (싱글톤 패턴)"""
+    """Return singleton settings with late dotenv recovery for SECRET_KEY."""
     global _settings
     if _settings is None:
         _settings = Settings()
+    else:
+        secret_in_env = (os.getenv("SECRET_KEY") or "").strip()
+        if not ((_settings.SECRET_KEY or "").strip()) and secret_in_env:
+            _settings = Settings()
     return _settings
 
-# 환경별 설정 오버라이드
+
 def get_development_settings() -> Settings:
-    """개발 환경용 설정"""
     settings = get_settings()
     settings.DEBUG = True
     settings.LOG_LEVEL = "DEBUG"
-    # Llama 3.1 승인 완료! 이제 최고급 모델 사용 가능
-    settings.MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"  # Llama 3.1으로 업그레이드!
-    settings.LOAD_IN_4BIT = False  # 성능 최대화
+    settings.MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
+    settings.LOAD_IN_4BIT = False
     return settings
 
+
 def get_production_settings() -> Settings:
-    """운영 환경용 설정"""
     settings = get_settings()
     settings.DEBUG = False
     settings.LOG_LEVEL = "WARNING"
-    settings.MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"  # 성능 모델
+    settings.MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
     settings.LOAD_IN_4BIT = False
     settings.ENABLE_PROMETHEUS = True
     return settings
 
-# 모델별 설정 프리셋
-MODEL_PRESETS = {
-    # 빠른 테스트용
+
+MODEL_PRESETS: Dict[str, Dict[str, object]] = {
     "llama2-7b-quick": {
         "model_name": "meta-llama/Llama-2-7b-chat-hf",
         "load_in_4bit": True,
-        "max_memory": "6GiB"
+        "max_memory": "6GiB",
     },
-    
-    # 권장 운영용
     "llama3-8b-optimal": {
-        "model_name": "meta-llama/Llama-3.1-8B-Instruct", 
+        "model_name": "meta-llama/Llama-3.1-8B-Instruct",
         "load_in_4bit": False,
-        "max_memory": "12GiB"
+        "max_memory": "12GiB",
     },
-    
-    # 고성능용 (GPU 필수)
     "llama3-70b-premium": {
         "model_name": "meta-llama/Llama-3.1-70B-Instruct",
         "load_in_4bit": True,
-        "max_memory": "40GiB"
-    }
+        "max_memory": "40GiB",
+    },
 }
 
-def apply_model_preset(preset_name: str) -> Settings:
-    """모델 프리셋 적용"""
-    settings = get_settings()
-    
-    if preset_name not in MODEL_PRESETS:
-        raise ValueError(f"알 수 없는 프리셋: {preset_name}")
-    
-    preset = MODEL_PRESETS[preset_name]
-    settings.MODEL_NAME = preset["model_name"]
-    settings.LOAD_IN_4BIT = preset["load_in_4bit"]
-    settings.MAX_MEMORY = preset["max_memory"]
-    
-    return settings
 
-    # [긴급] 로컬 개발용 AI 모킹 모드 (True면 GPU 없이 돌아감)
-    USE_MOCK_AI: bool = True
+def apply_model_preset(preset_name: str) -> Settings:
+    settings = get_settings()
+    if preset_name not in MODEL_PRESETS:
+        raise ValueError(f"Unknown model preset: {preset_name}")
+
+    preset = MODEL_PRESETS[preset_name]
+    settings.MODEL_NAME = str(preset["model_name"])
+    settings.LOAD_IN_4BIT = bool(preset["load_in_4bit"])
+    settings.MAX_MEMORY = str(preset["max_memory"])
+    return settings
