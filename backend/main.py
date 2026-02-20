@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+
+# Ensure imports work whether the app is launched from repo root or backend/.
+_BACKEND_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _BACKEND_DIR.parent
+for _p in (_BACKEND_DIR, _REPO_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.append(str(_p))
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
