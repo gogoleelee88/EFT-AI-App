@@ -602,9 +602,9 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
   // 媛쒖엯 ?좉????듭뀡?섍쿂
   const interventionOptions = [
-    { id: 'breathing', label: '?명씉 60珥?, duration: 60 },
-    { id: 'tapping', label: '??븨 3?ъ씤??, duration: 75 },
-    { id: 'grounding', label: '5媛?洹몃씪?대뵫', duration: 90 }
+    { id: 'breathing', label: 'Breathing 60 sec', duration: 60 },
+    { id: 'tapping', label: 'Tapping 3 min', duration: 75 },
+    { id: 'grounding', label: 'Grounding 5-4-3-2-1', duration: 90 }
   ];
 
   // ?렗 ?≪뀡 ?좏겙 ?몃뱾??(諛깆뿏???묐떟??actions 諛곗뿴 泥섎━)
