@@ -7,20 +7,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const normalizeUrl = (raw: string): string => {
-  const value = (raw || '').trim()
-  if (!value || value === '/') return ''
-  const candidate = /^https?:\/\//i.test(value) ? value : `http://${value}`
-  try {
-    const parsed = new URL(candidate)
-    if (!parsed.hostname) return ''
-    return `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, '')
-  } catch {
-    return ''
-  }
-}
-
-const API_PROXY_TARGET = (normalizeUrl(process.env.VITE_API_BASE_URL || '') || 'http://127.0.0.1:8000')
+const API_PROXY_TARGET = (process.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '')
 const WS_PROXY_TARGET = API_PROXY_TARGET.replace(/^https:/, 'ws:').replace(/^http:/, 'ws:')
 
 // https://vite.dev/config/
@@ -133,28 +120,18 @@ export default defineConfig({
   host: '0.0.0.0',
   port: 5173,
   strictPort: true,
-  hmr: true,
+  hmr: {
+    path: '/hmr',
+  },
   headers: {
     'X-Content-Type-Options': 'nosniff',
   },
   proxy: {
-    '/api': {
-      target: API_PROXY_TARGET,
-      changeOrigin: true,
-    },
-    '/v1': {
-      target: API_PROXY_TARGET,
-      changeOrigin: true,
-    },
-    '/ws': {
-      target: WS_PROXY_TARGET,
-      ws: true,
-      changeOrigin: true,
-    },
-    '/suds': {
-      target: API_PROXY_TARGET,
-      changeOrigin: true,
-    },
+      '/api': { target: API_PROXY_TARGET, changeOrigin: true },
+      '/v1': { target: API_PROXY_TARGET, changeOrigin: true },
+      '/suds': { target: API_PROXY_TARGET, changeOrigin: true },
+      '/ws': { target: WS_PROXY_TARGET, ws: true, changeOrigin: true },
+      '/health': { target: API_PROXY_TARGET, changeOrigin: true },
   },
 },
 

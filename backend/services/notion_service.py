@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from models.chat_models import StrictIntakeInput
+from backend.models.chat_models import StrictIntakeInput
 from utils.logger import get_logger
 
 
@@ -226,4 +226,5 @@ async def create_emotion_page(
         session_type=session_type,
         solution=solution,
     )
+
 

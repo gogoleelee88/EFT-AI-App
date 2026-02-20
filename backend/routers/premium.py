@@ -20,24 +20,24 @@ logger.info(f"[PremiumRouter] Loaded: {ROUTER_BUILD}")
 
 class ChatPayload(BaseModel):
     model_config = {"extra": "forbid"}
-    message: str = Field(..., description="?�청 메�???)
-    temperature: float = Field(0.7, ge=0.0, le=2.0, description="?�답 ?�도")
-    max_tokens: int = Field(700, ge=1, le=4096, description="최�? ?�큰 ??)
-    sessionId: Optional[str] = Field(None, description="?�션 ID")
-    userId: Optional[str] = Field(None, description="?�청??ID")
+    message: str = Field(..., description="?ì² ë©ì???)
+    temperature: float = Field(0.7, ge=0.0, le=2.0, description="?ëµ ?¨ë")
+    max_tokens: int = Field(700, ge=1, le=4096, description="ìµë? ?í° ??)
+    sessionId: Optional[str] = Field(None, description="?¸ì ID")
+    userId: Optional[str] = Field(None, description="?ì²??ID")
 
 
 class ChatResponse(BaseModel):
-    response: str = Field(..., description="AI ?�답 ?�스??)
-    model: str = Field(..., description="모델�?)
-    processing_time: float = Field(..., description="?�요 ?�간")
-    success: bool = Field(True, description="?�공 ?��?")
-    session_id: Optional[str] = Field(None, description="?�션 ID")
-    timestamp: str = Field(..., description="?�답 ?�?�스?�프")
+    response: str = Field(..., description="AI ?ëµ ?ì¤??)
+    model: str = Field(..., description="ëª¨ë¸ëª?)
+    processing_time: float = Field(..., description="?ì ?ê°")
+    success: bool = Field(True, description="?±ê³µ ?¬ë?")
+    session_id: Optional[str] = Field(None, description="?¸ì ID")
+    timestamp: str = Field(..., description="?ëµ ??ì¤?¬í")
 
 
 async def call_vllm_direct(message: str, temperature: float = 0.7, max_tokens: int = 700) -> dict:
-    """OpenAI 기반 ?�답 ?�성 (?�환???�수�?."""
+    """OpenAI ê¸°ë° ?ëµ ?ì± (?¸í???¨ìëª?."""
     system_prompt = (
         "You are a supportive EFT coach. "
         "Respond with practical, empathetic guidance and keep users grounded."
@@ -47,7 +47,7 @@ async def call_vllm_direct(message: str, temperature: float = 0.7, max_tokens: i
     client = get_openai_client()
     if client is None:
         return {
-            "response": "?�재 AI ?�비?�에 ?�결?????�습?�다. ?�시 ???�시 ?�도??주세??",
+            "response": "?ì¬ AI ?ë¹?¤ì ?°ê²°?????ìµ?ë¤. ?ì ???¤ì ?ë??ì£¼ì¸??",
             "model": "openai-unavailable",
             "success": False,
         }
@@ -70,7 +70,7 @@ async def call_vllm_direct(message: str, temperature: float = 0.7, max_tokens: i
         response = await client.chat.completions.create(**payload)
         if not response.choices:
             return {
-                "response": "AI ?�답???�성?��? 못했?�니??",
+                "response": "AI ?ëµ???ì±?ì? ëª»í?µë??",
                 "model": model,
                 "success": False,
             }
@@ -78,7 +78,7 @@ async def call_vllm_direct(message: str, temperature: float = 0.7, max_tokens: i
         response_text = (response.choices[0].message.content or "").strip()
         if not response_text:
             return {
-                "response": "AI ?�답??비어 ?�습?�다. ?�시 ???�시 ?�도??주세??",
+                "response": "AI ?ëµ??ë¹ì´ ?ìµ?ë¤. ?ì ???¤ì ?ë??ì£¼ì¸??",
                 "model": model,
                 "success": False,
             }
@@ -91,7 +91,7 @@ async def call_vllm_direct(message: str, temperature: float = 0.7, max_tokens: i
     except Exception as exc:
         logger.error("OpenAI chat call failed: %s", exc)
         return {
-            "response": "?�시�?AI ?�답 ?�출???�패?�습?�다. ?�시 ???�시 ?�도??주세??",
+            "response": "?¤ìê°?AI ?ëµ ?¸ì¶???¤í¨?ìµ?ë¤. ?ì ???¤ì ?ë??ì£¼ì¸??",
             "model": "error",
             "success": False,
         }
@@ -104,7 +104,7 @@ async def chat(
     _content_type: RequireJSON,
     payload: ChatPayload = Body(..., embed=False),
 ) -> ChatResponse:
-    """?�리미엄 AI 채팅 ?�답 ?�공"""
+    """?ë¦¬ë¯¸ì AI ì±í ?ëµ ?ê³µ"""
     start = time.time()
     client_ip = request.client.host if request.client else "unknown"
 
@@ -115,9 +115,9 @@ async def chat(
         if not result["success"]:
             return ChatResponse(
                 response=(
-                    "문제 ?�이 ?�어�????�도�??��??�릴게요. "
-                    "감정???�무 과�??�처???�껴�??�는 30�??�도 ?�식 ?? "
-                    "?�을 천천??고르�??�시 말�???주세??"
+                    "ë¬¸ì ?ì´ ?´ì´ê°????ëë¡??ì??ë¦´ê²ì. "
+                    "ê°ì???ë¬´ ê³¼ë??ì²???ê»´ì§??ë 30ë¶??ë ?´ì ?? "
+                    "?¨ì ì²ì²??ê³ë¥´ê³??¤ì ë§ì???ì£¼ì¸??"
                 ),
                 model="fallback-ar-holistic",
                 processing_time=time.time() - start,
@@ -147,7 +147,7 @@ async def validate_key(
     request: Request,
     api_key: PremiumAuth,
 ):
-    """?�리미엄 ??검�?""
+    """?ë¦¬ë¯¸ì ??ê²ì¦?""
     client_ip = request.client.host if request.client else "unknown"
     logger.info("validate premium key from %s", client_ip)
     return {

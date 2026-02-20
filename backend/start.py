@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-EFT AI ?�버 ?�작 ?�크립트
-개발/?�영 ?�경???�른 ?�정 ?�동 ?�용
+EFT AI ?ë² ?ì ?¤í¬ë¦½í¸
+ê°ë°/?´ì ?ê²½???°ë¥¸ ?¤ì ?ë ?ì©
 """
 
 import os
@@ -11,77 +11,77 @@ import argparse
 import uvicorn
 from pathlib import Path
 
-# Windows ?�니코드 출력 문제 ?�결
+# Windows ?ëì½ë ì¶ë¥ ë¬¸ì ?´ê²°
 if sys.platform.startswith('win'):
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-# ?�재 ?�렉?�리�?Python 경로??추�?
+# ?ì¬ ?ë?ë¦¬ë¥?Python ê²½ë¡??ì¶ê?
 sys.path.append(str(Path(__file__).parent))
 
 from config.settings import get_settings, get_development_settings, get_production_settings, apply_model_preset
-from utils.logger import get_logger
+from backend.utils.logger import get_logger
 
 def parse_arguments():
-    """명령???�수 ?�싱"""
-    parser = argparse.ArgumentParser(description="EFT AI ?�버 ?�작")
+    """ëªë¹???¸ì ?ì±"""
+    parser = argparse.ArgumentParser(description="EFT AI ?ë² ?ì")
     
     parser.add_argument(
         "--env", 
         choices=["dev", "prod"], 
         default="dev",
-        help="?�행 ?�경 (기본�? dev)"
+        help="?¤í ?ê²½ (ê¸°ë³¸ê°? dev)"
     )
     
     parser.add_argument(
         "--host", 
         default=None,
-        help="?�버 ?�스??(기본�? ?�정 ?�일 �?"
+        help="?ë² ?¸ì¤??(ê¸°ë³¸ê°? ?¤ì ?ì¼ ê°?"
     )
     
     parser.add_argument(
         "--port", 
         type=int, 
         default=None,
-        help="?�버 ?�트 (기본�? ?�정 ?�일 �?"
+        help="?ë² ?¬í¸ (ê¸°ë³¸ê°? ?¤ì ?ì¼ ê°?"
     )
     
     parser.add_argument(
         "--model-preset",
         choices=["llama2-7b-quick", "llama3-8b-optimal", "llama3-70b-premium"],
-        help="모델 ?�리???�택"
+        help="ëª¨ë¸ ?ë¦¬???í"
     )
     
     parser.add_argument(
         "--reload",
         action="store_true",
-        help="?�동 ?�로???�성??(개발??"
+        help="?ë ?¬ë¡???ì±??(ê°ë°??"
     )
     
     parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="로그 ?�벨 ?�버?�이??
+        help="ë¡ê·¸ ?ë²¨ ?¤ë²?¼ì´??
     )
     
     return parser.parse_args()
 
 def setup_environment(args):
-    """?�경 ?�정"""
+    """?ê²½ ?¤ì"""
     
-    # ?�경�??�정 로드
+    # ?ê²½ë³??¤ì ë¡ë
     if args.env == "prod":
         settings = get_production_settings()
-        print(" ?�영 ?�경?�로 ?�작?�니??)
+        print(" ?´ì ?ê²½?¼ë¡ ?ì?©ë??)
     else:
         settings = get_development_settings()
-        print(" 개발 ?�경?�로 ?�작?�니??)
+        print(" ê°ë° ?ê²½?¼ë¡ ?ì?©ë??)
     
-    # 모델 ?�리???�용
+    # ëª¨ë¸ ?ë¦¬???ì©
     if args.model_preset:
         settings = apply_model_preset(args.model_preset)
-        print(f" 모델 ?�리???�용: {args.model_preset}")
+        print(f" ëª¨ë¸ ?ë¦¬???ì©: {args.model_preset}")
     
-    # 명령???�수 ?�버?�이??    if args.host:
+    # ëªë¹???¸ì ?¤ë²?¼ì´??    if args.host:
         settings.HOST = args.host
     
     if args.port:
@@ -93,62 +93,62 @@ def setup_environment(args):
     return settings
 
 def check_prerequisites():
-    """?�전 ?�구?�항 체크"""
+    """?¬ì ?êµ¬?¬í ì²´í¬"""
     
-    print(" ?�전 ?�구?�항 체크 �?..")
+    print(" ?¬ì ?êµ¬?¬í ì²´í¬ ì¤?..")
     
-    # Python 버전 체크
+    # Python ë²ì ì²´í¬
     if sys.version_info < (3, 8):
-        print("ERROR: Python 3.8 ?�상???�요?�니??)
+        print("ERROR: Python 3.8 ?´ì???ì?©ë??)
         sys.exit(1)
     
-    # ?�요 ?�렉?�리 ?�성
+    # ?ì ?ë?ë¦¬ ?ì±
     dirs_to_create = ["./logs", "./models", "./data"]
     for dir_path in dirs_to_create:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
     
-    # .env ?�일 체크
+    # .env ?ì¼ ì²´í¬
     if not Path(".env").exists():
-        print(" .env ?�일???�습?�다. .env.example??참고?�여 ?�성?�세??)
-        print("   기본 ?�정?�로 계속 진행?�니??..")
+        print(" .env ?ì¼???ìµ?ë¤. .env.example??ì°¸ê³?ì¬ ?ì±?ì¸??)
+        print("   ê¸°ë³¸ ?¤ì?¼ë¡ ê³ì ì§í?©ë??..")
     
-    print("OK: ?�전 ?�구?�항 체크 ?�료")
+    print("OK: ?¬ì ?êµ¬?¬í ì²´í¬ ?ë£")
 
 def print_startup_info(settings):
-    """?�작 ?�보 출력"""
+    """?ì ?ë³´ ì¶ë¥"""
     
     print("\n" + "="*60)
-    print("EFT AI ?�버 ?�작 ?�보")
+    print("EFT AI ?ë² ?ì ?ë³´")
     print("="*60)
-    print(f" ?�경: {'?�영' if not settings.DEBUG else '개발'}")
-    print(f" 주소: http://{settings.HOST}:{settings.PORT}")
-    print(f" 모델: {settings.MODEL_NAME}")
-    print(f" ?�바?�스: {settings.DEVICE}")
-    print(f" 로그: {settings.LOG_LEVEL} -> {settings.LOG_FILE}")
+    print(f" ?ê²½: {'?´ì' if not settings.DEBUG else 'ê°ë°'}")
+    print(f" ì£¼ì: http://{settings.HOST}:{settings.PORT}")
+    print(f" ëª¨ë¸: {settings.MODEL_NAME}")
+    print(f" ?ë°?´ì¤: {settings.DEVICE}")
+    print(f" ë¡ê·¸: {settings.LOG_LEVEL} -> {settings.LOG_FILE}")
     
     if settings.DEBUG:
-        print(f" API 문서: http://{settings.HOST}:{settings.PORT}/docs")
+        print(f" API ë¬¸ì: http://{settings.HOST}:{settings.PORT}/docs")
         print(f" ReDoc: http://{settings.HOST}:{settings.PORT}/redoc")
     
     print("="*60)
     print()
 
 def main():
-    """메인 ?�수"""
+    """ë©ì¸ ?¨ì"""
     
-    # 명령???�수 ?�싱
+    # ëªë¹???¸ì ?ì±
     args = parse_arguments()
     
-    # ?�전 ?�구?�항 체크
+    # ?¬ì ?êµ¬?¬í ì²´í¬
     check_prerequisites()
     
-    # ?�경 ?�정
+    # ?ê²½ ?¤ì
     settings = setup_environment(args)
     
-    # ?�작 ?�보 출력
+    # ?ì ?ë³´ ì¶ë¥
     print_startup_info(settings)
     
-    # ?�버 ?�행 ?�정
+    # ?ë² ?¤í ?¤ì
     uvicorn_config = {
         "app": "main:app",
         "host": settings.HOST,
@@ -160,17 +160,18 @@ def main():
     }
     
     try:
-        print(" ?�버�??�작?�니??..")
-        print("   중�??�려�?Ctrl+C�??�르?�요\n")
+        print(" ?ë²ë¥??ì?©ë??..")
+        print("   ì¤ì??ë¤ë©?Ctrl+Cë¥??ë¥´?¸ì\n")
         
-        # Uvicorn ?�버 ?�작
+        # Uvicorn ?ë² ?ì
         uvicorn.run(**uvicorn_config)
         
     except KeyboardInterrupt:
-        print("\n\n ?�버가 ?�용?�에 ?�해 중�??�었?�니??)
+        print("\n\n ?ë²ê° ?¬ì©?ì ?í´ ì¤ì??ì?µë??)
     except Exception as e:
-        print(f"\nERROR: ?�버 ?�작 ?�패: {e}")
+        print(f"\nERROR: ?ë² ?ì ?¤í¨: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
+

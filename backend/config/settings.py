@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from typing import Dict, List, Optional
 
 from pydantic import Field, ValidationInfo, field_validator
@@ -11,6 +12,28 @@ ALLOWED_ENGINE = {"A", "B", "AB"}
 ALLOWED_MODULE_MODE = {"lite", "pro"}
 ALLOWED_PROPOSAL_LLM_PROVIDER = {"auto", "openai", "vllm", "mock"}
 ALLOWED_SOFT_NUDGE_MODE = {"prod", "demo"}
+
+
+def _coerce_list_env(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if not isinstance(value, str):
+        return [str(value).strip()]
+
+    raw = value.strip()
+    if not raw:
+        return []
+
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(v).strip() for v in parsed if str(v).strip()]
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 class Settings(BaseSettings):
@@ -34,6 +57,7 @@ class Settings(BaseSettings):
             "http://127.0.0.1:3000",
             "http://127.0.0.1:5173",
             "http://127.0.0.1:5174",
+            "https://eft-ai-app-frontend-4ia5.vercel.app",
             "https://www.moodtalk.app",
             "https://moodtalk.app",
         ]
@@ -100,6 +124,7 @@ class Settings(BaseSettings):
     YOUTUBE_API_KEY: Optional[str] = Field(default=None, env="YOUTUBE_API_KEY")
     GOOGLE_MAPS_API_KEY: Optional[str] = Field(default=None, env="GOOGLE_MAPS_API_KEY")
     KAKAO_REST_API_KEY: Optional[str] = Field(default=None, env="KAKAO_REST_API_KEY")
+    BACKEND_BASE_URL: str = Field("http://localhost:8000", env="BACKEND_BASE_URL")
 
     QWEN_TTS_API_KEY: Optional[str] = Field(default=None, env="Qwen_TTS_API_KEY")
     QWEN_TTS_BASE_URL: str = Field(
@@ -183,10 +208,14 @@ class Settings(BaseSettings):
     NOTION_CLIENT_ID: Optional[str] = None
     NOTION_CLIENT_SECRET: Optional[str] = None
     NOTION_REDIRECT_URI: Optional[str] = None
+    GOOGLE_REDIRECT_URI: Optional[str] = None
+    GOOGLE_REDIRECT_URIS: List[str] = Field(default_factory=list, env="GOOGLE_REDIRECT_URIS")
+    NOTION_REDIRECT_URIS: List[str] = Field(default_factory=list, env="NOTION_REDIRECT_URIS")
     NOTION_OAUTH_BASE_URL: str = "https://api.notion.com/v1/oauth"
     NOTION_API_BASE_URL: str = "https://api.notion.com/v1"
     NOTION_API_VERSION: str = "2022-06-28"
     NOTION_USER_DB_NAME: str = "MoodTalk Users"
+    BASE_FRONTEND_URL: str = Field("http://localhost:3000", env="BASE_FRONTEND_URL")
 
     FRONTEND_URL: str = "http://localhost:5173"
     FRONTEND_DASHBOARD_URL: str = "http://localhost:5173/dashboard"
@@ -258,6 +287,16 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return (value or "").rstrip("/")
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def _coerce_allowed_origins(cls, value: object) -> list[str]:
+        return _coerce_list_env(value)
+
+    @field_validator("GOOGLE_REDIRECT_URIS", "NOTION_REDIRECT_URIS", mode="before")
+    @classmethod
+    def _coerce_redirect_uri_lists(cls, value: object) -> list[str]:
+        return _coerce_list_env(value)
 
     @field_validator("COOKIE_SECURE", mode="after")
     @classmethod

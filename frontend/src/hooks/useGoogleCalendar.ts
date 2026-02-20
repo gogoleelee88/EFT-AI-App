@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PrivacyMode } from "../types/privacy";
 import { resolvePrivacyEvent } from "../services/privacySync";
+import { resolveBackendUrl } from "@/config/api";
 
 export interface GoogleCalendarEvent {
   id: string;
@@ -69,7 +70,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/spec/google/status", {
+        const res = await fetch(resolveBackendUrl("/api/spec/google/status"), {
           credentials: "include",
         });
         if (!res.ok) return;
@@ -89,7 +90,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
   const connectGoogle = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch("/api/spec/google/auth", {
+      const res = await fetch(resolveBackendUrl("/api/spec/google/auth"), {
         credentials: "include",
       });
       if (!res.ok) {
@@ -111,7 +112,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     setLoading(true);
     setError(null);
     try {
-      const url = `/api/spec/google/events?date=${encodeURIComponent(dateIso.slice(0, 10))}`;
+      const url = resolveBackendUrl(`/api/spec/google/events?date=${encodeURIComponent(dateIso.slice(0, 10))}`);
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) {
         throw new Error(`status ${res.status}`);
@@ -153,7 +154,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     }) => {
       setError(null);
       try {
-        const res = await fetch("/api/spec/plan/day/export", {
+        const res = await fetch(resolveBackendUrl("/api/spec/plan/day/export"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -191,7 +192,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     }) => {
       setError(null);
       try {
-        const res = await fetch("/api/spec/google/events", {
+        const res = await fetch(resolveBackendUrl("/api/spec/google/events"), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",

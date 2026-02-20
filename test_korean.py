@@ -3,12 +3,14 @@
 
 import requests
 import json
+import os
 
 # 한국어 요청 테스트
 url = "http://localhost:8000/api/chat"
+API_KEY = os.getenv("PREMIUM_API_KEY", "TEST_PREMIUM_KEY_PLACEHOLDER")
 headers = {
     "Content-Type": "application/json; charset=utf-8",
-    "X-API-Key": "premium-eft-ai-moodtalk-2025!"
+    "X-API-Key": API_KEY
 }
 
 data = {

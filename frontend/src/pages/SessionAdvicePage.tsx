@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { StrictIntakeInput } from '../types/serverAI';
 
@@ -30,7 +30,7 @@ interface AdviceLocationState {
 }
 
 const FALLBACK_ADVICE =
-  '지금은 강도를 안정적으로 낮추는 것이 우선입니다. 2분 동안 천천히 호흡한 뒤, 오늘 도움 된 포인트를 한 문장으로 적어 두세요.';
+  '지금도 강도가 일정 수준으로 유지되고 있어요. 2분 동안 천천히 숨을 고르며 오늘의 감정과 몸의 감각을 짧게 적어보세요.';
 
 export default function SessionAdvicePage() {
   const navigate = useNavigate();
@@ -69,6 +69,7 @@ export default function SessionAdvicePage() {
         const res = await fetch('/api/emotion/session-advice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(payload),
         });
         const json = await res.json().catch(() => null);

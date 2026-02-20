@@ -1,4 +1,4 @@
-// 🕳 두더지 프레임 이미지 (128x119)
+﻿// 🕳 두더지 프레임 이미지 (128x119)
 import up1 from "@/assets/motion/up1.png";
 import up2 from "@/assets/motion/up2.png";
 import up3 from "@/assets/motion/up3.png";
@@ -20,7 +20,7 @@ const MOLE_FRAMES = [
 
 import introImg from "@/assets/moodtoc-intro.png"; // 🔹 인트로 이미지 경로
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useEFTScript } from '../contexts/EFTScriptContext';
@@ -31,6 +31,7 @@ import { Holistic, POSE_LANDMARKS, VERSION } from "@mediapipe/holistic";
 import { Camera } from "@mediapipe/camera_utils";
 
 import type { EFTCode } from "@/types/eftCodes";
+import type { StrictIntakeInput } from "@/types/serverAI";
 
 // 🎮 두더지 게임 튜닝 포인트 (상단 상수화)
 const MOLE_VISIBLE_MS_BASE = 900;  // 기본 노출 시간(ms)
@@ -285,15 +286,29 @@ function parseARParams(sp: URLSearchParams): ARParams {
 
   // SUDS 값이 있으면 우선 사용 (SUDS 배너에서 입력한 값)
 
-  const sudsRaw = sp.get("suds");
+  const sudsRaw = sp.get("suds");
+  const legacyIntensityRaw = sp.get("int");
 
-  const sudsValue = sudsRaw != null ? Number(sudsRaw) : null;
+  const rawIntensity =
+    sudsRaw != null
+      ? Number(sudsRaw)
+      : legacyIntensityRaw != null
+        ? Number(legacyIntensityRaw)
+        : null;
 
-  const intensityValue = (sudsValue !== null && Number.isFinite(sudsValue))
+  const normalizedRawIntensity =
+    rawIntensity !== null && Number.isFinite(rawIntensity)
 
-    ? clamp(sudsValue, 0, 10)
+      ? clamp(rawIntensity > 10 ? rawIntensity / 10 : rawIntensity, 0, 10)
 
-    : getNum(sp, "intensity", DEFAULT_PARAMS.intensity, 0, 10);
+      : null;
+
+  const intensityValue =
+    normalizedRawIntensity !== null
+
+      ? normalizedRawIntensity
+
+      : getNum(sp, "intensity", DEFAULT_PARAMS.intensity, 0, 10);
 
 
 
@@ -842,13 +857,13 @@ export default function ARHolisticTest() {
   const [postSUDSSubmitting, setPostSUDSSubmitting] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
-  const location = useLocation();
+  const location = useLocation();
   const locationState = (location.state as {
-    strictIntake?: any;
+    strictIntake?: StrictIntakeInput;
     intensity_before?: number;
     planStartResistance?: string;
   } | undefined) || {};
-  const strictIntake = locationState?.strictIntake;
+  const strictIntake = locationState?.strictIntake;
   const intensityBefore = locationState?.intensity_before;
   const emotionSessionIdRef = useRef<string>(
     `eft-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -866,11 +881,50 @@ export default function ARHolisticTest() {
   const focusWords = eftScript?.focus_words || [];
   
   // URL 파라미터 (AR 설정용)
-  const [searchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const parsedArParams = useMemo(() => parseARParams(searchParams), [searchParams]);
 
-  const [arParams, setArParams] = useState<ARParams>(DEFAULT_PARAMS);
-// 추가: 애니메이션 루프에서 최신 파라미터를 참조하기 위한 Ref
-  const paramsRef = useRef<ARParams>(DEFAULT_PARAMS);
+  const [arParams, setArParams] = useState<ARParams>(parsedArParams);
+  const paramsRef = useRef<ARParams>(parsedArParams);
+
+  const fallbackIntensityBefore =
+    typeof intensityBefore === "number" ? intensityBefore : parsedArParams.intensity;
+  const resolvedStrictIntake = useMemo<StrictIntakeInput>(() => {
+    if (strictIntake) {
+      return strictIntake;
+    }
+
+    const coreEmotion = parsedArParams.emotion || "불안";
+    const parseText = (value: string | null | undefined, fallback: string) => {
+      const trimmed = (value ?? "").trim();
+      return trimmed.length > 0 ? trimmed : fallback;
+    };
+
+    return {
+      core_emotion: coreEmotion,
+      situation_context: parseText(
+        searchParams.get("situation_context"),
+        `${coreEmotion} 상황에서의 EFT 세션`
+      ),
+      automatic_thought: parseText(
+        searchParams.get("automatic_thought"),
+        "감정 강도를 낮추고 안정감을 회복하고 싶습니다"
+      ),
+      physical_sensation: parseText(searchParams.get("physical_sensation"), "특이사항 없음"),
+      behavioral_reaction: parseText(
+        searchParams.get("behavioral_reaction") || searchParams.get("coping_attempt"),
+        "회피적으로 반응"
+      ),
+      immediate_goal: parseText(searchParams.get("immediate_goal"), "긴장 완화"),
+      intensity: fallbackIntensityBefore,
+    };
+  }, [
+    fallbackIntensityBefore,
+    parsedArParams.emotion,
+    strictIntake,
+    searchParams,
+  ]);
+
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -1326,18 +1380,17 @@ useEffect(() => {
 
 
 
-  // URL → 상태 동기화
+  // URL → 상태 동기화
 
-  useEffect(() => {
-    const parsed = parseARParams(searchParams);
-    setArParams(parsed);
+  useEffect(() => {
+    setArParams(parsedArParams);
     // 추가: 최신 파라미터를 Ref에도 동기화
-    paramsRef.current = parsed; 
+    paramsRef.current = parsedArParams; 
 
     if (process.env.NODE_ENV !== "production") {
-      console.debug("[AR] URL Params →", parsed);
+      console.debug("[AR] URL Params →", parsedArParams);
     }
-  }, [searchParams]);
+  }, [parsedArParams]);
 
 
 
@@ -3274,8 +3327,9 @@ style={{
         if (postSUDSSubmitting) return;
         setPostSUDSSubmitting(true);
         try {
-        const intensityBefore = locationState?.intensity_before;
-        if (locationState?.strictIntake) {
+        const resolvedIntensityBefore =
+          typeof intensityBefore === "number" ? intensityBefore : fallbackIntensityBefore;
+        if (locationState?.strictIntake) {
           const checkinPayload = {
             session_id: emotionSessionIdRef.current,
             user_id: user?.uid ?? undefined,
@@ -3321,7 +3375,7 @@ style={{
       });
 
         // Notion 기록 (선택사항)
-        if (typeof intensityBefore === "number" && locationState?.strictIntake) {
+        if (typeof resolvedIntensityBefore === "number" && locationState?.strictIntake) {
       await fetch("/api/notion/create-emotion-page", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3340,8 +3394,8 @@ style={{
         navigate("/session/advice", {
           state: {
             sessionType: "eftar",
-            strictIntake: locationState?.strictIntake,
-            intensityBefore: typeof intensityBefore === "number" ? intensityBefore : locationState?.strictIntake?.intensity,
+            strictIntake: resolvedStrictIntake,
+            intensityBefore: resolvedIntensityBefore,
             intensityAfter: score,
           },
         });

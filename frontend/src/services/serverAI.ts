@@ -18,7 +18,7 @@
  */
 
 import type { ActionItem, ConversationMessage, EmotionAnalysis, EFTRecommendation, SuggestedAction } from '../types/serverAI';
-import { API_CONFIG, ENDPOINTS } from '../config/api';
+import { API_CONFIG } from '../config/api';
 import { createApiHeaders, apiFetch } from './http';
 
 // API 키 가져오기 유틸리티 (localStorage 우선순위)
@@ -89,7 +89,7 @@ const SYSTEM_PROMPT = `당신은 EFT(감정자유기법) 전문 심리상담사�
 // ✅ 상대경로 기반 BASE_URL (빈 문자열 = 동일 오리진)
 // 프록시/CDN이 /api/* 요청을 백엔드로 라우팅함
 // 절대 URL 하드코딩 금지 (보안 및 배포 유연성)
-const BASE_URL = '';
+const BASE_URL = API_CONFIG.API_BASE_URL;
 
 // 🔧 내부 전용 ChatResponse 확장 (외부 반환 시 model_version 제거)
 interface InternalChatResponse extends ChatResponse {

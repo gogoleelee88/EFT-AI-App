@@ -5,11 +5,12 @@
 
 import requests
 import json
+import os
 
 BASE_URL = "http://127.0.0.1:8000"
+PREMIUM_API_KEY = os.getenv("PREMIUM_API_KEY", "TEST_PREMIUM_KEY_PLACEHOLDER")
 
 # 테스트 데이터
-PREMIUM_API_KEY = "premium-eft-ai-moodtalk-2025!"
 INVALID_API_KEY = "invalid-key"
 
 def test_premium_auth():

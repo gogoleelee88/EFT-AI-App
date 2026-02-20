@@ -1,0 +1,27 @@
+name: Smoke Meal V1 Staging
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run Meal V1 Staging Smoke
+        env:
+          BASE_URL: ${{ secrets.MEAL_STAGING_BASE_URL }}
+          ACCESS_TOKEN: ${{ secrets.MEAL_STAGING_ACCESS_TOKEN }}
+          TENANT_ID: ${{ secrets.MEAL_STAGING_TENANT_ID }}
+        run: |
+          chmod +x scripts/smoke_meal_v1_staging.sh
+          scripts/smoke_meal_v1_staging.sh
+

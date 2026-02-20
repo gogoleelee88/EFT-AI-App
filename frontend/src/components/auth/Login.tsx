@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import React, { useEffect, useMemo, useState } from 'react';
+import { GoogleAuthProvider, getRedirectResult, signInWithPopup, signInWithRedirect } from 'firebase/auth';
 
 import { auth } from '../../firebase/config';
 import Button from '../ui/Button';
-import { resolveBackendUrl } from '@/services/http';
+import { resolveBackendUrl } from '@/config/api';
 
 interface LoginProps {
   onSuccess?: (user: any) => void;
@@ -47,6 +47,48 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
     window.location.href = nextPath || '/dashboard';
   };
 
+  const submitLogin = async (user: any, mode: 'login' | 'signup') => {
+    const idToken = await user.getIdToken();
+
+    const userData = {
+      uid: user.uid,
+      email: user.email,
+      name: user.displayName,
+      photoURL: user.photoURL,
+      createdAt: new Date(),
+      agreedToMarketing,
+      level: 1,
+      xp: 0,
+      gems: 50,
+      badges: 0,
+      streak: 0,
+      privacySettings: {
+        dataCollection: true,
+        aiLearning: true,
+      },
+    };
+
+    const resp = await fetch(resolveBackendUrl('/api/auth/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id_token: idToken }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      const detail = text?.trim() || `HTTP ${resp.status}`;
+      console.error('백엔드 로그인 실패 응답', { status: resp.status, detail });
+      throw new Error(`백엔드 로그인에 실패했습니다. (${detail})`);
+    }
+
+    if (onSuccess) {
+      onSuccess(userData);
+    }
+
+    await redirectAfterLogin(mode);
+  };
+
   const handleGoogleAuth = async (mode: 'login' | 'signup') => {
     if (mode === 'signup') {
       setShowAgreements(true);
@@ -59,57 +101,34 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
     setIsLoading(true);
 
     try {
+      sessionStorage.setItem('auth_mode', mode);
+      sessionStorage.setItem('auth_marketing', agreedToMarketing ? '1' : '0');
+      sessionStorage.setItem('auth_connect_notion', connectNotion ? '1' : '0');
+
       const provider = new GoogleAuthProvider();
       provider.addScope('profile');
       provider.addScope('email');
 
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      const idToken = await user.getIdToken();
-
-      const userData = {
-        uid: user.uid,
-        email: user.email,
-        name: user.displayName,
-        photoURL: user.photoURL,
-        createdAt: new Date(),
-        agreedToMarketing,
-        level: 1,
-        xp: 0,
-        gems: 50,
-        badges: 0,
-        streak: 0,
-        privacySettings: {
-          dataCollection: true,
-          aiLearning: true,
-        },
-      };
-
-      const resp = await fetch(resolveBackendUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ id_token: idToken }),
-      });
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        const detail = text?.trim() || `HTTP ${resp.status}`;
-        console.error('백엔드 로그인 실패 응답', { status: resp.status, detail });
-        throw new Error(`백엔드 로그인에 실패했습니다. (${detail})`);
-      }
-
-      if (onSuccess) {
-        onSuccess(userData);
-      }
-
-      await redirectAfterLogin(mode);
+      await submitLogin(user, mode);
     } catch (error: any) {
       console.error('로그인 실패:', error);
       let errorMessage = '로그인에 실패했습니다.';
 
       if (error.code === 'auth/popup-blocked') {
-        errorMessage = '팝업이 차단되었습니다. 팝업을 허용해 주세요.';
+        errorMessage = '팝업이 차단되었습니다. 리다이렉트 로그인으로 전환합니다.';
+        const provider = new GoogleAuthProvider();
+        provider.addScope('profile');
+        provider.addScope('email');
+        await signInWithRedirect(auth, provider);
+        return;
       } else if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = '로그인이 취소되었습니다.';
       } else if (error.code === 'auth/network-request-failed') {
@@ -126,6 +145,29 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
   };
 
   const canProceed = agreedToTerms && agreedToPrivacy;
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (!result?.user) return;
+
+        const mode = (sessionStorage.getItem('auth_mode') as 'login' | 'signup') || 'login';
+        const marketing = sessionStorage.getItem('auth_marketing') === '1';
+        const notion = sessionStorage.getItem('auth_connect_notion') === '1';
+        setAgreedToMarketing(marketing);
+        setConnectNotion(notion);
+        setIsLoading(true);
+        await submitLogin(result.user, mode);
+      } catch (error) {
+        console.error('리다이렉트 로그인 실패:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    run();
+  }, []);
 
   return (
     <div className="min-h-screen lg:min-h-0 bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 lg:bg-transparent flex items-center justify-center px-4">

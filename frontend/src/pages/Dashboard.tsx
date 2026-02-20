@@ -6,7 +6,7 @@ import PWAInstallPrompt from "../components/feature/PWAInstallPrompt";
 import { useAuth } from "../hooks/useAuth";
 
 type EmotionRecordPreview = {
-  id: number;
+  id: string;
   created_at: string;
   core_emotion: string;
   intensity: number;
@@ -142,6 +142,16 @@ const Dashboard: React.FC = () => {
 
   const formatPercent = (value: number) => `${formatNumber(value)}%`;
 
+  const formatConfidencePercent = (raw: number | null | undefined, totalRecords: number) => {
+    if (!Number.isFinite(raw ?? NaN)) {
+      return totalRecords === 0 ? "기록이 부족합니다" : "신뢰도 계산 실패";
+    }
+
+    const normalized = raw > 1 ? raw : raw * 100;
+    const clamped = Math.max(0, Math.min(100, normalized));
+    return `${clamped.toFixed(2)}%`;
+  };
+
   const formatWeeklyRange = (start: string, end: string) => {
     try {
       const startAt = new Date(start);
@@ -176,7 +186,7 @@ const Dashboard: React.FC = () => {
           <div className="font-bold">{adaptiveReport.template_title || "감정 리포트"}</div>
           <div className="text-sm opacity-90">{adaptiveReport.summary_text || adaptiveReport.summary || ""}</div>
           <div className="text-xs opacity-80">
-            총 {adaptiveReport.total_records}건 / 신뢰도 {(adaptiveReport.confidence || 0).toFixed(2)}
+            총 {adaptiveReport.total_records}건 / 신뢰도 {formatConfidencePercent(adaptiveReport.confidence, adaptiveReport.total_records)}
           </div>
         </div>
         <div className="mt-3 space-y-2">
@@ -248,7 +258,7 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="text-sm opacity-90">{weeklyReport.summary_text || "-"}</div>
           <div className="text-xs opacity-80">
-            총 {weeklyReport.total_records}건 / 신뢰도 {formatPercent(weeklyReport.confidence * 100)}
+            총 {weeklyReport.total_records}건 / 신뢰도 {formatConfidencePercent(weeklyReport.confidence, weeklyReport.total_records)}
           </div>
         </div>
         <div className="mt-3 space-y-2 text-sm">

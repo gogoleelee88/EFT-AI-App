@@ -1,52 +1,51 @@
-"""
-STRICT6 ?�풋 ??EFT ?�크립트 변??매퍼
+﻿"""
+Utility functions for STRICT6-to-EFT script conversion.
 """
 
-from typing import List, Dict, Any, Optional
-from models.chat_models import StrictIntakeInput
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from backend.models.chat_models import StrictIntakeInput
 
 
 def _map_intensity_label(intensity: int) -> str:
-    """강도 ?�자 ???�이�?변??""
+    """Return a short text label from an intensity score."""
     if intensity <= 3:
-        return "?�함"
-    elif intensity <= 6:
-        return "중간"
-    return "강함"
+        return "low"
+    if intensity <= 6:
+        return "medium"
+    return "high"
 
 
 def _truncate(text: str, limit: int) -> str:
-    """?�스??길이 ?�한"""
+    if text is None:
+        return ""
     if len(text) <= limit:
         return text
-    return text[:limit].rstrip() + "??
+    return text[:limit].rstrip() + "..."
 
 
 def _build_setup_phrase(intake: StrictIntakeInput) -> str:
-    """?�업 구문 ?�성"""
     situation = _truncate(intake.situation_context, 50)
     auto_thought = _truncate(intake.automatic_thought, 40)
 
     return (
-        f"비록 {situation} ?�황?�서 "
-        f"{intake.core_emotion}??�? ?�끼�?"
-        f"'{auto_thought}'?�고 ?�각?��?�? "
-        "지�????�간만큼?� ??마음???�는 그�?�??�정??보려�??�다."
+        f"상황: {situation}. 핵심 감정은 "
+        f"{intake.core_emotion}이고, 자동사고는 '{auto_thought}'. "
+        "아래 4개 축을 중심으로 EFT를 구성합니다."
     )
 
 
 def _build_focus_words(intake: StrictIntakeInput) -> List[str]:
-    """?�커???�어 ?�성 (??�� �?반복??짧�? �?"""
     focus: List[str] = []
 
-    # 1) 감정 기반
     if intake.core_emotion:
-        focus.append(f"??{intake.core_emotion}")
-    focus.append("??마음")
+        focus.append(intake.core_emotion)
+    focus.append("완화")
 
-    # 2) ?�동?�고 기반 1~2�?    if intake.automatic_thought:
+    if intake.automatic_thought:
         auto = _truncate(intake.automatic_thought, 18)
-        # ?�표 기�??�로 ?�번 ?�라보기
         parts = [p.strip() for p in auto.split(",") if p.strip()]
         if parts:
             focus.append(parts[0])
@@ -55,18 +54,15 @@ def _build_focus_words(intake: StrictIntakeInput) -> List[str]:
         else:
             focus.append(auto)
 
-    # 3) ?�체 감각
     if intake.physical_sensation:
-        ps = _truncate(intake.physical_sensation, 14)
-        focus.append(f"??{ps}")
+        focus.append(_truncate(intake.physical_sensation, 14))
 
-    # 중복 ?�거 + 길이 ?�한
     seen = set()
     deduped: List[str] = []
-    for w in focus:
-        if w not in seen:
-            seen.add(w)
-            deduped.append(w)
+    for token in focus:
+        if token not in seen:
+            seen.add(token)
+            deduped.append(token)
         if len(deduped) >= 5:
             break
 
@@ -74,44 +70,35 @@ def _build_focus_words(intake: StrictIntakeInput) -> List[str]:
 
 
 def _build_situation_summary(intake: StrictIntakeInput) -> str:
-    """?�황 ?�약 ?�성 (UI ?�시??"""
     label = _map_intensity_label(intake.intensity)
     lines = [
-        f"지�??�끼??감정: {intake.core_emotion} (강도 {intake.intensity}/10, {label})",
-        f"?�황: {intake.situation_context}",
-        f"?�오르는 ?�각: '{intake.automatic_thought}'",
+        f"정서 요약: {intake.core_emotion} (강도 {intake.intensity}/10, {label})",
+        f"상황: {intake.situation_context}",
+        f"자동사고: '{intake.automatic_thought}'",
     ]
 
     if intake.physical_sensation:
-        lines.append(f"몸에???�껴지??�? {intake.physical_sensation}")
-
+        lines.append(f"신체 느낌: {intake.physical_sensation}")
     if intake.behavioral_reaction:
-        lines.append(f"지�??�고 ?�거???�고 ?��? ?�동: {intake.behavioral_reaction}")
-
+        lines.append(f"행동 반응: {intake.behavioral_reaction}")
     if intake.immediate_goal:
-        lines.append(f"지금의 목표: {intake.immediate_goal}")
+        lines.append(f"즉시 목표: {intake.immediate_goal}")
 
     return "\n".join(lines)
 
 
 def _recommend_duration(intensity: int, available_time: Optional[int]) -> int:
-    """권장 ?�간 계산"""
     if available_time is not None and available_time > 0:
         return available_time
 
     if intensity >= 7:
         return 12
-    elif intensity >= 4:
+    if intensity >= 4:
         return 8
     return 5
 
 
 def build_eft_script_from_strict6(intake: StrictIntakeInput) -> Dict[str, Any]:
-    """
-    STRICT6 ?�풋 ??EFT ?�크립트 변??
-    Returns:
-        EFTScript 모델�??�치?�는 dict
-    """
     intensity_label = _map_intensity_label(intake.intensity)
     setup_phrase = _build_setup_phrase(intake)
     focus_words = _build_focus_words(intake)
@@ -126,4 +113,3 @@ def build_eft_script_from_strict6(intake: StrictIntakeInput) -> Dict[str, Any]:
         "recommended_duration": recommended_duration,
         "target_emotion": intake.core_emotion,
     }
-

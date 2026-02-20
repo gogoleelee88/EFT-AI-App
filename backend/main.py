@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -25,54 +26,54 @@ load_dotenv(dotenv_path=env_path)
 load_dotenv()
 
 from config.settings import get_settings
-from database import Base, engine
-from utils.logger import get_logger
+from backend.database import Base, engine
+from backend.utils.logger import get_logger
 
 # Core services (optional initialization at startup)
-from services.vllm_client import VLLMClient
-from services.prompt_manager import EFTPromptManager
-from services.emotion_analyzer import EmotionAnalyzer
-from services.intake_storage import IntakeStorageService
+from backend.services.vllm_client import VLLMClient
+from backend.services.prompt_manager import EFTPromptManager
+from backend.services.emotion_analyzer import EmotionAnalyzer
+from backend.services.intake_storage import IntakeStorageService
 
 # Core routers
 from app.api.chat import chat_router as chat_hub_router
-from routers.auth import router as auth_router
-from routers.compare import router as compare_router
-from routers.emotion_candidates import router as emotion_router
-from routers.guidance_router import router as guidance_router
-from routers.health import router as health_router
-from routers.intake import router as intake_router
-from routers.menstrual import router as menstrual_router
-from routers.notion import router as notion_router
-from routers.notion_oauth import router as notion_oauth_router
-from routers.profile import router as profile_router
-from routers.push import router as push_router
-from routers.recommend_router import router as recommend_router
-from routers.suds import router as suds_router
-from routers.work_guide import router as work_guide_router
+from backend.routers.auth import router as auth_router
+from backend.routers.compare import router as compare_router
+from backend.routers.emotion_candidates import router as emotion_router
+from backend.routers import guidance_router
+from backend.routers.health import router as health_router
+from backend.routers.intake import router as intake_router
+from backend.routers.menstrual import router as menstrual_router
+from backend.routers.notion import router as notion_router
+from backend.routers.notion_oauth import router as notion_oauth_router
+from backend.routers.profile import router as profile_router
+from backend.routers.push import router as push_router
+from backend.routers.recommend_router import router as recommend_router
+from backend.routers.suds import router as suds_router
+from backend.routers.work_guide import router as work_guide_router
 from meal_coach.router import router as meal_coach_router
 
 # Proposal OS routers
-from routers.profiles import router as proposal_profiles_router
-from routers.proposals import router as proposal_router
-from routers.signals import router as proposal_signals_router
+from backend.routers.profiles import router as proposal_profiles_router
+from backend.routers.proposals import router as proposal_router
+from backend.routers.signals import router as proposal_signals_router
 
 # spec_loop routers
-from spec_loop.adapter.router import router as spec_adapt_router
-from spec_loop.coach.router import router as spec_resistance_router
-from spec_loop.condition.router import router as spec_condition_router
-from spec_loop.cycle.router import router as spec_cycle_router
-from spec_loop.google_calendar.router import router as spec_google_router
-from spec_loop.mission.router import router as spec_mission_router
-from spec_loop.mission.verify_router import router as spec_mission_verify_router
-from spec_loop.plan_patch.router import router as spec_plan_patch_router
-from spec_loop.planner.router import router as spec_plan_router
-from spec_loop.scheduler.router import router as spec_jobs_router
-from spec_loop.simulator.router import router as spec_simulate_router
-from spec_loop.behavior.router import router as spec_behavior_router
-from spec_loop.focus_session.router import router as spec_focus_session_router
-from spec_loop.reminder.router import router as spec_reminder_router
-from spec_loop.reminder.runtime import start_reminder_ticker_if_enabled, stop_reminder_ticker
+from backend.spec_loop.adapter.router import router as spec_adapt_router
+from backend.spec_loop.coach.router import router as spec_resistance_router
+from backend.spec_loop.condition.router import router as spec_condition_router
+from backend.spec_loop.cycle.router import router as spec_cycle_router
+from backend.spec_loop.google_calendar.router import router as spec_google_router
+from backend.spec_loop.mission.router import router as spec_mission_router
+from backend.spec_loop.mission.verify_router import router as spec_mission_verify_router
+from backend.spec_loop.plan_patch.router import router as spec_plan_patch_router
+from backend.spec_loop.planner.router import router as spec_plan_router
+from backend.spec_loop.scheduler.router import router as spec_jobs_router
+from backend.spec_loop.simulator.router import router as spec_simulate_router
+from backend.spec_loop.behavior.router import router as spec_behavior_router
+from backend.spec_loop.focus_session.router import router as spec_focus_session_router
+from backend.spec_loop.reminder.router import router as spec_reminder_router
+from backend.spec_loop.reminder.runtime import start_reminder_ticker_if_enabled, stop_reminder_ticker
 from focus.router import router as focus_router
 
 settings = get_settings()
@@ -278,14 +279,11 @@ def _ensure_focus_behavior_columns() -> None:
             else:
                 statements.append("ALTER TABLE activity_candidates ADD COLUMN schedule_type VARCHAR(32)")
 
-        if not statements:
-            return
-
-        with engine.begin() as conn:
-            for stmt in statements:
-                conn.execute(text(stmt))
-
-        logger.info("activity_candidates schema patched with focus context columns")
+        if statements:
+            with engine.begin() as conn:
+                for stmt in statements:
+                    conn.execute(text(stmt))
+            logger.info("activity_candidates schema patched with focus context columns")
     except Exception:
         logger.exception("focus behavior schema patch failed")
 
@@ -559,22 +557,19 @@ def _normalize_allowed_origins(origins: list[str]) -> list[str]:
     return normalized
 
 
-def _build_origin_regex() -> str:
-    return (
-        r"^https?://("
-        r"localhost"
-        r"|127\.0\.0\.1"
-        r"|192\.168\.\d{1,3}\.\d{1,3}"
-        r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-        r"|172\.(1\d|2\d|3[01])\.\d{1,3}\.\d{1,3}"
-        r")(:(\d{1,5}))?$"
-    )
-
-
-extra = (settings.EXTRA_ALLOWED_ORIGINS or "").strip()
-origins: list[str] = list(settings.ALLOWED_ORIGINS)
-if extra:
-    origins.extend([o.strip() for o in extra.split(",") if o.strip()])
+def _parse_origin_csv(raw: Optional[str]) -> list[str]:
+    if not raw:
+        return []
+    text = raw.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [str(value).strip() for value in parsed if str(value).strip()]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [value.strip() for value in text.split(",") if value.strip()]
 
 
 def _extract_origin(raw: Optional[str]) -> Optional[str]:
@@ -595,7 +590,15 @@ def _extract_origin(raw: Optional[str]) -> Optional[str]:
     return f"{scheme}://{host}"
 
 
-for _frontend_origin in (getattr(settings, "FRONTEND_URL", None), settings.FRONTEND_DASHBOARD_URL):
+extra = (settings.EXTRA_ALLOWED_ORIGINS or "").strip()
+origins: list[str] = list(settings.ALLOWED_ORIGINS)
+origins.extend(_parse_origin_csv(extra))
+
+for _frontend_origin in (
+    getattr(settings, "BASE_FRONTEND_URL", None),
+    getattr(settings, "FRONTEND_URL", None),
+    getattr(settings, "FRONTEND_DASHBOARD_URL", None),
+):
     origin_value = _extract_origin(_frontend_origin)
     if origin_value:
         origins.append(origin_value)
@@ -607,30 +610,16 @@ if not allow_origins:
         "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
+        "https://eft-ai-app-frontend-4ia5.vercel.app",
     ]
 
-force_all_origins = os.getenv("RENDER_CORS_ALLOW_ALL_ORIGINS", "").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
-
-if force_all_origins:
-    allow_origins = ["*"]
-    cors_kwargs = {
-        "allow_origins": ["*"],
-        "allow_credentials": False,
-    }
-else:
-    cors_kwargs = {
-        "allow_origins": list(dict.fromkeys(allow_origins)),
-        "allow_credentials": True,
-    }
+cors_kwargs = {
+    "allow_origins": list(dict.fromkeys(allow_origins)),
+    "allow_credentials": True,
+}
 
 if settings.DEBUG:
     # Keep local dev accessible even when IP changes (e.g. mobile/PC on LAN)
-    cors_kwargs["allow_origin_regex"] = _build_origin_regex()
     cors_kwargs.update({
         "allow_methods": ["*"],
         "allow_headers": ["*"],
@@ -658,7 +647,8 @@ app.include_router(health_router)
 app.include_router(chat_hub_router)
 
 app.include_router(emotion_router)
-app.include_router(guidance_router)
+if guidance_router:
+    app.include_router(guidance_router)
 app.include_router(recommend_router)
 app.include_router(work_guide_router)
 
@@ -725,5 +715,6 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level="info" if settings.DEBUG else "warning",
     )
+
 
 

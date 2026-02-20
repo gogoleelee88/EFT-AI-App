@@ -21,6 +21,7 @@ import MeditationThemePage from "./pages/MeditationThemePage";
 import MeditationSessionPage from "./pages/MeditationSessionPage";
 import MeditationRunPage from "./pages/MeditationRunPage";
 import PlanDayPage from "./pages/PlanDayPage";
+import InstallGuidePage from "./pages/InstallGuidePage";
 import CheckinRebalancePage from "./pages/CheckinRebalancePage";
 import ResistanceEventPage from "./pages/ResistanceEventPage";
 import ProfileSetupPage from "./pages/ProfileSetupPage";
@@ -91,6 +92,7 @@ export default function AppRoutes() {
       <Route path="/meditation/theme" element={<MeditationThemePage />} />
       <Route path="/meditation/session" element={<MeditationSessionPage />} />
       <Route path="/meditation/run" element={<MeditationRunPage />} />
+      <Route path="/install-guide" element={<InstallGuidePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-EFT AI ?�버 기본 ?�스???�크립트
-?�버 ?�행 ??기본 기능 ?��?
+EFT AI ?ë² ê¸°ë³¸ ?ì¤???¤í¬ë¦½í¸
+?ë² ?¤í ??ê¸°ë³¸ ê¸°ë¥ ?ê?
 """
 
 import asyncio
@@ -10,177 +10,178 @@ import json
 import sys
 from pathlib import Path
 
-# ?�재 ?�렉?�리�?Python 경로??추�?
+# ?ì¬ ?ë?ë¦¬ë¥?Python ê²½ë¡??ì¶ê?
 sys.path.append(str(Path(__file__).parent))
 
-from services.ai_engine import EFTAIEngine
-from services.prompt_manager import EFTPromptManager
-from services.emotion_analyzer import EmotionAnalyzer
-from models.chat_models import EmotionType
+from backend.services.ai_engine import EFTAIEngine
+from backend.services.prompt_manager import EFTPromptManager
+from backend.services.emotion_analyzer import EmotionAnalyzer
+from backend.models.chat_models import EmotionType
 from config.settings import get_development_settings
-from utils.logger import get_logger
+from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 async def test_emotion_analyzer():
-    """감정 분석�??�스??""
-    print("\n감정 분석�??�스???�작...")
+    """ê°ì ë¶ìê¸??ì¤??""
+    print("\nê°ì ë¶ìê¸??ì¤???ì...")
     
     analyzer = EmotionAnalyzer()
     
     test_texts = [
-        "?�늘 ?�무 ?�트?�스받아???�들?�요",
-        "?�사?�서 ?�사가 계속 ?�근?�켜???�말 ?�나??,
-        "?�즘 마음???�무 ?�울?�고 ?�로?�요",
-        "?�험 ?�문???�무 불안?�고 걱정?�요",
-        "친구?�과 ?�?�서 ?�말 즐거?�어??
+        "?¤ë ?ë¬´ ?¤í¸?ì¤ë°ì???ë¤?´ì",
+        "?ì¬?ì ?ì¬ê° ê³ì ?¼ê·¼?ì¼???ë§ ?ë??,
+        "?ì¦ ë§ì???ë¬´ ?°ì¸?ê³ ?¸ë¡?ì",
+        "?í ?ë¬¸???ë¬´ ë¶ì?ê³ ê±±ì?¼ì",
+        "ì¹êµ¬?¤ê³¼ ??ì ?ë§ ì¦ê±°?ì´??
     ]
     
     for i, text in enumerate(test_texts, 1):
-        print(f"\n?�스??{i}: '{text}'")
+        print(f"\n?ì¤??{i}: '{text}'")
         analysis = await analyzer.analyze(text)
         
-        print(f"  주요감정: {analysis.primary_emotion} (강도: {analysis.intensity:.2f})")
-        print(f"  보조감정: {analysis.secondary_emotion}")
-        print(f"  ?�뢰?? {analysis.confidence:.2f}")
-        print(f"  ?�워?? {', '.join(analysis.emotional_keywords[:3])}")
+        print(f"  ì£¼ìê°ì: {analysis.primary_emotion} (ê°ë: {analysis.intensity:.2f})")
+        print(f"  ë³´ì¡°ê°ì: {analysis.secondary_emotion}")
+        print(f"  ?ë¢°?? {analysis.confidence:.2f}")
+        print(f"  ?¤ì?? {', '.join(analysis.emotional_keywords[:3])}")
         
-        time.sleep(0.5)  # 간격 ?�기
+        time.sleep(0.5)  # ê°ê²© ?ê¸°
     
-    print("\n감정 분석�??�스???�료")
+    print("\nê°ì ë¶ìê¸??ì¤???ë£")
 
 async def test_prompt_manager():
-    """?�롬?�트 매니?� ?�스??""
-    print("\n ?�롬?�트 매니?� ?�스???�작...")
+    """?ë¡¬?í¸ ë§¤ë? ?ì¤??""
+    print("\n ?ë¡¬?í¸ ë§¤ë? ?ì¤???ì...")
     
     prompt_manager = EFTPromptManager()
     analyzer = EmotionAnalyzer()
     
-    # ?�스??감정 분석
-    test_message = "?�트?�스가 ?�무 ?�해???�도 �??�겠?�요"
+    # ?ì¤??ê°ì ë¶ì
+    test_message = "?¤í¸?ì¤ê° ?ë¬´ ?¬í´???ë ëª??ê²?´ì"
     emotion_analysis = await analyzer.analyze(test_message)
     
-    # ?�롬?�트 ?�성
+    # ?ë¡¬?í¸ ?ì±
     prompt = prompt_manager.build_eft_prompt(
         user_message=test_message,
         emotion_state=emotion_analysis
     )
     
-    print(f"?�성???�롬?�트 길이: {len(prompt)} 문자")
-    print(f"감정 기반 EFT 추천: {len(prompt_manager.recommend_eft_techniques(emotion_analysis))}�?)
+    print(f"?ì±???ë¡¬?í¸ ê¸¸ì´: {len(prompt)} ë¬¸ì")
+    print(f"ê°ì ê¸°ë° EFT ì¶ì²: {len(prompt_manager.recommend_eft_techniques(emotion_analysis))}ê°?)
     
-    # EFT 추천 ?�스??    recommendations = prompt_manager.recommend_eft_techniques(emotion_analysis)
+    # EFT ì¶ì² ?ì¤??    recommendations = prompt_manager.recommend_eft_techniques(emotion_analysis)
     if recommendations:
-        print(f"추천 기법: {recommendations[0].technique_name}")
-        print(f"??�� ?�인?? {', '.join([p.value for p in recommendations[0].tapping_points])}")
-        print(f"?�업 구문: {recommendations[0].setup_phrase}")
+        print(f"ì¶ì² ê¸°ë²: {recommendations[0].technique_name}")
+        print(f"?? ?¬ì¸?? {', '.join([p.value for p in recommendations[0].tapping_points])}")
+        print(f"?ì êµ¬ë¬¸: {recommendations[0].setup_phrase}")
     
-    print("\n ?�롬?�트 매니?� ?�스???�료")
+    print("\n ?ë¡¬?í¸ ë§¤ë? ?ì¤???ë£")
 
 async def test_ai_engine_initialization():
-    """AI ?�진 초기???�스??(모델 로드 ?�이)"""
-    print("\n AI ?�진 초기???�스???�작...")
+    """AI ?ì§ ì´ê¸°???ì¤??(ëª¨ë¸ ë¡ë ?ì´)"""
+    print("\n AI ?ì§ ì´ê¸°???ì¤???ì...")
     
     settings = get_development_settings()
-    print(f"모델�? {settings.MODEL_NAME}")
-    print(f"?�바?�스: {settings.DEVICE}")
-    print(f"4bit 로드: {settings.LOAD_IN_4BIT}")
+    print(f"ëª¨ë¸ëª? {settings.MODEL_NAME}")
+    print(f"?ë°?´ì¤: {settings.DEVICE}")
+    print(f"4bit ë¡ë: {settings.LOAD_IN_4BIT}")
     
-    # AI ?�진 ?�스?�스 ?�성 (초기?�는 ?��? ?�음)
+    # AI ?ì§ ?¸ì¤?´ì¤ ?ì± (ì´ê¸°?ë ?ì? ?ì)
     ai_engine = EFTAIEngine()
     
-    print(f"AI ?�진 ?�성 ?�료 (모델 로드???�제 ?�버 ?�행 ???�행)")
-    print(f"모델 캐시 ?�렉?�리: {settings.MODEL_CACHE_DIR}")
+    print(f"AI ?ì§ ?ì± ?ë£ (ëª¨ë¸ ë¡ë???¤ì ?ë² ?¤í ???í)")
+    print(f"ëª¨ë¸ ìºì ?ë?ë¦¬: {settings.MODEL_CACHE_DIR}")
     
-    print("\n AI ?�진 초기???�스???�료")
+    print("\n AI ?ì§ ì´ê¸°???ì¤???ë£")
 
 def test_model_configuration():
-    """모델 ?�정 ?�스??""
-    print("\n 모델 ?�정 ?�스???�작...")
+    """ëª¨ë¸ ?¤ì ?ì¤??""
+    print("\n ëª¨ë¸ ?¤ì ?ì¤???ì...")
     
     from config.settings import MODEL_PRESETS, apply_model_preset
     
-    print("?�용 가?�한 모델 ?�리??")
+    print("?¬ì© ê°?¥í ëª¨ë¸ ?ë¦¬??")
     for name, config in MODEL_PRESETS.items():
         print(f"  {name}: {config['model_name']} ({config.get('max_memory', 'auto')})")
     
-    # 개발???�리???�용 ?�스??    settings = apply_model_preset('llama2-7b-quick')
-    print(f"\n?�용???�정:")
-    print(f"  모델: {settings.MODEL_NAME}")
-    print(f"  4bit 로드: {settings.LOAD_IN_4BIT}")
-    print(f"  최�? 메모�? {settings.MAX_MEMORY}")
+    # ê°ë°???ë¦¬???ì© ?ì¤??    settings = apply_model_preset('llama2-7b-quick')
+    print(f"\n?ì©???¤ì:")
+    print(f"  ëª¨ë¸: {settings.MODEL_NAME}")
+    print(f"  4bit ë¡ë: {settings.LOAD_IN_4BIT}")
+    print(f"  ìµë? ë©ëª¨ë¦? {settings.MAX_MEMORY}")
     
-    print("\n 모델 ?�정 ?�스???�료")
+    print("\n ëª¨ë¸ ?¤ì ?ì¤???ë£")
 
 async def test_integration():
-    """?�합 ?�크?�로???�스??""
-    print("\n ?�합 ?�크?�로???�스???�작...")
+    """?µí© ?í¬?ë¡???ì¤??""
+    print("\n ?µí© ?í¬?ë¡???ì¤???ì...")
     
-    # 1. 감정 분석
+    # 1. ê°ì ë¶ì
     analyzer = EmotionAnalyzer()
-    test_message = "?�사 ?�이 ?�무 많아???�트?�스가 ?�해?? ?�떻�??�야 ?�까??"
+    test_message = "?ì¬ ?¼ì´ ?ë¬´ ë§ì???¤í¸?ì¤ê° ?¬í´?? ?´ë»ê²??´ì¼ ?ê¹??"
     
-    print(f"?�용??메시지: '{test_message}'")
+    print(f"?¬ì©??ë©ìì§: '{test_message}'")
     
     emotion_analysis = await analyzer.analyze(test_message)
-    print(f"감정 분석: {emotion_analysis.primary_emotion} (강도: {emotion_analysis.intensity:.1f})")
+    print(f"ê°ì ë¶ì: {emotion_analysis.primary_emotion} (ê°ë: {emotion_analysis.intensity:.1f})")
     
-    # 2. ?�롬?�트 ?�성
+    # 2. ?ë¡¬?í¸ ?ì±
     prompt_manager = EFTPromptManager()
     prompt = prompt_manager.build_eft_prompt(
         user_message=test_message,
         emotion_state=emotion_analysis
     )
     
-    print(f"?�롬?�트 ?�성: {len(prompt)} 문자")
+    print(f"?ë¡¬?í¸ ?ì±: {len(prompt)} ë¬¸ì")
     
-    # 3. EFT 추천
+    # 3. EFT ì¶ì²
     recommendations = prompt_manager.recommend_eft_techniques(emotion_analysis)
-    print(f"EFT 추천: {len(recommendations)}�?기법")
+    print(f"EFT ì¶ì²: {len(recommendations)}ê°?ê¸°ë²")
     
     if recommendations:
         best_recommendation = recommendations[0]
-        print(f"최적 기법: {best_recommendation.technique_name}")
-        print(f"?�과?? {best_recommendation.effectiveness_score:.0%}")
+        print(f"ìµì ê¸°ë²: {best_recommendation.technique_name}")
+        print(f"?¨ê³¼?? {best_recommendation.effectiveness_score:.0%}")
     
-    # 4. ?�답 ?�처�?    mock_ai_response = "?�트?�스가 많으?�군?? 깊게 ?�을 ?�어보세?? ?�께 마음???�래??EFT 기법???�보?�요."
+    # 4. ?ëµ ?ì²ë¦?    mock_ai_response = "?¤í¸?ì¤ê° ë§ì¼?êµ°?? ê¹ê² ?¨ì ?¬ì´ë³´ì¸?? ?¨ê» ë§ì???¬ë??EFT ê¸°ë²???´ë³´?ì."
     
     processed = prompt_manager.post_process_response(mock_ai_response, emotion_analysis)
-    print(f"?�처리된 ?�답: {processed['text'][:50]}...")
-    print(f"?�뢰?? {processed['confidence']:.2f}")
-    print(f"?�안 ?�션: {len(processed['suggested_actions'])}�?)
+    print(f"?ì²ë¦¬ë ?ëµ: {processed['text'][:50]}...")
+    print(f"?ë¢°?? {processed['confidence']:.2f}")
+    print(f"?ì ?¡ì: {len(processed['suggested_actions'])}ê°?)
     
-    print("\n ?�합 ?�크?�로???�스???�료")
+    print("\n ?µí© ?í¬?ë¡???ì¤???ë£")
 
 async def main():
-    """메인 ?�스???�행"""
-    print("EFT AI ?�버 기본 ?�스???�작")
+    """ë©ì¸ ?ì¤???¤í"""
+    print("EFT AI ?ë² ê¸°ë³¸ ?ì¤???ì")
     print("="*60)
     
     start_time = time.time()
     
     try:
-        # 개별 컴포?�트 ?�스??        await test_emotion_analyzer()
+        # ê°ë³ ì»´í¬?í¸ ?ì¤??        await test_emotion_analyzer()
         await test_prompt_manager()
         await test_ai_engine_initialization()
         test_model_configuration()
         
-        # ?�합 ?�스??        await test_integration()
+        # ?µí© ?ì¤??        await test_integration()
         
         elapsed = time.time() - start_time
         
         print("\n" + "="*60)
-        print(f"모든 ?�스???�료! (?�요?�간: {elapsed:.1f}�?")
-        print("\n?�음 ?�계:")
-        print("1. 백엔???�버 ?�작: python start.py --env dev --model-preset llama2-7b-quick")
-        print("2. ?�론?�엔???�작: npm run dev (frontend ?�더)")
-        print("3. 브라?��??�서 ?�스?? http://localhost:3000")
+        print(f"ëª¨ë ?ì¤???ë£! (?ì?ê°: {elapsed:.1f}ì´?")
+        print("\n?¤ì ?¨ê³:")
+        print("1. ë°±ì???ë² ?ì: python start.py --env dev --model-preset llama2-7b-quick")
+        print("2. ?ë¡?¸ì???ì: npm run dev (frontend ?´ë)")
+        print("3. ë¸ë¼?°ì??ì ?ì¤?? http://localhost:3000")
         
     except Exception as e:
-        print(f"\n?�스???�패: {e}")
+        print(f"\n?ì¤???¤í¨: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
+

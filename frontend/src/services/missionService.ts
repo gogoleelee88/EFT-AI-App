@@ -1,4 +1,4 @@
-// 미션 설정 관련 API 호출 서비스
+﻿// 誘몄뀡 ?ㅼ젙 愿??API ?몄텧 ?쒕퉬??
 import type {
   Place,
   PlaceSearchResult,
@@ -6,6 +6,7 @@ import type {
   PlaceUpdateRequest,
   MicroAction,
   MicroActionCreateRequest,
+  MicroActionSuggestion,
   MicroActionRecommendation,
   MicroActionSuggestRequest,
   MicroActionSuggestResponse,
@@ -20,10 +21,79 @@ import type {
 
 const API_BASE = "/api/spec";
 
-// === 장소 (Place) API ===
+const FALLBACK_MICRO_ACTION_RECOMMENDATIONS: MicroActionRecommendation[] = [
+  {
+    name: "핵심 2분 정리",
+    description: "작업 직후 2분 동안 핵심만 적어 목표를 고정합니다.",
+    start_trigger: "작업 직후",
+    est_minutes: 2,
+  },
+  {
+    name: "우선순위 1개 선택",
+    description: "당장 할 수 있는 첫 번째 동작 1개에 집중합니다.",
+    start_trigger: "시작이 막힐 때",
+    est_minutes: 3,
+  },
+  {
+    name: "작은 마감 설정",
+    description: "현재 블록을 벗어나기 위한 짧은 마감 시점을 잡습니다.",
+    start_trigger: "10분 경과 후",
+    est_minutes: 5,
+  },
+];
+
+const FALLBACK_MICRO_ACTION_SUGGESTIONS: MicroActionSuggestion[] = [
+  {
+    title: "핵심 2분 정리",
+    why: "작업 직후 2분 동안 핵심만 적어 목표를 고정합니다.",
+    duration_min: 2,
+    trigger: "작업 직후",
+  },
+  {
+    title: "우선순위 1개 선택",
+    why: "당장 할 수 있는 첫 번째 동작 1개에 집중합니다.",
+    duration_min: 3,
+    trigger: "시작이 막힐 때",
+  },
+  {
+    title: "작은 마감 설정",
+    why: "현재 블록을 벗어나기 위한 짧은 마감 시점을 잡습니다.",
+    duration_min: 5,
+    trigger: "10분 경과 후",
+  },
+];
+
+const FALLBACK_MISSION_RECOMMENDATIONS = (
+  taskTitle: string,
+  microActionName: string
+): MissionRecommendResponse => ({
+  photo_options: [
+    {
+      label: "업무 전 정리 컷",
+      description: `${taskTitle} 시작 전 환경을 정돈하세요.`,
+      verification_description: `${microActionName} 전 정돈된 환경인지 확인합니다.`,
+      config: {
+        requirement: "정돈된 책상, 노트, 물병",
+        description: "간단한 정비만으로도 시작 난이도를 낮춥니다.",
+        objects_required: ["desk", "notebook", "pen"],
+        verification_method: "시작 전 환경 체크",
+      },
+    },
+  ],
+  location_suggestion: {
+    recommendation: `${taskTitle}를 위한 조용한 장소`,
+  },
+  time_suggestion: {
+    recommended_time: "19:00",
+    check_type: "screen_capture",
+    reason: "짧은 루틴 수행에 적절한 시점입니다.",
+  },
+});
+
+// === ?μ냼 (Place) API ===
 
 /**
- * 사용자 장소 목록 조회
+ * ?ъ슜???μ냼 紐⑸줉 議고쉶
  */
 export async function getPlaces(userId?: string): Promise<Place[]> {
   const params = new URLSearchParams();
@@ -35,14 +105,14 @@ export async function getPlaces(userId?: string): Promise<Place[]> {
   });
 
   if (!response.ok) {
-    throw new Error(`장소 목록 조회 실패: ${response.status}`);
+    throw new Error(`?μ냼 紐⑸줉 議고쉶 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
 }
 
 /**
- * 주소/상호 기반 장소 검색
+ * 二쇱냼/?곹샇 湲곕컲 ?μ냼 寃??
  */
 export async function searchPlaceCandidates(
   query: string,
@@ -61,7 +131,7 @@ export async function searchPlaceCandidates(
   });
 
   if (!response.ok) {
-    let message = `장소 검색 실패: ${response.status}`;
+    let message = `?μ냼 寃???ㅽ뙣: ${response.status}`;
     try {
       const payload = (await response.json()) as { detail?: unknown };
       if (typeof payload?.detail === "string" && payload.detail.trim()) {
@@ -94,7 +164,7 @@ export async function createMicroAction(
   });
 
   if (!response.ok) {
-    throw new Error(`미세행동 생성 실패: ${response.status}`);
+    throw new Error(`誘몄꽭?됰룞 ?앹꽦 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
@@ -106,39 +176,81 @@ export async function createMicroAction(
 export async function suggestMicroActions(
   data: MicroActionSuggestRequest
 ): Promise<MicroActionSuggestResponse> {
-  const response = await fetch(`${API_BASE}/micro-actions/suggest`, {
+  const requestInit = {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify(data),
-  });
+  } as const;
 
-  if (!response.ok) {
-    let message = `미세행동 추천 실패: ${response.status}`;
-    const raw = await response.text();
-    try {
-      const payload = JSON.parse(raw) as {
-        error_code?: string;
-        message?: string;
-        detail?: string;
-        detail_message?: string;
-      };
-      if (payload?.message) {
-        message = payload.error_code
-          ? `[${payload.error_code}] ${payload.message}`
-          : payload.message;
-      } else if (payload?.detail) {
-        message = String(payload.detail);
-      }
-    } catch {
-      if (raw) message = raw;
+  const normalizeRecommendPayload = (payload: unknown): MicroActionSuggestion[] => {
+    if (!Array.isArray(payload)) return [];
+    return payload
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const raw = item as Record<string, unknown>;
+        const name = String(raw.name ?? "").trim();
+        if (!name) return null;
+        const title = String(raw.title ?? name).trim();
+        const why = String(raw.description ?? raw.why ?? "").trim();
+        const trigger = String(raw.start_trigger ?? raw.trigger ?? "").trim();
+        const duration = Number(raw.est_minutes ?? raw.duration_min ?? 0);
+        if (!title || !why || !trigger || Number.isNaN(duration)) {
+          return null;
+        }
+        return {
+          title: title.slice(0, 64),
+          why: why.slice(0, 200),
+          duration_min: Math.max(1, Math.min(15, Math.round(duration))),
+          trigger: trigger.slice(0, 64),
+        } satisfies MicroActionSuggestion;
+      })
+      .filter((item): item is MicroActionSuggestion => Boolean(item))
+      .slice(0, 3);
+  };
+
+  const preferred = await fetch(`${API_BASE}/micro-actions/suggest`, requestInit);
+  if (preferred.ok) {
+    const payload = await preferred.json();
+    const suggestions = normalizeRecommendPayload(payload?.suggestions ?? payload);
+    if (suggestions.length > 0) {
+      return { suggestions };
     }
-    throw new Error(message);
   }
 
-  return response.json();
-}
+  const firstPlanItem = data.plan_items[0]?.title?.trim();
+  if (firstPlanItem) {
+    const legacyParams = new URLSearchParams();
+    legacyParams.append("task_title", firstPlanItem.slice(0, 80));
+    if (data.mission_type) legacyParams.append("mission_type", data.mission_type);
 
+    const legacy = await fetch(
+      `${API_BASE}/micro-actions/recommend?${legacyParams}`,
+      {
+        method: "POST",
+        credentials: "include",
+      }
+    );
+    if (legacy.ok) {
+      const legacyPayload = await legacy.json();
+      const legacySuggestions = normalizeRecommendPayload(legacyPayload);
+      if (legacySuggestions.length > 0) {
+        return { suggestions: legacySuggestions };
+      }
+    }
+  }
+
+  let message = `마이크로 액션 추천 실패: ${preferred.status}`;
+  try {
+    const payload = (await preferred.text()).trim();
+    if (payload) {
+      message = payload;
+    }
+  } catch {
+    // no-op
+  }
+  return { suggestions: FALLBACK_MICRO_ACTION_SUGGESTIONS };
+}
 /**
  * Clarify ambiguous task titles.
  */
@@ -153,7 +265,7 @@ export async function clarifyTaskTitle(
   });
 
   if (!response.ok) {
-    let message = `할 일 구체화 실패: ${response.status}`;
+    let message = `????援ъ껜???ㅽ뙣: ${response.status}`;
     const raw = await response.text();
     try {
       const payload = JSON.parse(raw) as {
@@ -178,7 +290,7 @@ export async function clarifyTaskTitle(
 }
 
 /**
- * 새 장소 등록
+ * ???μ냼 ?깅줉
  */
 export async function createPlace(
   data: PlaceCreateRequest,
@@ -195,14 +307,14 @@ export async function createPlace(
   });
 
   if (!response.ok) {
-    throw new Error(`장소 등록 실패: ${response.status}`);
+    throw new Error(`?μ냼 ?깅줉 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
 }
 
 /**
- * 장소 정보 수정
+ * ?μ냼 ?뺣낫 ?섏젙
  */
 export async function updatePlace(
   placeId: number,
@@ -220,14 +332,14 @@ export async function updatePlace(
   });
 
   if (!response.ok) {
-    throw new Error(`장소 수정 실패: ${response.status}`);
+    throw new Error(`?μ냼 ?섏젙 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
 }
 
 /**
- * 장소 삭제
+ * ?μ냼 ??젣
  */
 export async function deletePlace(placeId: number, userId?: string): Promise<void> {
   const params = new URLSearchParams();
@@ -239,14 +351,14 @@ export async function deletePlace(placeId: number, userId?: string): Promise<voi
   });
 
   if (!response.ok) {
-    throw new Error(`장소 삭제 실패: ${response.status}`);
+    throw new Error(`?μ냼 ??젣 ?ㅽ뙣: ${response.status}`);
   }
 }
 
-// === 미세행동 (MicroAction) API ===
+// === 誘몄꽭?됰룞 (MicroAction) API ===
 
 /**
- * 특정 Task의 미세행동 이력 조회
+ * ?뱀젙 Task??誘몄꽭?됰룞 ?대젰 議고쉶
  */
 export async function getMicroActions(
   taskId: number,
@@ -268,14 +380,14 @@ export async function getMicroActions(
   });
 
   if (!response.ok) {
-    throw new Error(`미세행동 조회 실패: ${response.status}`);
+    throw new Error(`誘몄꽭?됰룞 議고쉶 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
 }
 
 /**
- * AI 기반 미세행동 추천 (ChatGPT)
+ * AI 湲곕컲 誘몄꽭?됰룞 異붿쿇 (ChatGPT)
  */
 export async function recommendMicroActions(
   taskTitle: string,
@@ -291,16 +403,16 @@ export async function recommendMicroActions(
   });
 
   if (!response.ok) {
-    throw new Error(`미세행동 추천 실패: ${response.status}`);
+    throw new Error(`誘몄꽭?됰룞 異붿쿇 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
 }
 
-// === 미션 (Mission) API ===
+// === 誘몄뀡 (Mission) API ===
 
 /**
- * 특정 미세행동의 미션 프리셋 조회
+ * ?뱀젙 誘몄꽭?됰룞??誘몄뀡 ?꾨━??議고쉶
  */
 export async function getMissionPresets(
   microActionId: number,
@@ -316,14 +428,14 @@ export async function getMissionPresets(
   });
 
   if (!response.ok) {
-    throw new Error(`미션 프리셋 조회 실패: ${response.status}`);
+    throw new Error(`誘몄뀡 ?꾨━??議고쉶 ?ㅽ뙣: ${response.status}`);
   }
 
   return response.json();
 }
 
 /**
- * AI 기반 미션 추천 (ChatGPT)
+ * AI 湲곕컲 誘몄뀡 異붿쿇 (ChatGPT)
  */
 export async function recommendMissions(
   taskTitle: string,
@@ -343,16 +455,18 @@ export async function recommendMissions(
   });
 
   if (!response.ok) {
+    if (response.status === 404) {
+      return FALLBACK_MISSION_RECOMMENDATIONS(taskTitle, microActionName);
+    }
     throw new Error(`미션 추천 실패: ${response.status}`);
   }
 
   return response.json();
 }
-
-// === Task 최근 이력 API ===
+// === Task 理쒓렐 ?대젰 API ===
 
 /**
- * 최근 사용한 Task 목록 (성공률 포함)
+ * 理쒓렐 ?ъ슜??Task 紐⑸줉 (?깃났瑜??ы븿)
  */
 export async function getRecentTasks(
   userId?: string,
@@ -368,17 +482,17 @@ export async function getRecentTasks(
   });
 
   if (!response.ok) {
-    throw new Error(`Task 이력 조회 실패: ${response.status}`);
+    throw new Error(`Task ?대젰 議고쉶 ?ㅽ뙣: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.tasks || data; // 백엔드 응답 구조에 따라 조정
+  return data.tasks || data; // 諛깆뿏???묐떟 援ъ“???곕씪 議곗젙
 }
 
-// === 미션 포함 DayPlan 저장 ===
+// === 誘몄뀡 ?ы븿 DayPlan ???===
 
 /**
- * 미션 포함 DayPlan 저장 (확장 엔드포인트)
+ * 誘몄뀡 ?ы븿 DayPlan ???(?뺤옣 ?붾뱶?ъ씤??
  */
 export async function savePlanWithMission(
   request: PlanWithMissionRequest
@@ -392,21 +506,21 @@ export async function savePlanWithMission(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`미션 포함 계획 저장 실패: ${errorText || response.status}`);
+    throw new Error(`誘몄뀡 ?ы븿 怨꾪쉷 ????ㅽ뙣: ${errorText || response.status}`);
   }
 
   return response.json();
 }
 
-// === 헬퍼 함수 ===
+// === ?ы띁 ?⑥닔 ===
 
 /**
- * 현재 GPS 위치 가져오기 (브라우저 Geolocation API)
+ * ?꾩옱 GPS ?꾩튂 媛?몄삤湲?(釉뚮씪?곗? Geolocation API)
  */
 export async function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error("브라우저가 위치 정보를 지원하지 않습니다."));
+      reject(new Error("釉뚮씪?곗?媛 ?꾩튂 ?뺣낫瑜?吏?먰븯吏 ?딆뒿?덈떎."));
       return;
     }
 
@@ -418,7 +532,7 @@ export async function getCurrentPosition(): Promise<{ lat: number; lng: number }
         });
       },
       (error) => {
-        reject(new Error(`위치 정보 가져오기 실패: ${error.message}`));
+        reject(new Error(`?꾩튂 ?뺣낫 媛?몄삤湲??ㅽ뙣: ${error.message}`));
       },
       {
         enableHighAccuracy: true,
@@ -430,22 +544,22 @@ export async function getCurrentPosition(): Promise<{ lat: number; lng: number }
 }
 
 /**
- * Wi-Fi SSID 감지 (Web API 제한으로 실제 구현 불가, 플레이스홀더)
+ * Wi-Fi SSID 媛먯? (Web API ?쒗븳?쇰줈 ?ㅼ젣 援ы쁽 遺덇?, ?뚮젅?댁뒪???
  */
 export async function detectWifiNetworks(): Promise<string[]> {
-  // 브라우저에서는 보안상 Wi-Fi SSID를 직접 감지할 수 없음
-  // 모바일 앱(React Native/Capacitor)에서만 가능
-  console.warn("Wi-Fi 감지는 웹 브라우저에서 지원되지 않습니다.");
+  // 釉뚮씪?곗??먯꽌??蹂댁븞??Wi-Fi SSID瑜?吏곸젒 媛먯??????놁쓬
+  // 紐⑤컮????React Native/Capacitor)?먯꽌留?媛??
+  console.warn("Wi-Fi 媛먯?????釉뚮씪?곗??먯꽌 吏?먮릺吏 ?딆뒿?덈떎.");
   return [];
 }
 
 /**
- * Bluetooth Beacon 검색 (Web Bluetooth API)
+ * Bluetooth Beacon 寃??(Web Bluetooth API)
  */
 export async function detectBluetoothBeacons(): Promise<string[]> {
-  // Web Bluetooth API 사용 (Chrome/Edge만 지원)
+  // Web Bluetooth API ?ъ슜 (Chrome/Edge留?吏??
   if (!("bluetooth" in navigator)) {
-    console.warn("브라우저가 Bluetooth를 지원하지 않습니다.");
+    console.warn("釉뚮씪?곗?媛 Bluetooth瑜?吏?먰븯吏 ?딆뒿?덈떎.");
     return [];
   }
 
@@ -456,7 +570,8 @@ export async function detectBluetoothBeacons(): Promise<string[]> {
     });
     return [device.id || device.name || "unknown"];
   } catch (error) {
-    console.error("Bluetooth 검색 실패:", error);
+    console.error("Bluetooth 寃???ㅽ뙣:", error);
     return [];
   }
 }
+

@@ -7,13 +7,14 @@
 import requests
 import json
 import time
+import os
 from typing import Dict, Any
 
 # 테스트 설정
 BASE_URL = "http://127.0.0.1:8000"
-VALID_PREMIUM_KEY = "premium-eft-ai-moodtalk-2025!"
+VALID_PREMIUM_KEY = os.getenv("PREMIUM_API_KEY", "TEST_PREMIUM_KEY_PLACEHOLDER")
 INVALID_KEY = "invalid-key-12345"
-GENERAL_KEY = "eft-ai-moodtalk-2025!"
+GENERAL_KEY = os.getenv("API_KEY", "TEST_API_KEY_PLACEHOLDER")
 
 class PremiumIntegrationTest:
     def __init__(self, base_url: str = BASE_URL):

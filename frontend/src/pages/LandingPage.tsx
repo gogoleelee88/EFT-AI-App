@@ -25,6 +25,12 @@ const LandingPage: React.FC = () => {
           <img src="/이름.png" alt="TOCMOOD Logo" className="h-8 md:h-10 object-contain" />
           <div className="flex gap-3 items-center">
             <button
+              onClick={() => navigate("/install-guide")}
+              className="border border-accent text-accent px-4 py-2 rounded-full font-bold text-sm hover:bg-accent hover:text-black transition"
+            >
+              앱 설치 가이드
+            </button>
+            <button
               onClick={() => navigate('/login')}
               className="border border-white text-white px-4 py-2 rounded-full font-bold text-sm hover:bg-white hover:text-black transition"
             >
@@ -49,7 +55,7 @@ const LandingPage: React.FC = () => {
           <p className="text-gray-300 text-lg md:text-xl mb-8 font-light">
             MoodTalk: 업계 최초 행동 재진입(Behavioral Re-entry) AI<br />
             <span className="text-sm md:text-base text-gray-400 mt-2 block">
-              글로벌 리더와 코치가 쓰는 멘탈 프로토콜 탑재 | 12월 13일 공개
+              글로벌 리더와 코치가 쓰는 멘탈 프로토콜 탑재 | 공개
             </span>
           </p>
 
@@ -184,7 +190,7 @@ const LandingPage: React.FC = () => {
             누구보다 먼저 MoodTalk를 경험해보세요
           </h2>
           <p className="text-gray-400 mb-8">
-            12월 13일 데모 공개 알림과 얼리버드 신청 소식을<br />
+            데모 공개 알림과 얼리버드 신청 소식을<br />
             가장 먼저 문자로 보내드립니다. (스팸 없음, 100% 무료)
           </p>
           <p className="text-gray-600 text-xs mt-8">
