@@ -334,6 +334,15 @@ add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 - [ ] Cloudflare Cache Rules 4개 설정 완료
 - [ ] Cache Rule 순서 확인 (sw.js → index.html → assets → images)
 
+
+### Vercel PR 체크 상태 확인
+- [ ] PR의 **Vercel Preview Deployment**가 `Ready` 또는 `Passed`인지 확인
+- [ ] `main` 대상 Production 배포에 필요한 환경변수(예: API URL, JWT Secret) 누락 여부 확인
+- [ ] 빌드 로그에서 실패 원인(타입 에러/환경변수/경로 문제)을 먼저 수정 후 머지
+
+> ⚠️ 참고: Vercel 체크가 실패한 상태로 머지되면, `main` 자동 배포도 동일 원인으로 실패할 가능성이 매우 높습니다.
+> 브랜치 보호 규칙에서 Vercel 체크를 required로 설정하면 실패 상태 PR 머지를 사전에 차단할 수 있습니다.
+
 ### 배포 직후
 - [ ] Cloudflare에서 sw.js Purge Cache 실행
 - [ ] Cloudflare에서 index.html Purge Cache 실행
