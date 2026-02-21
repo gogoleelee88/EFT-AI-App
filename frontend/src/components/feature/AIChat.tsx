@@ -829,7 +829,8 @@ const AIChat: React.FC<AIChatProps> = ({ userId }) => {
 
           const vllmResponse = await response.json();
 
-          // ChatResponse ?뺥깭濡?蹂??          serverResponse = {
+          // ChatResponse fallback mapping for legacy vLLM response
+          serverResponse = {
             response: vllmResponse.choices?.[0]?.message?.content ?? '',
             emotion_analysis: { primary_emotion: 'unknown', intensity: 0.5, confidence: 0.5, triggers: [] },
             eft_recommendations: [],
