@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends, Cookie
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from database import get_db
+from backend.database import get_db
 from backend.models.chat_models import StrictIntakeInput
 from backend.models.user import User
 from services.auth_service import AuthService

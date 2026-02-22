@@ -51,7 +51,7 @@ from backend.routers.push import router as push_router
 from backend.routers.recommend_router import router as recommend_router
 from backend.routers.suds import router as suds_router
 from backend.routers.work_guide import router as work_guide_router
-from meal_coach.router import router as meal_coach_router
+from backend.meal_coach.router import router as meal_coach_router
 
 # Proposal OS routers
 from backend.routers.profiles import router as proposal_profiles_router
@@ -74,7 +74,7 @@ from backend.spec_loop.behavior.router import router as spec_behavior_router
 from backend.spec_loop.focus_session.router import router as spec_focus_session_router
 from backend.spec_loop.reminder.router import router as spec_reminder_router
 from backend.spec_loop.reminder.runtime import start_reminder_ticker_if_enabled, stop_reminder_ticker
-from focus.router import router as focus_router
+from backend.focus.router import router as focus_router
 
 settings = get_settings()
 logger = get_logger(__name__)
