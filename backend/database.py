@@ -8,6 +8,12 @@ import os
 import sys
 from dotenv import load_dotenv
 
+# Prevent duplicate module loading under two names (`backend.database` and `database`).
+if __name__ == "backend.database":
+    sys.modules.setdefault("database", sys.modules[__name__])
+elif __name__ == "database":
+    sys.modules.setdefault("backend.database", sys.modules[__name__])
+
 # backend/.env ??⑥ろ맖 ?β돦裕녻キ?(cwd??.env ??怨몃굵 ??????
 _env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=_env_path)
