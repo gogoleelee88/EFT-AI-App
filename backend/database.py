@@ -44,8 +44,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 if __package__ == "backend":
-    import backend.spec_loop  # noqa: F401
-    import backend.spec_loop.google_calendar.models  # noqa: F401
+    try:
+        import backend.spec_loop  # noqa: F401
+        import backend.spec_loop.google_calendar.models  # noqa: F401
+    except ModuleNotFoundError:
+        # Keep server start-up when optional spec_loop package is not included in runtime image.
+        pass
+
     import backend.models.user  # noqa: F401
     import backend.models.refresh_token  # noqa: F401
     import backend.models.proposal_os  # noqa: F401
