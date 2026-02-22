@@ -55,9 +55,9 @@ if __package__ == "backend":
     import backend.models.refresh_token  # noqa: F401
     import backend.models.proposal_os  # noqa: F401
     import backend.models.menstrual  # noqa: F401
-    import backend.app.models.chat  # noqa: F401
-    import backend.app.models.coach  # noqa: F401
-    import backend.app.models.context_rag  # noqa: F401
+    import app.models.chat  # noqa: F401
+    import app.models.coach  # noqa: F401
+    import app.models.context_rag  # noqa: F401
     import backend.meal_coach.models  # noqa: F401
     import backend.focus.models  # noqa: F401
 else:
