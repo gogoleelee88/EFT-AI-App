@@ -21,8 +21,10 @@ load_dotenv()  # cwd ?リ옇?? .env???β돦裕녻キ?
 
 # Ensure package imports remain stable regardless of uvicorn launch path.
 _backend_dir = Path(__file__).resolve().parent
-if str(_backend_dir) not in sys.path:
-    sys.path.append(str(_backend_dir))
+_repo_root = _backend_dir.parent
+for _p in (_backend_dir, _repo_root):
+    if str(_p) not in sys.path:
+        sys.path.append(str(_p))
 
 # .env??????띠럾??筌뤾쑴湲?(??怨몃さ嶺??β돦裕뉛쭚?SQLite ????    
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL") or "sqlite:///./eft_sessions.db"
@@ -67,8 +69,8 @@ if __package__ == "backend":
     import backend.meal_coach.models  # noqa: F401
     import backend.focus.models  # noqa: F401
 else:
-    import spec_loop  # noqa: F401
-    import spec_loop.google_calendar.models  # noqa: F401
+    import backend.spec_loop  # noqa: F401
+    import backend.spec_loop.google_calendar.models  # noqa: F401
     import models.user  # noqa: F401
     import models.refresh_token  # noqa: F401
     import models.proposal_os  # noqa: F401
@@ -76,8 +78,8 @@ else:
     import app.models.chat  # noqa: F401
     import app.models.coach  # noqa: F401
     import app.models.context_rag  # noqa: F401
-    import meal_coach.models  # noqa: F401
-    import focus.models  # noqa: F401
+    import backend.meal_coach.models  # noqa: F401
+    import backend.focus.models  # noqa: F401
 
 # ??琉돠???낅슣??????貫??(FastAPI Router???????)
 def get_db():
