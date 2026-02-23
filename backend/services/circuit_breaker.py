@@ -9,13 +9,13 @@ logger = get_logger(__name__)
 
 class CircuitBreaker:
     """
-    ?�로차단�?(?�터?�라?�즈 ?�장??
-    - CLOSED -> (?�속 ?�패 >= threshold) -> OPEN
-    - OPEN -> (cooldown 지?�면) -> HALF_OPEN
+    ?ë¡ì°¨ë¨ê¸?(?í°?ë¼?´ì¦ ?ì¥??
+    - CLOSED -> (?°ì ?¤í¨ >= threshold) -> OPEN
+    - OPEN -> (cooldown ì§?ë©´) -> HALF_OPEN
     - HALF_OPEN:
-        * ?�시 최�? half_open_max_probes 건만 ?�험(?�마?�어)
-        * ?�공 half_open_successes_needed �??�적?�면 CLOSED 복�?
-        * ?�패 1건이?�도 발생?�면 즉시 OPEN ?��?(쿨다??리셋)
+        * ?ì ìµë? half_open_max_probes ê±´ë§ ?í(?¸ë§?¬ì´)
+        * ?±ê³µ half_open_successes_needed ê±??ì?ë©´ CLOSED ë³µê?
+        * ?¤í¨ 1ê±´ì´?¼ë ë°ì?ë©´ ì¦ì OPEN ?ê?(ì¿¨ë¤??ë¦¬ì)
     """
     def __init__(
         self,
@@ -33,38 +33,38 @@ class CircuitBreaker:
         self.failure_count = 0
         self.last_failure_time: Optional[float] = None
 
-        # HALF_OPEN ?�시???�태 관�?        self._lock = asyncio.Lock()
+        # HALF_OPEN ?ì???í ê´ë¦?        self._lock = asyncio.Lock()
         self._half_open_sem = asyncio.Semaphore(half_open_max_probes)
         self._half_open_max_probes = half_open_max_probes
         self._half_open_successes_needed = half_open_successes_needed
         self._half_open_successes = 0
 
     async def _maybe_to_half_open(self) -> None:
-        """OPEN ?�태?�서 복구 ?�?�아?�이 지?�으�?HALF_OPEN?�로 ?�환"""
+        """OPEN ?í?ì ë³µêµ¬ ??ì?ì´ ì§?¬ì¼ë©?HALF_OPEN?¼ë¡ ?í"""
         async with self._lock:
             if self.state != "OPEN":
                 return
             if self.last_failure_time and (time.time() - self.last_failure_time) >= self.recovery_timeout:
-                # HALF_OPEN 초기??                self.state = "HALF_OPEN"
+                # HALF_OPEN ì´ê¸°??                self.state = "HALF_OPEN"
                 self._half_open_successes = 0
-                # ?�마?�어 리셋(?��? 만들?�져 ?��?�? value�?보장)
+                # ?¸ë§?¬ì´ ë¦¬ì(?´ë? ë§ë¤?´ì¸ ?ì?ë§? valueë¥?ë³´ì¥)
                 self._half_open_sem = asyncio.Semaphore(self._half_open_max_probes)
-                logger.info("?�로차단�?HALF_OPEN ?�환 (?�시 ?�로�? %d)", self._half_open_max_probes)
+                logger.info("?ë¡ì°¨ë¨ê¸?HALF_OPEN ?í (?ì ?ë¡ë¸? %d)", self._half_open_max_probes)
 
     async def _to_open(self) -> None:
         async with self._lock:
             self.state = "OPEN"
             self.last_failure_time = time.time()
-            # ?�패 카운?�는 OPEN?�서 ?��??�으�?threshold ?�상 ?�태
+            # ?¤í¨ ì¹´ì´?¸ë OPEN?ì ?ë??ì¼ë¡?threshold ?´ì ?í
             self.failure_count = self.failure_threshold
-            logger.warning("?�로차단�?OPEN - 쿨다???�작 (%ds)", self.recovery_timeout)
+            logger.warning("?ë¡ì°¨ë¨ê¸?OPEN - ì¿¨ë¤???ì (%ds)", self.recovery_timeout)
 
     async def _to_closed(self) -> None:
         async with self._lock:
             self.state = "CLOSED"
             self.failure_count = 0
             self._half_open_successes = 0
-            logger.info("?�로차단�?CLOSED 복�?")
+            logger.info("?ë¡ì°¨ë¨ê¸?CLOSED ë³µê?")
 
     async def _record_closed_failure(self) -> None:
         async with self._lock:
@@ -74,7 +74,7 @@ class CircuitBreaker:
 
     async def _record_closed_success(self) -> None:
         async with self._lock:
-            self.failure_count = 0  # ?�속 ?�패 ?��?
+            self.failure_count = 0  # ?°ì ?¤í¨ ?ê?
 
     async def _record_half_open_success(self) -> None:
         async with self._lock:
@@ -84,8 +84,8 @@ class CircuitBreaker:
 
     async def can_execute(self) -> bool:
         """
-        ?�행 가???��?(OPEN?�면 쿨다??체크 ??HALF_OPEN ?�환 ?�도)
-        HALF_OPEN ?�환?� lazy ?�게 ?�요 ?�점???�행.
+        ?¤í ê°???¬ë?(OPEN?´ë©´ ì¿¨ë¤??ì²´í¬ ??HALF_OPEN ?í ?ë)
+        HALF_OPEN ?í? lazy ?ê² ?ì ?ì???í.
         """
         if self.state == "CLOSED":
             return True
@@ -97,14 +97,14 @@ class CircuitBreaker:
 
     async def call(self, func: Callable, *args, **kwargs) -> Any:
         """
-        ?�로차단기�? ?�해 비동�??�수 ?�출.
-        ?�태�?처리:
-          - CLOSED: ?�소?��??�출, ?�패 ?�적 ??OPEN
-          - OPEN:   쿨다???�이�?거�?, 지?�면 HALF_OPEN 진입
-          - HALF_OPEN: ?�마?�어�??�시 k�??�한, ?�공 n�??�적 ??CLOSED 복�?, ?�패 즉시 OPEN
+        ?ë¡ì°¨ë¨ê¸°ë? ?µí´ ë¹ëê¸??¨ì ?¸ì¶.
+        ?íë³?ì²ë¦¬:
+          - CLOSED: ?ì?ë¡??¸ì¶, ?¤í¨ ?ì ??OPEN
+          - OPEN:   ì¿¨ë¤???ì´ë©?ê±°ë?, ì§?ë©´ HALF_OPEN ì§ì
+          - HALF_OPEN: ?¸ë§?¬ì´ë¡??ì kê±??í, ?±ê³µ nê±??ì ??CLOSED ë³µê?, ?¤í¨ ì¦ì OPEN
         """
         if not await self.can_execute():
-            raise Exception(f"?�로차단�?OPEN ?�태 - 쿨다??�?({self.recovery_timeout}s)")
+            raise Exception(f"?ë¡ì°¨ë¨ê¸?OPEN ?í - ì¿¨ë¤??ì¤?({self.recovery_timeout}s)")
 
         if self.state == "CLOSED":
             try:
@@ -122,14 +122,14 @@ class CircuitBreaker:
             await self._record_half_open_success()
             return result
         except self.expected_exception as e:
-            # HALF_OPEN �??�패 1�???즉시 OPEN 복�?
+            # HALF_OPEN ì¤??¤í¨ 1ê±???ì¦ì OPEN ë³µê?
             await self._to_open()
             raise e
         finally:
             self._half_open_sem.release()
 
 
-# ?�진�??�로차단�??�
+# ?ì§ë³??ë¡ì°¨ë¨ê¸??
 _breakers: Dict[str, CircuitBreaker] = {}
 
 def get_circuit_breaker(
@@ -161,7 +161,7 @@ async def retry_with_exponential_backoff(
     jitter: bool = True,
     **kwargs
 ) -> Any:
-    """지??백오??+ 지???�시??(?�진 5xx/?�트?�크간헐 ?�??"""
+    """ì§??ë°±ì¤??+ ì§???¬ì??(?ì§ 5xx/?¤í¸?í¬ê°í ???"""
     last_exc = None
     for attempt in range(max_retries + 1):
         try:
@@ -169,11 +169,11 @@ async def retry_with_exponential_backoff(
         except Exception as e:
             last_exc = e
             if attempt == max_retries:
-                logger.error("?�시??초과(%d): %s", max_retries, e)
+                logger.error("?¬ì??ì´ê³¼(%d): %s", max_retries, e)
                 break
             delay = min(base_delay * (2 ** attempt), max_delay)
             if jitter:
                 delay *= (0.8 + random.random() * 0.4)
-            logger.warning("?�시??%d/%d, %.2fs ???�시?? %s", attempt + 1, max_retries, delay, e)
+            logger.warning("?¬ì??%d/%d, %.2fs ???¬ì?? %s", attempt + 1, max_retries, delay, e)
             await asyncio.sleep(delay)
     raise last_exc

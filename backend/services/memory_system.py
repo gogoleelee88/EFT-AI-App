@@ -1,5 +1,5 @@
 """
-메모�??�스??v1: ?�??컨텍?�트 구축 �?관�?최근 k??+ running_summary�??�율?�으�?관리하???�스??"""
+ë©ëª¨ë¦??ì¤??v1: ???ì»¨í?¤í¸ êµ¬ì¶ ë°?ê´ë¦?ìµê·¼ k??+ running_summaryë¥??¨ì¨?ì¼ë¡?ê´ë¦¬í???ì¤??"""
 
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
@@ -12,25 +12,25 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 class MemoryType(str, Enum):
-    """메모�??�??""
-    CONVERSATION = "conversation"    # ?�???�용
-    SUDS_MEASUREMENT = "suds"       # SUDS 측정�?    EFT_SESSION = "eft_session"     # EFT ?�션 기록
-    EMOTION_ANALYSIS = "emotion"    # 감정 분석 결과
-    ACTION_TOKEN = "action_token"   # ?�션 ?�큰 ?�행
+    """ë©ëª¨ë¦????""
+    CONVERSATION = "conversation"    # ????´ì©
+    SUDS_MEASUREMENT = "suds"       # SUDS ì¸¡ìê°?    EFT_SESSION = "eft_session"     # EFT ?¸ì ê¸°ë¡
+    EMOTION_ANALYSIS = "emotion"    # ê°ì ë¶ì ê²°ê³¼
+    ACTION_TOKEN = "action_token"   # ?¡ì ?í° ?¤í
 
 @dataclass
 class MemoryEntry:
-    """메모�??�트�?""
+    """ë©ëª¨ë¦??í¸ë¦?""
     session_id: str
     user_id: Optional[str]
     timestamp: str
     memory_type: MemoryType
     content: Dict[str, Any]
     turn_id: Optional[str] = None
-    importance_score: float = 0.5  # 0-1, 중요??
+    importance_score: float = 0.5  # 0-1, ì¤ì??
 @dataclass
 class ConversationTurn:
-    """?�????""
+    """?????""
     turn_id: str
     session_id: str
     user_message: str
@@ -48,7 +48,7 @@ class ConversationTurn:
             self.actions_executed = []
 
 class MemorySystem:
-    """메모�??�스??v1"""
+    """ë©ëª¨ë¦??ì¤??v1"""
 
     def __init__(self, data_dir: Path, max_turns_per_session: int = 20):
         self.data_dir = data_dir
@@ -56,18 +56,18 @@ class MemorySystem:
         self.memory_file = data_dir / "conversation_memory.jsonl"
         self.summary_file = data_dir / "running_summaries.json"
 
-        # ?�렉?�리 ?�성
+        # ?ë?ë¦¬ ?ì±
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        # ?�메모리 캐시 (최근 ?�션??
+        # ?¸ë©ëª¨ë¦¬ ìºì (ìµê·¼ ?¸ì??
         self._session_cache: Dict[str, List[ConversationTurn]] = {}
         self._summaries_cache: Dict[str, str] = {}
 
-        # 초기????기존 ?�이??로드
+        # ì´ê¸°????ê¸°ì¡´ ?°ì´??ë¡ë
         self._load_recent_sessions()
 
     def _load_recent_sessions(self):
-        """최근 ?�션?�을 메모리에 로드"""
+        """ìµê·¼ ?¸ì?¤ì ë©ëª¨ë¦¬ì ë¡ë"""
         try:
             if self.memory_file.exists():
                 with open(self.memory_file, 'r', encoding='utf-8') as f:
@@ -96,25 +96,25 @@ class MemorySystem:
                                     self._session_cache[session_id] = []
                                 self._session_cache[session_id].append(turn)
                         except (json.JSONDecodeError, KeyError) as e:
-                            logger.warning(f"메모�?로드 ?�류: {e}")
+                            logger.warning(f"ë©ëª¨ë¦?ë¡ë ?¤ë¥: {e}")
                             continue
 
-            # ?�약 캐시 로드
+            # ?ì½ ìºì ë¡ë
             if self.summary_file.exists():
                 with open(self.summary_file, 'r', encoding='utf-8') as f:
                     self._summaries_cache = json.load(f)
 
         except Exception as e:
-            logger.error(f"메모�??�스??초기???�류: {e}")
+            logger.error(f"ë©ëª¨ë¦??ì¤??ì´ê¸°???¤ë¥: {e}")
 
     def save_conversation_turn(self, turn: ConversationTurn):
-        """?�?????�??""
+        """????????""
         try:
-            # 메모�?캐시 ?�데?�트
+            # ë©ëª¨ë¦?ìºì ?ë°?´í¸
             if turn.session_id not in self._session_cache:
                 self._session_cache[turn.session_id] = []
 
-            # 기존 ???�데?�트 ?�는 ????추�?
+            # ê¸°ì¡´ ???ë°?´í¸ ?ë ????ì¶ê?
             existing_turn_idx = next(
                 (i for i, t in enumerate(self._session_cache[turn.session_id])
                  if t.turn_id == turn.turn_id),
@@ -126,13 +126,13 @@ class MemorySystem:
             else:
                 self._session_cache[turn.session_id].append(turn)
 
-            # 최�? ?????�한
+            # ìµë? ?????í
             if len(self._session_cache[turn.session_id]) > self.max_turns:
                 self._session_cache[turn.session_id] = self._session_cache[turn.session_id][-self.max_turns:]
 
-            # ?�일???�??            memory_entry = MemoryEntry(
+            # ?ì¼?????            memory_entry = MemoryEntry(
                 session_id=turn.session_id,
-                user_id=None,  # 추후 user_id 추�? 가??                timestamp=turn.timestamp,
+                user_id=None,  # ì¶í user_id ì¶ê? ê°??                timestamp=turn.timestamp,
                 memory_type=MemoryType.CONVERSATION,
                 content={
                     'turn_id': turn.turn_id,
@@ -147,13 +147,13 @@ class MemorySystem:
             )
 
             self._append_memory_entry(memory_entry)
-            logger.info(f"?�?????�???�료: {turn.session_id}/{turn.turn_id}")
+            logger.info(f"?????????ë£: {turn.session_id}/{turn.turn_id}")
 
         except Exception as e:
-            logger.error(f"?�?????�???�류: {e}")
+            logger.error(f"?????????¤ë¥: {e}")
 
     def _append_memory_entry(self, entry: MemoryEntry):
-        """메모�??�트리�? ?�일??추�?"""
+        """ë©ëª¨ë¦??í¸ë¦¬ë? ?ì¼??ì¶ê?"""
         try:
             with open(self.memory_file, 'a', encoding='utf-8') as f:
                 json_data = {
@@ -167,14 +167,14 @@ class MemorySystem:
                 }
                 f.write(json.dumps(json_data, ensure_ascii=False) + '\n')
         except Exception as e:
-            logger.error(f"메모�??�트�?추�? ?�류: {e}")
+            logger.error(f"ë©ëª¨ë¦??í¸ë¦?ì¶ê? ?¤ë¥: {e}")
 
     def get_recent_turns(self, session_id: str, k: int = 5) -> List[ConversationTurn]:
-        """최근 k�???조회"""
+        """ìµê·¼ kê°???ì¡°í"""
         if session_id not in self._session_cache:
             return []
 
-        # 최근 k�?반환 (?�간??
+        # ìµê·¼ kê°?ë°í (?ê°??
         recent_turns = sorted(
             self._session_cache[session_id],
             key=lambda t: t.timestamp
@@ -183,36 +183,36 @@ class MemorySystem:
         return recent_turns
 
     def update_running_summary(self, session_id: str, new_summary: str = None) -> str:
-        """?�닝 ?�머�??�데?�트"""
+        """?¬ë ?ë¨¸ë¦??ë°?´í¸"""
         try:
             if new_summary:
-                # 직접 ?�공???�약 ?�용
+                # ì§ì ?ê³µ???ì½ ?¬ì©
                 self._summaries_cache[session_id] = new_summary
             else:
-                # ?�동 ?�약 ?�성
+                # ?ë ?ì½ ?ì±
                 recent_turns = self.get_recent_turns(session_id, k=10)
                 if not recent_turns:
                     return ""
 
-                # 간단???�약 ?�성 (추후 LLM 기반?�로 ?�장 가??
+                # ê°ë¨???ì½ ?ì± (ì¶í LLM ê¸°ë°?¼ë¡ ?ì¥ ê°??
                 summary_parts = []
 
-                # 주요 감정 ?�턴
+                # ì£¼ì ê°ì ?¨í´
                 emotions = [t.emotion_analysis.get('primary_emotion')
                            for t in recent_turns
                            if t.emotion_analysis and t.emotion_analysis.get('primary_emotion')]
                 if emotions:
                     dominant_emotion = max(set(emotions), key=emotions.count)
-                    summary_parts.append(f"주요 감정: {dominant_emotion}")
+                    summary_parts.append(f"ì£¼ì ê°ì: {dominant_emotion}")
 
-                # SUDS 변??                suds_values = [(t.suds_pre, t.suds_post) for t in recent_turns
+                # SUDS ë³??                suds_values = [(t.suds_pre, t.suds_post) for t in recent_turns
                               if t.suds_pre is not None or t.suds_post is not None]
                 if suds_values:
                     latest_suds = [s for s in suds_values[-1] if s is not None]
                     if latest_suds:
-                        summary_parts.append(f"최근 SUDS: {latest_suds[-1]}")
+                        summary_parts.append(f"ìµê·¼ SUDS: {latest_suds[-1]}")
 
-                # ?�션 ?�행 ?�턴
+                # ?¡ì ?¤í ?¨í´
                 action_types = []
                 for turn in recent_turns:
                     for action in turn.actions_executed:
@@ -221,44 +221,44 @@ class MemorySystem:
 
                 if action_types:
                     common_actions = list(set(action_types))
-                    summary_parts.append(f"주요 ?�동: {', '.join(common_actions[:3])}")
+                    summary_parts.append(f"ì£¼ì ?ë: {', '.join(common_actions[:3])}")
 
-                # ?�??주제 (?�워??기반 간단 분석)
+                # ???ì£¼ì (?¤ì??ê¸°ë° ê°ë¨ ë¶ì)
                 all_messages = ' '.join([t.user_message for t in recent_turns])
                 if len(all_messages) > 50:
-                    # 간단???�워??추출 (추후 개선 가??
-                    summary_parts.append(f"?�???�용: {len(recent_turns)}??진행")
+                    # ê°ë¨???¤ì??ì¶ì¶ (ì¶í ê°ì ê°??
+                    summary_parts.append(f"????´ì©: {len(recent_turns)}??ì§í")
 
-                generated_summary = " | ".join(summary_parts) if summary_parts else "???�션"
+                generated_summary = " | ".join(summary_parts) if summary_parts else "???¸ì"
                 self._summaries_cache[session_id] = generated_summary
 
-            # ?�일???�??            self._save_summaries()
+            # ?ì¼?????            self._save_summaries()
 
             return self._summaries_cache.get(session_id, "")
 
         except Exception as e:
-            logger.error(f"?�닝 ?�머�??�데?�트 ?�류: {e}")
+            logger.error(f"?¬ë ?ë¨¸ë¦??ë°?´í¸ ?¤ë¥: {e}")
             return self._summaries_cache.get(session_id, "")
 
     def _save_summaries(self):
-        """?�약?�을 ?�일???�??""
+        """?ì½?¤ì ?ì¼?????""
         try:
             with open(self.summary_file, 'w', encoding='utf-8') as f:
                 json.dump(self._summaries_cache, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            logger.error(f"?�약 ?�???�류: {e}")
+            logger.error(f"?ì½ ????¤ë¥: {e}")
 
     def build_context(self, session_id: str, user_id: Optional[str] = None,
                      k_recent_turns: int = 5) -> Dict[str, Any]:
-        """?�??컨텍?�트 구축 (?�심 ?�수!)"""
+        """???ì»¨í?¤í¸ êµ¬ì¶ (?µì¬ ?¨ì!)"""
         try:
-            # 1. 최근 k??조회
+            # 1. ìµê·¼ k??ì¡°í
             recent_turns = self.get_recent_turns(session_id, k=k_recent_turns)
 
-            # 2. ?�닝 ?�머�?조회
+            # 2. ?¬ë ?ë¨¸ë¦?ì¡°í
             running_summary = self._summaries_cache.get(session_id, "")
 
-            # 3. 컨텍?�트 구조??            context = {
+            # 3. ì»¨í?¤í¸ êµ¬ì¡°??            context = {
                 "session_id": session_id,
                 "user_id": user_id,
                 "running_summary": running_summary,
@@ -289,11 +289,11 @@ class MemorySystem:
                 }
             }
 
-            logger.info(f"컨텍?�트 구축 ?�료: {session_id} ({len(recent_turns)}?? ?�약: {'?�음' if running_summary else '?�음'})")
+            logger.info(f"ì»¨í?¤í¸ êµ¬ì¶ ?ë£: {session_id} ({len(recent_turns)}?? ?ì½: {'?ì' if running_summary else '?ì'})")
             return context
 
         except Exception as e:
-            logger.error(f"컨텍?�트 구축 ?�류: {e}")
+            logger.error(f"ì»¨í?¤í¸ êµ¬ì¶ ?¤ë¥: {e}")
             return {
                 "session_id": session_id,
                 "user_id": user_id,
@@ -305,9 +305,9 @@ class MemorySystem:
 
     def record_suds_measurement(self, session_id: str, turn_id: str,
                                suds_value: int, measurement_type: str):
-        """SUDS 측정�?기록"""
+        """SUDS ì¸¡ìê°?ê¸°ë¡"""
         try:
-            # ?�당 ?�을 찾아??SUDS �??�데?�트
+            # ?´ë¹ ?´ì ì°¾ì??SUDS ê°??ë°?´í¸
             if session_id in self._session_cache:
                 for turn in self._session_cache[session_id]:
                     if turn.turn_id == turn_id:
@@ -316,23 +316,23 @@ class MemorySystem:
                         elif measurement_type == "post":
                             turn.suds_post = suds_value
 
-                        # 변경된 ???�??                        self.save_conversation_turn(turn)
-                        logger.info(f"SUDS 기록 ?�료: {session_id}/{turn_id} {measurement_type}={suds_value}")
+                        # ë³ê²½ë ?????                        self.save_conversation_turn(turn)
+                        logger.info(f"SUDS ê¸°ë¡ ?ë£: {session_id}/{turn_id} {measurement_type}={suds_value}")
                         return
 
-            logger.warning(f"SUDS 기록 ?�패: ?�을 찾을 ???�음 {session_id}/{turn_id}")
+            logger.warning(f"SUDS ê¸°ë¡ ?¤í¨: ?´ì ì°¾ì ???ì {session_id}/{turn_id}")
 
         except Exception as e:
-            logger.error(f"SUDS 기록 ?�류: {e}")
+            logger.error(f"SUDS ê¸°ë¡ ?¤ë¥: {e}")
 
     def get_session_stats(self, session_id: str) -> Dict[str, Any]:
-        """?�션 ?�계 조회"""
+        """?¸ì ?µê³ ì¡°í"""
         try:
             turns = self._session_cache.get(session_id, [])
             if not turns:
                 return {"session_id": session_id, "total_turns": 0}
 
-            # 감정 분포
+            # ê°ì ë¶í¬
             emotions = [t.emotion_analysis.get('primary_emotion')
                        for t in turns
                        if t.emotion_analysis and t.emotion_analysis.get('primary_emotion')]
@@ -340,14 +340,14 @@ class MemorySystem:
             for emotion in emotions:
                 emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
 
-            # SUDS 변??            suds_measurements = []
+            # SUDS ë³??            suds_measurements = []
             for turn in turns:
                 if turn.suds_pre is not None:
                     suds_measurements.append(("pre", turn.suds_pre))
                 if turn.suds_post is not None:
                     suds_measurements.append(("post", turn.suds_post))
 
-            # ?�션 ?�행 ?�계
+            # ?¡ì ?¤í ?µê³
             action_counts = {}
             for turn in turns:
                 for action in turn.actions_executed:
@@ -366,35 +366,35 @@ class MemorySystem:
             }
 
         except Exception as e:
-            logger.error(f"?�션 ?�계 조회 ?�류: {e}")
+            logger.error(f"?¸ì ?µê³ ì¡°í ?¤ë¥: {e}")
             return {"session_id": session_id, "error": str(e)}
 
-# ?�역 메모�??�스???�스?�스 (?��????�턴)
+# ?ì ë©ëª¨ë¦??ì¤???¸ì¤?´ì¤ (?±ê????¨í´)
 _memory_system_instance: Optional[MemorySystem] = None
 
 def get_memory_system(data_dir: Path = None) -> MemorySystem:
-    """메모�??�스???��????�스?�스 반환"""
+    """ë©ëª¨ë¦??ì¤???±ê????¸ì¤?´ì¤ ë°í"""
     global _memory_system_instance
 
     if _memory_system_instance is None:
         if data_dir is None:
-            # 기본 ?�이???�렉?�리
+            # ê¸°ë³¸ ?°ì´???ë?ë¦¬
             data_dir = Path(__file__).resolve().parent.parent / "data"
         _memory_system_instance = MemorySystem(data_dir)
 
     return _memory_system_instance
 
-# ?�의 ?�수??def build_context(session_id: str, user_id: Optional[str] = None, k: int = 5) -> Dict[str, Any]:
-    """메모�??�스?�의 build_context ?�퍼"""
+# ?¸ì ?¨ì??def build_context(session_id: str, user_id: Optional[str] = None, k: int = 5) -> Dict[str, Any]:
+    """ë©ëª¨ë¦??ì¤?ì build_context ?í¼"""
     return get_memory_system().build_context(session_id, user_id, k)
 
 def update_running_summary(session_id: str) -> str:
-    """?�닝 ?�머�??�데?�트 ?�퍼"""
+    """?¬ë ?ë¨¸ë¦??ë°?´í¸ ?í¼"""
     return get_memory_system().update_running_summary(session_id)
 
 def save_turn(session_id: str, turn_id: str, user_message: str, ai_response: str,
               emotion_analysis: Dict[str, Any] = None, actions: List[Dict[str, Any]] = None):
-    """?�?????�???�의 ?�수"""
+    """?????????¸ì ?¨ì"""
     turn = ConversationTurn(
         turn_id=turn_id,
         session_id=session_id,
@@ -406,40 +406,40 @@ def save_turn(session_id: str, turn_id: str, user_message: str, ai_response: str
     get_memory_system().save_conversation_turn(turn)
 
 def _to_iso_utc(dt: Any) -> Optional[str]:
-    """datetime ??ISO8601 Z 직렬?? 변??불�? ??None."""
+    """datetime ??ISO8601 Z ì§ë¬?? ë³??ë¶ê? ??None."""
     if isinstance(dt, datetime):
         return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     elif isinstance(dt, str):
-        return dt  # ?��? 문자?�이�?그�?�?반환
+        return dt  # ?´ë? ë¬¸ì?´ì´ë©?ê·¸ë?ë¡?ë°í
     return None
 
 def _safe_summary_preview(text: Optional[str], n: int = 100) -> str:
-    """?�전???�스??미리보기 ?�성"""
+    """?ì???ì¤??ë¯¸ë¦¬ë³´ê¸° ?ì±"""
     s = text or ""
     return (s[:n] + "...") if len(s) > n else s
 
 def get_memory_stats(session_id: str) -> Dict[str, Any]:
-    """메모�??�스???�태 조회 (?�버깅용) - ?�전??강화 버전"""
+    """ë©ëª¨ë¦??ì¤???í ì¡°í (?ë²ê¹ì©) - ?ì??ê°í ë²ì"""
     from config.settings import get_settings
     settings = get_settings()
 
     ms = get_memory_system()
 
-    # 최근 ??가?�오�?(?�정�??�용 + ?�전 가??
+    # ìµê·¼ ??ê°?¸ì¤ê¸?(?¤ìê°??¬ì© + ?ì ê°??
     recent_turns: List[Any] = ms.get_recent_turns(session_id, k=settings.MEMORY_STATS_RECENT_K) or []
 
-    # summary ?�전 ?�근 (_summaries_cache???��? 구현?��?�?getattr 가??
+    # summary ?ì ?ê·¼ (_summaries_cache???´ë? êµ¬í?´ë?ë¡?getattr ê°??
     summary: Optional[str] = None
     summaries_cache = getattr(ms, "_summaries_cache", None)
     if isinstance(summaries_cache, dict):
-        summary = summaries_cache.get(session_id)  # ?�으�?None
+        summary = summaries_cache.get(session_id)  # ?ì¼ë©?None
 
-    # SUDS/감정 분포 집계
+    # SUDS/ê°ì ë¶í¬ ì§ê³
     suds_measurements: List[Dict[str, Any]] = []
     emotion_distribution: Dict[str, int] = {}
 
     for turn in recent_turns:
-        # SUDS ?�전 ?�근
+        # SUDS ?ì ?ê·¼
         if getattr(turn, "suds_pre", None) is not None:
             suds_measurements.append({
                 "type": "pre",
@@ -453,27 +453,27 @@ def get_memory_stats(session_id: str) -> Dict[str, Any]:
                 "turn_id": getattr(turn, "turn_id", None),
             })
 
-        # 감정 분포 ?�전 집계
+        # ê°ì ë¶í¬ ?ì ì§ê³
         ea = getattr(turn, "emotion_analysis", None) or {}
         emotion = ea.get("primary_emotion") if isinstance(ea, dict) else None
         if isinstance(emotion, str) and emotion:
             emotion_distribution[emotion] = emotion_distribution.get(emotion, 0) + 1
 
-    # 메모�??�일 ?�이�?(?�전 가??
+    # ë©ëª¨ë¦??ì¼ ?¬ì´ì¦?(?ì ê°??
     mem_file_size = 0
     mem_file = getattr(ms, "memory_file", None)
     try:
         if mem_file and hasattr(mem_file, "exists") and mem_file.exists():
             mem_file_size = mem_file.stat().st_size
     except Exception:
-        mem_file_size = 0  # ?�일 ?�근 ?�패 ??0?�로
+        mem_file_size = 0  # ?ì¼ ?ê·¼ ?¤í¨ ??0?¼ë¡
 
-    # 마�?�????�간 ISO8601 (?�전 변??
+    # ë§ì?ë§????ê° ISO8601 (?ì ë³??
     last_ts = None
     if recent_turns:
         last_ts = _to_iso_utc(getattr(recent_turns[-1], "timestamp", None))
 
-    # summary 길이/미리보기 (None 방어)
+    # summary ê¸¸ì´/ë¯¸ë¦¬ë³´ê¸° (None ë°©ì´)
     summary_text = summary or ""
     summary_len = len(summary_text)
 

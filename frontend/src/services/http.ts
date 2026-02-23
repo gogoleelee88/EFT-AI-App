@@ -1,37 +1,21 @@
-import { API_CONFIG } from '@/config/api';
+import { isApiPath, resolveBackendUrl as resolveBackendUrlFromConfig } from '@/config/api';
 
-const shouldProxyToBackend = (path: string): boolean => {
-  return (
-    path.startsWith('/api') ||
-    path.startsWith('/v1') ||
-    path.startsWith('/suds') ||
-    path === '/health' ||
-    path === '/version' ||
-    path.startsWith('/health/') ||
-    path.startsWith('/version/') ||
-    path.startsWith('/ws/')
-  );
+const toAbsoluteUrl = (url: string): string => {
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  if (!isApiPath(url)) {
+    return url;
+  }
+  return resolveBackendUrlFromConfig(url);
 };
 
 export function isBackendApiPath(path: string): boolean {
-  return shouldProxyToBackend(path);
+  return isApiPath(path);
 }
 
-export function resolveBackendUrl(path: string, apiBase: string = API_CONFIG.API_BASE_URL): string {
-  if (!apiBase || !path.startsWith('/')) {
-    return path;
-  }
-  if (!apiBase.startsWith('http://') && !apiBase.startsWith('https://')) {
-    return path;
-  }
-  if (!shouldProxyToBackend(path)) {
-    return path;
-  }
-  const base = apiBase.replace(/\/+$/, '');
-  if (!base) {
-    return path;
-  }
-  return `${base}${path}`;
+export function resolveBackendUrl(path: string): string {
+  return toAbsoluteUrl(path);
 }
 
 export function createApiHeaders(apiKey?: string): Headers {

@@ -9,3 +9,4 @@
 - [ ] `scripts/verify_suds_api.sh`
 - [ ] Browser SUDS submission navigates to `/eftar`
 - [ ] Additional checks (list)
+- [ ] Vercel preview checks passed (`Vercel – eft-ai-app-frontend*`)

@@ -10,16 +10,16 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from config.settings import get_settings
-from models.action_tokens import TokenParser  # keep
+from backend.models.action_tokens import TokenParser  # keep
 from services.emotion_analyzer import get_emotion_analyzer  # keep
 from services.llm_client import LLMClient
 from utils.action_builder import build_actions  # keep
 from services.chatgpt_service import get_openai_client
 
-#==== 공개 API ?�정??+ ?�출부 마이그레?�션 ???�거 ??�� ?�요 
+#==== ê³µê° API ?¬ì??+ ?¸ì¶ë¶ ë§ì´ê·¸ë?´ì ???´ê±° ?? ?ì 
 
 def _build_system_prompt_for_compare(user_message, session_state, tier: str | None = None) -> str:
-    """[?�시 강제] vLLM ?�스???�정?? ??�� ?��? 빌더(14???�키�?�??�용"""
+    """[?ì ê°ì] vLLM ?ì¤???ì?? ?? ?´ë? ë¹ë(14???¤í¤ë§?ë§??¬ì©"""
     try:
         return build_checklist_prompt(user_message, session_state)
     except Exception as e:
@@ -27,7 +27,7 @@ def _build_system_prompt_for_compare(user_message, session_state, tier: str | No
         return "You are MoodTalk EFT assistant. Keep responses concise and safe."
 
 
-#====공개 API ?�정??+ ?�출부 마이그레?�션 ???�거 ??�� ?�요====
+#====ê³µê° API ?¬ì??+ ?¸ì¶ë¶ ë§ì´ê·¸ë?´ì ???´ê±° ?? ?ì====
 
 logger = logging.getLogger(__name__)
 logger.critical("[V4 DEBUG] Context-Aware compare.py is running!")
@@ -70,14 +70,14 @@ class AIResponse(BaseModel):
 session_storage: Dict[str, SessionState] = {}
 
 INTAKE_QUESTIONS = [
-    {"key": "situation", "question": "?�떤 ?�황?�서 그런 감정???�셨?�요?"},
-    {"key": "thought", "question": "그때 ?�떤 ?�각??반복?�셨?�요?"},
-    {"key": "physical_sensation", "question": "몸에?�는 ?�떤 ?�호가 ?�껴지?�어??"},
-    {"key": "reaction", "question": "�?감정???�었?????�떻�?반응?�셨?�요?"},
-    {"key": "environment", "question": "?�시 지�??�?�에 집중?????�는 ?�안??공간??계신가??"},
-    {"key": "time_commitment", "question": "충분???�간??가지�??�?�하??것이 괜찮?�신가??"},
-    {"key": "elaboration", "question": "�??�황???�??조금 ??말�??�주?????�나??"},
-    {"key": "intensity", "question": "지�?�?감정??강도???�마???�나??"},
+    {"key": "situation", "question": "?´ë¤ ?í©?ì ê·¸ë° ê°ì???ì¨?ì?"},
+    {"key": "thought", "question": "ê·¸ë ?´ë¤ ?ê°??ë°ë³µ?ì¨?ì?"},
+    {"key": "physical_sensation", "question": "ëª¸ì?ë ?´ë¤ ?í¸ê° ?ê»´ì§?¨ì´??"},
+    {"key": "reaction", "question": "ê·?ê°ì???¤ì?????´ë»ê²?ë°ì?ì¨?ì?"},
+    {"key": "environment", "question": "?¹ì ì§ê¸???ì ì§ì¤?????ë ?¸ì??ê³µê°??ê³ìê°??"},
+    {"key": "time_commitment", "question": "ì¶©ë¶???ê°??ê°ì§ê³???í??ê²ì´ ê´ì°®?¼ìê°??"},
+    {"key": "elaboration", "question": "ê·??í©?????ì¡°ê¸ ??ë§ì??´ì£¼?????ë??"},
+    {"key": "intensity", "question": "ì§ê¸?ê·?ê°ì??ê°ë???¼ë§???ë??"},
 ]
 
 def create_new_session_state() -> SessionState:
@@ -105,9 +105,9 @@ You are a highly empathetic and intelligent AI counselor. Your primary goal is t
 
 3.  **(Intelligent Re-asking)** If you need to ask about an item you have asked about before (`ask_count > 0`), YOU MUST NOT REPEAT THE SAME QUESTION. Acknowledge the user's previous message and rephrase the question in a different, gentler way.
 
-4.  **(Skip Proposal)** If an item's `ask_count` reaches 2 (meaning you are about to ask for the third time), DO NOT ask the question. Instead, you MUST ask for permission to skip, for example: "??질문???�하기�? ?�드??�?같아?? ?�음?�로 ?�어가??괜찮?�까??"
+4.  **(Skip Proposal)** If an item's `ask_count` reaches 2 (meaning you are about to ask for the third time), DO NOT ask the question. Instead, you MUST ask for permission to skip, for example: "??ì§ë¬¸???µíê¸°ê? ?ë??ê²?ê°ì?? ?¤ì?¼ë¡ ?ì´ê°??ê´ì°®?ê¹??"
 
-5.  **(Skip Confirmation)** If the user's current message is a "yes" in response to your previous skip proposal, you MUST update the `value` of that item with a placeholder pronoun (e.g., "???�낌", "�??�황") and then proceed to ask about the *next* unanswered item.
+5.  **(Skip Confirmation)** If the user's current message is a "yes" in response to your previous skip proposal, you MUST update the `value` of that item with a placeholder pronoun (e.g., "???ë", "ê·??í©") and then proceed to ask about the *next* unanswered item.
 
 6.  **(JSON Output)** You MUST wrap your entire response in a single JSON object that strictly follows this format. Do not add any text outside this JSON object.
     ```json
@@ -131,17 +131,17 @@ Now, perform your mission based on the user's message and the current checklist 
 
 
 INTAKE_QUESTIONS = [
-    {"key": "core_emotion",        "question": "지�?가???�게 ?�껴지???�심 감정?� 무엇?��??? 말하�??�드?�면 �?기분,�?감정?�라�??�도 ?�요."},
-    {"key": "situation_context",   "question": "�?감정?????�황???�려주실?�요?"},
-    {"key": "automatic_thought",   "question": "그때 ?�오�??�각?� 무엇?�었?�요?"},
-    {"key": "physical_sensation",  "question": "몸에?�는 ?�떤 ?�체 감각(?�근거림, 긴장 ?????�껴졌나??"},
-    {"key": "intensity",           "question": "지�?감정??강도??0~10 �??�느 ?�도?��???"},
-    {"key": "environment",         "question": "?�재 ?�??중에 주�? ?�경(?�소/?�람/?�약)?� 명상??집중?????�는 ?�경?��???"},
-    {"key": "behavioral_reaction", "question": "그때 ?�떻�?반응?�셨?�요? (?�동/?�정/?�피 ?? ?�떤 ?�동�?반응???�유가 ?�을?�니 괜찮?�요. "},
-    {"key": "behavior_metric",     "question": "최근 ?�면/?�동/?�박 ??추적 지?��? ?�다�?간단???�려주세??"},
-    {"key": "coping_attempt",      "question": "�?기분�??�황?�서 벗어?�려�??�떤 ?�동???�나?? (?�흡, ?�책, ?�리 ??"},
-    {"key": "available_time",      "question": "지�?기분?�환???�해 ?�용가?�한 ?�간?� ?�마???�나?? (�??�위�??�??"},
-    {"key": "immediate_goal",      "question": "?�번 ?�?�에??지�?기분�??�각?�서 벗어?? ?�떤 ?�태가 ?�고 ?�으?��???"},
+    {"key": "core_emotion",        "question": "ì§ê¸?ê°???¬ê² ?ê»´ì§???µì¬ ê°ì? ë¬´ì?¸ê??? ë§íê¸??ë?ë©´ ê·?ê¸°ë¶,ê·?ê°ì?´ë¼ê³??´ë ?ì."},
+    {"key": "situation_context",   "question": "ê·?ê°ì?????í©???ë¤ì£¼ì¤?ì?"},
+    {"key": "automatic_thought",   "question": "ê·¸ë ?ì¤ë¥??ê°? ë¬´ì?´ì?ì?"},
+    {"key": "physical_sensation",  "question": "ëª¸ì?ë ?´ë¤ ?ì²´ ê°ê°(?ê·¼ê±°ë¦¼, ê¸´ì¥ ?????ê»´ì¡ë??"},
+    {"key": "intensity",           "question": "ì§ê¸?ê°ì??ê°ë??0~10 ì¤??´ë ?ë?¸ê???"},
+    {"key": "environment",         "question": "?ì¬ ???ì¤ì ì£¼ë? ?ê²½(?¥ì/?¬ë/?ì½)? ëªì??ì§ì¤?????ë ?ê²½?¸ê???"},
+    {"key": "behavioral_reaction", "question": "ê·¸ë ?´ë»ê²?ë°ì?ì¨?ì? (?ë/?ì/?í¼ ?? ?´ë¤ ?ëê³?ë°ì???´ìê° ?ì?ë ê´ì°®?ì. "},
+    {"key": "behavior_metric",     "question": "ìµê·¼ ?ë©´/?ë/?¬ë° ??ì¶ì ì§?ê? ?ë¤ë©?ê°ë¨???ë¤ì£¼ì¸??"},
+    {"key": "coping_attempt",      "question": "ê·?ê¸°ë¶ê³??í©?ì ë²ì´?ë¤ê³??´ë¤ ?ë???ë?? (?¸í¡, ?°ì±, ?ë¦¬ ??"},
+    {"key": "available_time",      "question": "ì§ê¸?ê¸°ë¶?í???í´ ?¬ì©ê°?¥í ?ê°? ?¼ë§???ë?? (ë¶??¨ìë¡????"},
+    {"key": "immediate_goal",      "question": "?´ë² ??ì??ì§ê¸?ê¸°ë¶ê³??ê°?ì ë²ì´?? ?´ë¤ ?íê° ?ê³ ?¶ì¼?ê???"},
 ]
 
 def create_new_session_state() -> SessionState:
@@ -359,5 +359,6 @@ async def compare(req: CompareRequest, response: Response, request: Request) -> 
 
     response.headers["Cache-Control"] = "no-store"
     return final_result
+
 
 

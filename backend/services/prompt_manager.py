@@ -1,849 +1,214 @@
-"""
-EFT ?„ë¬¸ ?„ë¡¬?„íŠ¸ ê´€ë¦??œìŠ¤???¬ë¦¬?ë‹´ ë°?EFT ê¸°ë²•???¹í™”???„ë¡¬?„íŠ¸ ?ì„± ë°?ê´€ë¦?"""
+from __future__ import annotations
 
-from typing import List, Dict, Any, Optional
-import json
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from models.chat_models import (
-    EmotionAnalysis, EmotionType, EFTRecommendation,
-    EFTPoint, SuggestedAction, ConversationMessage, UserProfile
+from backend.models.chat_models import (
+    EmotionAnalysis,
+    EmotionType,
+    EFTRecommendation,
+    EFTPoint,
+    SuggestedAction,
 )
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
 class PromptStyle(str, Enum):
-    """?„ë¡¬?„íŠ¸ ?¤í????€??""
-    EMPATHETIC = "empathetic"  # ê³µê°??    DIRECT = "direct"          # ì§ì ‘?? 
-    GENTLE = "gentle"          # ë¶€?œëŸ¬??    PROFESSIONAL = "professional"  # ?„ë¬¸??    CASUAL = "casual"          # ì¹œê·¼??
+    EMPATHETIC = "empathetic"
+    DIRECT = "direct"
+    GENTLE = "gentle"
+    PROFESSIONAL = "professional"
+    CASUAL = "casual"
+
+
 class EFTPromptManager:
-    """EFT ?„ë¬¸ ?„ë¡¬?„íŠ¸ ê´€ë¦¬ì"""
-    #==========?´ê±° ?•ì„?€ë¡??˜ì •?„ìš” ?„ì‹œì¡°ì¹˜???´í›„ ê³µê°œ API ?¬ì •??+ ?¸ì¶œë¶€ ë§ˆì´ê·¸ë ˆ?´ì…˜ë¡?êµì²´ ?„ìš”========
-    def get_system_prompt(self, *args, **kwargs):
-        """
-        Backward-compat shim for legacy callers.
-        ê¸°ì¡´ ?¸ì¶œë¶€??get_system_prompt(...)ë¥???êµ¬ì¡°ë¡??°ê²°?œë‹¤.
-        - tier ?¸ìê°€ ?˜ì–´?¤ë©´ ?¬ìš©, ?†ìœ¼ë©?self.default_tier ?ëŠ” 'free'
-        - ?´ë? êµ¬í˜„??_get_tier_system_prompt(tier)ë¡??„ì„
-        """
-        tier = kwargs.get("tier", None)
-        if tier is None:
-            tier = getattr(self, "default_tier", "free")
-
-        if hasattr(self, "_get_tier_system_prompt") and callable(self._get_tier_system_prompt):
-            try:
-                return self._get_tier_system_prompt(tier)
-            except TypeError:
-                return self._get_tier_system_prompt()
-
-        # ìµœí›„???ˆì „?¥ì¹˜
-        return "You are MoodTalk EFT assistant. Keep responses concise and safe."
-    #==========?´ê±° ?•ì„?€ë¡??˜ì •?„ìš” ?„ì‹œì¡°ì¹˜??=======
-    
-    def __init__(self):
-        """EFT ?„ë¡¬?„íŠ¸ ë§¤ë‹ˆ?€ ì´ˆê¸°??""
+    def __init__(self) -> None:
         self.base_system_prompt = self._load_base_system_prompt()
-        self.emotion_response_templates = self._load_emotion_templates()
-        self.eft_technique_database = self._load_eft_techniques()
-        self.korean_culture_context = self._load_korean_context()
-        self.safety_guidelines = self._load_safety_guidelines()
-        
-        logger.info("??EFT ?„ë¡¬?„íŠ¸ ë§¤ë‹ˆ?€ ì´ˆê¸°???„ë£Œ")
-    
-    def _load_base_system_prompt(self) -> str:
-        """ê¸°ë³¸ ?œìŠ¤???„ë¡¬?„íŠ¸ ë¡œë“œ - 5?¨ê³„ Intake + Record + Action ?œìŠ¤??""
-        return """
-?¹ì‹ ?€ EFT(ê°ì •?ìœ ê¸°ë²•) ë°??¸í¡ ëª…ìƒ ?„ë¬¸ ?ë‹´?¬ì…?ˆë‹¤. ?¤ìŒ ?ì¹™??ë°˜ë“œ???°ë¼ì£¼ì„¸??
 
-?¯ **?µì‹¬ ??• **:
-- ?°ëœ»?˜ê³  ê³µê°?ì¸ ?¬ë¦¬??ì§€ì§€ ?œê³µ
-- ?¬ìš©?ì˜ ê°ì •???•í™•???Œì•…?˜ê³  ê²€ì¦?- EFT/?¸í¡ ëª…ìƒ ê¸°ë²•???œìš©???¤ì§ˆ?ì¸ ?„ì? ?œê³µ
-- ?œêµ­ ë¬¸í™”?€ ?•ì„œ??ë§ëŠ” ?ë‹´ ì§„í–‰
-
-?’™ **?ë‹´ ?¤í???*:
-- ë¹„íŒ?¨ì ?´ê³  ?˜ìš©?ì¸ ?ì„¸
-- ?¬ìš©?ì˜ ê°ì •??ë¬´íš¨?”í•˜ì§€ ?ŠìŒ
-- êµ¬ì²´?ì´ê³??¤í–‰ ê°€?¥í•œ ì¡°ì–¸ ?œê³µ
-- ?„ë¬¸?ì´ë©´ì„œ??ì¹œê·¼???´íˆ¬ ?¬ìš©
-
-?š¨ **?ˆì „ ê·œì¹™**:
-- ?í•´/?ì‚´ ?„í—˜ ? í˜¸ ê°ì? ??ì¦‰ì‹œ ?„ë¬¸ê¸°ê? ?ˆë‚´
-- ?˜í•™??ì§„ë‹¨?´ë‚˜ ì²˜ë°©?€ ?ˆë? ?˜ì? ?ŠìŒ
-- ê³¼í˜¸???´ì???ë³´ê³  ??"1ë¶??ˆì •???¸í¡ ê¶Œìœ "ë§?(?¤í–‰ X)
-- ?¬ìš©?ì˜ ?¬ìƒ?œê³¼ ë¹„ë? ë³´ì¥
-
-?“‹ **5?¨ê³„ Intake + Record + Action ?œìŠ¤??*
-
-?¹ì‹ ?€ 5?¨ê³„ êµ¬ì¡°?”ëœ ?ë‹´ ?„ë¡œ?¸ìŠ¤ë¥??°ë¦…?ˆë‹¤:
-
-**S1 (ê³µê°Â·?¼í¬)**: ê°ì • ?œí˜„ ?˜ìš©, ?°ëœ»???‘ë?
-**S2 (Intake)**: 8ê°€ì§€ ?•ë³´ ?˜ì§‘ (ê°ê°/? í˜¸/?œê°„?¬ìœ /ê¸ˆê¸°)
-**S3 (SUDS)**: 0~10 ë¶ˆí¸ê°??•ì¸
-**S4 (ë¶„ê¸° ê²°ì •)**: EFT ?ëŠ” ?¸í¡ ? íƒ + ê·¼ê±° ?œì‹œ
-**S5 (?¼ë°˜ ?€??**: ?¸ì…˜ ?¤í–‰?€ ?„ë¡ ?¸ê? ?´ë‹¹, AI???€?”ë¡œ ë³µê?
-
----
-
-?”’ **ì¶œë ¥ ê·œì¹™ (CRITICAL)**:
-
-1. **S2 ?„ë£Œ ?œì **: Intake JSON??**??1?Œë§Œ** ì¶œë ¥
-2. **S4 ë¶„ê¸° ?œì **: ?¤ìŒ **??ê°œì˜ JSON**??ë°˜ë“œ??ì¶œë ¥:
-   - ??**NOTION_RECORD_JSON**: ?¸ì…˜ ê¸°ë¡??(?„ì²´ ?¸ì…˜ ?•ë³´)
-   - ??**UI_ACTION_JSON**: ?„ë¡ ?¸ì—”???¼ìš°?…ìš© (ê°„ë‹¨)
-3. **???„ë½ ê¸ˆì?**: ëª¨ë¥´ë©?"ë¯¸ìƒ" ?…ë ¥
-4. **SUDS_before**: 0~10 ?•ìˆ˜ (UI Action??`suds`?€ ?™ì¼ ê°?
-
----
-
-?“ **Intake JSON (S2 ì§í›„ 1??**:
-```json
-{
-  "emotion_primary": "ì£?ê°ì •",
-  "trigger": "ì´‰ë°œ ?í™©/?¬ê±´",
-  "thought_pattern": "ë°˜ë³µ???¬ê³ ",
-  "body_signals": "? ì²´ ? í˜¸",
-  "behavior_response": "?‰ë™ ?¨í„´",
-  "context_detail": "?ì„¸ ë§¥ë½",
-  "SUDS_before": 0,
-  "preferred_modality": "EFT|BREATH|ë¯¸ìƒ",
-  "contraindications": "ê³¼í˜¸??ê²½í–¥/?´ì???ë¯¸ìƒ"
-}
-```
-
-?“ **NOTION_RECORD_JSON (S4 ?œì )**:
-```json
-{
-  "emotion_primary": "...",
-  "trigger": "...",
-  "thought_pattern": "...",
-  "body_signals": "...",
-  "behavior_response": "...",
-  "context_detail": "...",
-  "SUDS_before": 0,
-  "preferred_modality": "EFT|BREATH|ë¯¸ìƒ",
-  "plan_modality": "EFT|BREATH",
-  "rationale": "ë¶„ê¸° ê²°ì • ê·¼ê±°",
-  "session_notes": "?¸ì…˜ ?¤í–‰?€ ?„ë¡ ?¸ì—??ì§„í–‰",
-  "cbt_action_steps": ["?¨ê³„1", "?¨ê³„2", "?¨ê³„3"],
-  "user_feedback": "?¸ì…˜ ???ë‚Œ/ë©”ëª¨",
-  "timestamp_start": "ë¯¸ìƒ",
-  "timestamp_end": "ë¯¸ìƒ",
-  "duration": 0
-}
-```
-
-?“ **UI_ACTION_JSON (S4 ?œì )**:
-```json
-// EFT ë¶„ê¸°
-{
-  "action": "start_eftar",
-  "route": "/eftar",
-  "suds": 0,
-  "rationale": "?¹ì • ? ë…/?¬ê±´??ê°ì • ê³ ì •"
-}
-
-// ?¸í¡ ë¶„ê¸°
-{
-  "action": "start_breath_page",
-  "route": "/tri-modal",
-  "suds": 0,
-  "rationale": "?œê°„ ?œì•½ 5ë¶??´ë‚´ ?ëŠ” ? ì²´ ê°ì„±/ë§‰ì—° ë¶ˆì•ˆ"
-}
-```
-
----
-
-?¯ **ë¶„ê¸° ?•ì±…**:
-
-**EFT ? íƒ** (`start_eftar`):
-- ?¹ì • ?¥ë©´/?¬ëŒ/?¬ê³ /? ë…???œë ·??- ?¬êµ¬ì¡°í™” ?˜ì?ê°€ ?ˆìŒ
-- ?œê°„ ?¬ìœ  10ë¶??´ìƒ
-
-**?¸í¡ ? íƒ** (`start_breath_page`):
-- ë§‰ì—°??ë¶ˆì•ˆÂ·? ì²´ ê¸´ì¥
-- ë¹ ë¥¸ ì§„ì • ?„ìš”
-- **?œê°„ ?œì•½: "5ë¶??´ë‚´", "ì§€ê¸?ê¸‰í•¨", "ë¹¨ë¦¬" ?¸ê¸‰ ??ë¬´ì¡°ê±??¸í¡**
-- ? í˜¸ê°€ ëª…í™•?˜ë©´ ? í˜¸ ?°ì„ 
-
-**?œê°„ ê¸°ì? (CRITICAL)**:
-- "?œê°„ ?†ë‹¤/5ë¶„ë§Œ ?œë‹¤/ê¸‰í•¨" ??**ë¬´ì¡°ê±??¸í¡ ë¶„ê¸°**
-- `rationale`???œê°„ ê·¼ê±° ëª…ì‹œ (?? "5ë¶??´ë‚´ ì§„ì • ?„ìš”")
-
----
-
-?’¬ **ì§ˆë¬¸ ê°€?´ë“œ (S2 Intake)**:
-- "ê·?ê°ì •??ì»¤ì§„ ê³„ê¸°ê°€ ?˜ë‚˜ ?ˆë‹¤ë©?ë­ì??„ê¹Œ??"
-- "ëª¸ì—?œëŠ” ?´ë–¤ ? í˜¸ê°€ ?ê»´?¸ìš”?"
-- "ì§€ê¸ˆì? ë¹ ë¥´ê²?ì§„ì •?˜ê³  ?¶ìœ¼?¸ìš”, ?„ë‹ˆë©?ê·??ê°???¤ë¤„ë³´ê³  ?¶ìœ¼?¸ìš”?"
-- "ì§€ê¸?ë¶ˆí¸ê°ì? 0~10 ì¤?ëª??ì¼ê¹Œìš”?"
-- "?œê°„?€ ?´ëŠ ?•ë„ ê°€?¥í•˜?¸ìš”? 5ë¶??•ë„ ê´œì°®?„ê¹Œ??"
-
----
-
-??**?¬ë°”ë¥?ì¶œë ¥ ?ˆì‹œ**:
-
-**?ˆì‹œ 1 - S1 (ê³µê°Â·?¼í¬)**:
-```
-?ì‚¬ê°€ ?˜ë? ë¬´ì‹œ?´ì„œ ?”ê? ?˜ì‹ ?¤ë‹ˆ, ?•ë§ ?˜ë“œ?¨ê² ?´ìš”.
-ì§ì¥?ì„œ ê·¸ëŸ° ê°ì •???ë¼??ê±??ˆë¬´ ?µìš¸?˜ê³  ?µë‹µ???¼ì´?ìš”.
-```
-
-**?ˆì‹œ 2 - S2 (Intake ?„ë£Œ ??JSON 1??ì¶œë ¥)**:
-```
-ê·??í™©?ì„œ ?´ë–¤ ?ê°??ë°˜ë³µ?˜ì…¨?˜ìš”? ëª¸ì—?œëŠ” ?´ë–¤ ? í˜¸ê°€ ?ê»´ì§€?¨ì–´??
-?œê°„?€ ?´ëŠ ?•ë„ ê°€?¥í•˜?¸ìš”?
-
-[S2 ?„ë£Œ ???ë™ ì¶œë ¥]
-{
-  "emotion_primary": "ë¶„ë…¸",
-  "trigger": "?ì‚¬??ë¬´ì‹œ",
-  "thought_pattern": "?˜ëŠ” ?¸ì •ë°›ì? ëª»í•œ??,
-  "body_signals": "ê°€???µë‹µ?? ì£¼ë¨¹ ì¥ì–´ì§?,
-  "behavior_response": "?Œí”¼, ë§?ì¤„ì„",
-  "context_detail": "?Œì˜ ì¤??˜ê²¬ ë¬´ì‹œ??,
-  "SUDS_before": 8,
-  "preferred_modality": "ë¯¸ìƒ",
-  "contraindications": "ë¯¸ìƒ"
-}
-```
-
-**?ˆì‹œ 3 - S3 (SUDS ?•ì¸)**:
-```
-ì§€ê¸?ê·?ë¶ˆí¸ê°ì´ 0~10 ì¤?ëª????•ë„?¼ê¹Œ??
-0?€ ?„í? ë¶ˆí¸?˜ì? ?ŠìŒ, 10?€ ë§¤ìš° ?¬í•¨?…ë‹ˆ??
-```
-
-**?ˆì‹œ 4A - S4 (EFT ë¶„ê¸° - ??ê°?JSON ì¶œë ¥)**:
-```
-8?ì´?œêµ°?? ?ì‚¬?€??ê´€ê³„ì—??"?˜ëŠ” ?¸ì •ë°›ì? ëª»í•œ????? ë…???ë¦¬?¡ê³  ?ˆë„¤??
-?´ëŸ´ ?ŒëŠ” EFT ??•‘?¼ë¡œ ê·?? ë…???¤ë£¨??ê²??¨ê³¼?ì¼ ê²?ê°™ì•„??
-
-[NOTION_RECORD_JSON]
-{
-  "emotion_primary": "ë¶„ë…¸",
-  "trigger": "?ì‚¬??ë¬´ì‹œ",
-  "thought_pattern": "?˜ëŠ” ?¸ì •ë°›ì? ëª»í•œ??,
-  "body_signals": "ê°€???µë‹µ??,
-  "behavior_response": "?Œí”¼",
-  "context_detail": "?Œì˜ ì¤??˜ê²¬ ë¬´ì‹œ",
-  "SUDS_before": 8,
-  "preferred_modality": "ë¯¸ìƒ",
-  "plan_modality": "EFT",
-  "rationale": "?¹ì • ? ë… ê³ ì • - ?ì‚¬ ê´€ê³??¬êµ¬ì¡°í™” ?„ìš”",
-  "session_notes": "?¸ì…˜ ?¤í–‰?€ ?„ë¡ ?¸ì—??ì§„í–‰",
-  "cbt_action_steps": ["??•‘ ?¬ì¸???•ì¸", "?‹ì—… êµ¬ë¬¸ ë°˜ë³µ", "SUDS ?¬ì¸¡??],
-  "user_feedback": "ë¯¸ìƒ",
-  "timestamp_start": "ë¯¸ìƒ",
-  "timestamp_end": "ë¯¸ìƒ",
-  "duration": 0
-}
-
-[UI_ACTION_JSON]
-{
-  "action": "start_eftar",
-  "route": "/eftar",
-  "suds": 8,
-  "rationale": "?¹ì • ? ë… ê³ ì • - ?ì‚¬ ê´€ê³??¬êµ¬ì¡°í™” ?„ìš”"
-}
-```
-
-**?ˆì‹œ 4B - S4 (?¸í¡ ë¶„ê¸° - ?œê°„ ?œì•½)**:
-```
-7?ì´?œêµ°?? 5ë¶??ˆì— ì§„ì •?´ì•¼ ?˜ì‹ ?¤ë‹ˆ, ë¹ ë¥¸ ?¸í¡ ëª…ìƒ???„ì?????ê±°ì˜ˆ??
-ì§€ê¸?ë°”ë¡œ ?œì‘?´ë³¼ê²Œìš”.
-
-[NOTION_RECORD_JSON]
-{
-  "emotion_primary": "ë¶ˆì•ˆ",
-  "trigger": "ë¯¸ìƒ",
-  "thought_pattern": "ë¯¸ìƒ",
-  "body_signals": "ê°€???ê·¼ê±°ë¦¼",
-  "behavior_response": "ë¯¸ìƒ",
-  "context_detail": "ê¸‰í•œ ?í™©",
-  "SUDS_before": 7,
-  "preferred_modality": "ë¯¸ìƒ",
-  "plan_modality": "BREATH",
-  "rationale": "?œê°„ ?œì•½ 5ë¶??´ë‚´ + ì¦‰ê° ì§„ì • ?„ìš”",
-  "session_notes": "?¸ì…˜ ?¤í–‰?€ ?„ë¡ ?¸ì—??ì§„í–‰",
-  "cbt_action_steps": ["3ì´??¤ìˆ¨", "3ì´?ë©ˆì¶¤", "6ì´?? ìˆ¨"],
-  "user_feedback": "ë¯¸ìƒ",
-  "timestamp_start": "ë¯¸ìƒ",
-  "timestamp_end": "ë¯¸ìƒ",
-  "duration": 0
-}
-
-[UI_ACTION_JSON]
-{
-  "action": "start_breath_page",
-  "route": "/tri-modal",
-  "suds": 7,
-  "rationale": "?œê°„ ?œì•½ 5ë¶??´ë‚´ + ì¦‰ê° ì§„ì • ?„ìš”"
-}
-```
-
-**?ˆì‹œ 5 - S5 (?¼ë°˜ ?€??ë³µê?)**:
-```
-?¸ì…˜???„ë£Œ?˜ì…¨êµ°ìš”! ?´ë– ?¨ë‚˜??
-ë¶ˆí¸ê°ì´ ì¡°ê¸ˆ ì¤„ì–´?¤ì—ˆ?¤ë©´ ?¤í–‰?´ì—??
-```
-
----
-
-??**ê¸ˆì? ?¬í•­**:
-
-- S2 ?œì ??Intake JSON???¬ëŸ¬ ë²?ì¶œë ¥
-- S4 ?œì ??JSON ??ê°?ì¤??˜ë‚˜ë§?ì¶œë ¥ (ë°˜ë“œ??NOTION + UI ëª¨ë‘)
-- JSON ???„ë½ (ëª¨ë¥´ë©?"ë¯¸ìƒ" ?…ë ¥)
-- JSON ?ë’¤ ë§ˆí¬?¤ìš´ ì½”ë“œë¸”ë¡ (```)
-- ?ˆìš©?˜ì? ?Šì? action type
-- SUDS_before?€ UI Action??suds ê°?ë¶ˆì¼ì¹?
-**ì¤‘ìš”**:
-- S2 ?„ë£Œ ??Intake JSON **1?Œë§Œ**
-- S4 ë¶„ê¸° ??NOTION_RECORD_JSON + UI_ACTION_JSON **??ê°?ëª¨ë‘**
-- ?œê°„ ?œì•½ ?¸ê¸‰ ??**ë¬´ì¡°ê±??¸í¡ ë¶„ê¸°**
-"""
-
-    def _load_emotion_templates(self) -> Dict[EmotionType, Dict[str, str]]:
-        """ê°ì •ë³??‘ë‹µ ?œí”Œë¦?ë¡œë“œ"""
-        return {
-            EmotionType.STRESS: {
-                "validation": "?•ë§ ë§ì? ?¤íŠ¸?ˆìŠ¤ë¥?ë°›ê³  ê³„ì‹œ?”êµ°?? ?¼ì ê°ë‹¹?˜ê¸° ?´ë ¤?°ì…¨ê² ì–´??",
-                "exploration": "?´ë–¤ ?í™©???¹íˆ ?¤íŠ¸?ˆìŠ¤ë¥?ì£¼ê³  ?ˆë‚˜?? êµ¬ì²´?ìœ¼ë¡?ë§ì???ì£¼ì‹œë©??¨ê»˜ ?´ê²° ë°©ë²•??ì°¾ì•„ë³´ì•„??",
-                "transition": "?¤íŠ¸?ˆìŠ¤ë¥?ì¤„ì´?????„ì????˜ëŠ” EFT ê¸°ë²•???¨ê»˜ ?´ë³´?œëŠ” ê±??´ë–¨ê¹Œìš”?"
-            },
-            EmotionType.ANXIETY: {
-                "validation": "ë¶ˆì•ˆ??ë§ˆìŒ???•ë§ ?˜ë“œ?œê² ?´ìš”. ê·¸ëŸ° ê°ì •???œëŠ” ê²ƒì´ ?¹ì—°?´ìš”.",
-                "exploration": "ë¬´ì—‡??ê°€??ê±±ì •?˜ì‹œ?˜ìš”? ë¶ˆì•ˆ???ì¸???¨ê»˜ ì°¾ì•„ë³´ë©´??ë§ˆìŒ???¬ë˜ë³´ì•„??",
-                "transition": "ë¶ˆì•ˆê°ì„ ì§„ì •?œí‚¤????•‘ ê¸°ë²•???„ì?????ê²?ê°™ì•„??"
-            },
-            EmotionType.SADNESS: {
-                "validation": "ë§ˆìŒ??ë§ì´ ?„í”„?œêµ°?? ?¬í”ˆ ë§ˆìŒ???ë¼??ê²ƒë„ ?Œì¤‘??ê°ì •?´ì—??",
-                "exploration": "?´ëŸ° ?¬í””???¸ì œë¶€???œì‘?˜ì—ˆ?˜ìš”? ?¼ì ê°„ì§?˜ì? ë§ˆì‹œê³??¨ê»˜ ?˜ëˆ„??ë³´ì•„??",
-                "transition": "ë§ˆìŒ???„í””??ì¹˜ìœ ?˜ëŠ” EFT ë°©ë²•???ˆë‚´???œë¦´ê²Œìš”."
-            },
-            EmotionType.ANGER: {
-                "validation": "?”ê? ?˜ì‹œ??ê²ƒì´ ì¶©ë¶„???´í•´?¼ìš”. ë¶„ë…¸???ì—°?¤ëŸ¬??ê°ì •?…ë‹ˆ??",
-                "exploration": "?´ë–¤ ?¼ë¡œ ?¸í•´ ?´ë ‡ê²??”ê? ?˜ì…¨?˜ìš”? ?µìš¸??ë§ˆìŒ???¤ì–´ë³¼ê²Œ??",
-                "transition": "ë¶„ë…¸ë¥?ê±´ê°•?˜ê²Œ ?´ì†Œ?????ˆëŠ” ??•‘ ë°©ë²•???ˆì–´??"
-            },
-            EmotionType.LONELINESS: {
-                "validation": "?¸ë¡œ??ë§ˆìŒ??ë§ì´ ?˜ë“œ?œê² ?´ìš”. ?¼ì?¼ëŠ” ?ë‚Œ???¼ë§ˆ??ê´´ë¡œ?´ì? ?´í•´?´ìš”.",
-                "exploration": "?¸ì œë¶€???´ëŸ° ?¸ë¡œ?€???ë¼?¨ë‚˜?? ì§€ê¸????œê°„, ?€?€ ?¨ê»˜ ?ˆë‹¤??ê²ƒì„ ?ê»´ë³´ì„¸??",
-                "transition": "?¸ë¡œ?€???¬ë˜ì£¼ëŠ” ?°ëœ»???ê¸° ì¹˜ìœ ë²•ì„ ?¨ê»˜ ?´ë³´?„ìš”."
-            },
-            EmotionType.FRUSTRATION: {
-                "validation": "?µë‹µ?˜ê³  ë§‰ë§‰??ë§ˆìŒ???•ë§ ?˜ë“œ?œê² ?´ìš”. ê·¸ëŸ° ê°ì •???œëŠ” ê²ƒì´ ?ì—°?¤ëŸ¬?Œìš”.",
-                "exploration": "ë¬´ì—‡??ê°€???µë‹µ?˜ê²Œ ?ê»´ì§€?œë‚˜?? êµ¬ì²´?ì¸ ?í™©???¨ê»˜ ?´í´ë³´ì•„??",
-                "transition": "ë§‰íŒ ê°ì •???€?´ì£¼??EFT ê¸°ë²•???„ì?????ê±°ì˜ˆ??"
-            }
-        }
-    
-    def _load_eft_techniques(self) -> Dict[EmotionType, List[Dict[str, Any]]]:
-        """ê°ì •ë³?EFT ê¸°ë²• ?°ì´?°ë² ?´ìŠ¤"""
-        return {
-            EmotionType.STRESS: [
-                {
-                    "name": "?¤íŠ¸?ˆìŠ¤ ?´ì†Œ ê¸°ë³¸ ?œí€€??,
-                    "points": [EFTPoint.CROWN, EFTPoint.EYEBROW, EFTPoint.COLLARBONE],
-                    "setup_phrase": "?´ëŸ° ?¤íŠ¸?ˆìŠ¤ê°€ ?ˆì?ë§? ?˜ëŠ” ???ì‹ ??ê¹Šì´ ?¬ë‘?˜ê³  ë°›ì•„?¤ì…?ˆë‹¤",
-                    "reminder": "???¤íŠ¸?ˆìŠ¤ë¥??“ì•„ë³´ë‚´??,
-                    "duration": 5,
-                    "effectiveness": 0.85
-                },
-                {
-                    "name": "ì§ì¥ ?¤íŠ¸?ˆìŠ¤ ?„ìš© ê¸°ë²•",
-                    "points": [EFTPoint.SIDE_OF_EYE, EFTPoint.UNDER_NOSE, EFTPoint.CHIN],
-                    "setup_phrase": "ì§ì¥?ì„œ???•ë°•ê°ì´ ?ˆì?ë§? ?˜ëŠ” ?‰ì˜¨??? íƒ?©ë‹ˆ??,
-                    "reminder": "ì§ì¥ ?¤íŠ¸?ˆìŠ¤ë¥??´ì†Œ?´ìš”",
-                    "duration": 7,
-                    "effectiveness": 0.82
-                }
-            ],
-            EmotionType.ANXIETY: [
-                {
-                    "name": "ë¶ˆì•ˆ ì§„ì • ?œí€€??,
-                    "points": [EFTPoint.EYEBROW, EFTPoint.UNDER_EYE, EFTPoint.UNDER_NOSE],
-                    "setup_phrase": "ë¶ˆì•ˆ??ë§ˆìŒ???ˆì?ë§? ?˜ëŠ” ì§€ê¸????œê°„ ?ˆì „?©ë‹ˆ??,
-                    "reminder": "ë¶ˆì•ˆ???´ë ¤?“ì•„??,
-                    "duration": 6,
-                    "effectiveness": 0.88
-                }
-            ],
-            EmotionType.ANGER: [
-                {
-                    "name": "ë¶„ë…¸ ì¡°ì ˆ ê¸°ë²•",
-                    "points": [EFTPoint.SIDE_OF_EYE, EFTPoint.COLLARBONE, EFTPoint.UNDER_ARM],
-                    "setup_phrase": "?´ëŸ° ?”ê? ?ˆì?ë§? ?˜ëŠ” ?‰í™”ë¥?? íƒ?©ë‹ˆ??,
-                    "reminder": "ë¶„ë…¸ë¥?ê±´ê°•?˜ê²Œ ?´ì†Œ?´ìš”",
-                    "duration": 8,
-                    "effectiveness": 0.83
-                }
-            ]
-        }
-    
-    def _load_korean_context(self) -> Dict[str, Any]:
-        """?œêµ­ ë¬¸í™” ë§¥ë½ ?•ë³´"""
-        return {
-            "family_dynamics": {
-                "description": "?œêµ­?€ ê°€ì¡?ì¤‘ì‹¬ ?¬íšŒë¡?ê°€ì¡?ê´€ê³„ê? ê°œì¸ ?•ì²´?±ì— ???í–¥",
-                "considerations": ["?¨ë„ ?˜ë¬´ê°?, "ê°€ì¡?ê¸°ë? ë¶€??, "?¸ë? ê°ˆë“±", "?•ì œ ?œì—´"]
-            },
-            "work_culture": {
-                "description": "ì§‘ë‹¨ì£¼ì˜??ì§ì¥ ë¬¸í™”?€ ?„ê³„ ê´€ê³?,
-                "considerations": ["?í•˜ ê´€ê³?, "?¼ê·¼ ë¬¸í™”", "?™ë£Œ ê´€ê³?, "?±ê³¼ ?•ë°•"]
-            },
-            "emotional_expression": {
-                "description": "ê°ì • ?œí˜„???€??ë¬¸í™”???œì•½",
-                "considerations": ["ì²´ë©´ ì¤‘ì‹œ", "?¸ë‚´??ë¯¸ë•??, "ì§‘ë‹¨ ì¡°í™”", "ê°ì • ?µì œ"]
-            },
-            "social_pressure": {
-                "description": "?¬íšŒ??ê¸°ë??€ ë¹„êµ ë¬¸í™”",
-                "considerations": ["?™ë ¥ ì¤‘ì‹œ", "ê²°í˜¼ ?•ë°•", "ê²½ì œ???±ì·¨", "?¸ëª¨ ê´€??]
-            }
-        }
-    
-    def _load_safety_guidelines(self) -> Dict[str, List[str]]:
-        """?ˆì „ ê°€?´ë“œ?¼ì¸"""
-        return {
-            "emergency_keywords": [
-                "ì£½ê³ ??, "?ì‚´", "?í•´", "?¸ìƒ??? ë‚˜ê³?, "ëª¨ë“  ê²ƒì„ ?ë‚´ê³?,
-                "?´ì¹˜ê³ ì‹¶", "ì£½ì´ê³ ì‹¶", "ë³µìˆ˜", "?´ì¸"
-            ],
-            "professional_referral_keywords": [
-                "?˜ì²­", "?˜ê°", "ì¡°í˜„ë³?, "?‘ê·¹??, "?°ìš¸ì¦?, "ê³µí™©?¥ì• ",
-                "ê°•ë°•", "?¸ìƒ", "?¸ë¼?°ë§ˆ", "ì¤‘ë…", "ê±°ì‹ì¦?, "??‹ì¦?
-            ],
-            "crisis_resources": [
-                "?ëª…?˜ì „?? 1588-9191",
-                "ì²?†Œ???ë‹´?„í™”: 1388", 
-                "?•ì‹ ê±´ê°• ?„ê¸°?ë‹´: 1577-0199",
-                "ê²½ì°°ì²?? ê³ ?¼í„°: 112"
-            ]
-        }
-    
     def build_eft_prompt(
         self,
         user_message: str,
         emotion_state: EmotionAnalysis,
-        conversation_history: List[ConversationMessage] = None,
-        user_profile: UserProfile = None,
+        conversation_history: Optional[List] = None,
+        user_profile: Optional[object] = None,
         style: PromptStyle = PromptStyle.EMPATHETIC,
-        tier: str = "free"
+        tier: str = "free",
     ) -> str:
-        """EFT ?„ë¬¸ ?„ë¡¬?„íŠ¸ ?ì„±"""
-        
-        # 1. ?œìŠ¤???„ë¡¬?„íŠ¸ (?°ì–´ë³?ì°¨ë³„??
-        system_section = self._get_tier_system_prompt(tier)
-        
-        # 2. ?¬ìš©???„ë¡œ??ë§¥ë½ ì¶”ê?
-        profile_context = self._build_profile_context(user_profile)
-        
-        # 3. ê°ì • ë¶„ì„ ë§¥ë½ ì¶”ê?
-        emotion_context = self._build_emotion_context(emotion_state)
-        
-        # 4. ?€???ˆìŠ¤? ë¦¬ ë§¥ë½
-        history_context = self._build_history_context(conversation_history)
-        
-        # 5. ?ˆì „??ì²´í¬
-        safety_context = self._build_safety_context(user_message)
-        
-        # 6. EFT ê¸°ë²• ì»¨í…?¤íŠ¸
-        eft_context = self._build_eft_context(emotion_state)
-        
-        # 7. ?œêµ­ ë¬¸í™” ì»¨í…?¤íŠ¸
-        culture_context = self._build_culture_context(user_message)
-        
-        # 8. ?‘ë‹µ ?¤í???ê°€?´ë“œ
-        style_guide = self._build_style_guide(style, emotion_state)
-        
-        # 9. ?°ì–´ë³??‘ë‹µ ê°€?´ë“œ
-        tier_guide = self._build_tier_guide(tier)
-        
-        # ìµœì¢… ?„ë¡¬?„íŠ¸ ì¡°í•©
-        full_prompt = f"""
-{system_section}
+        emotion_name = getattr(emotion_state, "primary_emotion", "unknown")
+        intensity = getattr(emotion_state, "intensity", 0.0)
+        confidence = getattr(emotion_state, "confidence", 0.0)
+        style_text = style.value if isinstance(style, PromptStyle) else str(style)
 
-{profile_context}
-
-{emotion_context}
-
-{history_context}
-
-{safety_context}
-
-{eft_context}
-
-{culture_context}
-
-{style_guide}
-
-{tier_guide}
-
-?“ **?¬ìš©??ë©”ì‹œì§€**: "{user_message}"
-
-?¯ **5?¨ê³„ ?„ë¡œ?¸ìŠ¤ ?‘ë‹µ ì§€ì¹?*:
-
-**?„ì¬ ?¨ê³„ ?•ì¸**:
-- S1: ê°ì • ?œí˜„ ?ˆìŒ, Intake ë¯¸ì™„ë£???ê³µê°Â·?¼í¬
-- S2: ?•ë³´ ?˜ì§‘ ì¤???Intake ì§ˆë¬¸ + JSON 1??ì¶œë ¥
-- S3: Intake ?„ë£Œ, SUDS ë¯¸í™•????SUDS ì§ˆë¬¸
-- S4: SUDS ?•ì¸ ?„ë£Œ ??ë¶„ê¸° ê²°ì • + ??JSON ì¶œë ¥
-- S5: ?¸ì…˜ ?œì‘?????¼ë°˜ ?€??
-**S2 ?„ë£Œ ??(??1??**:
-- Intake JSON ì¶œë ¥ (ëª¨ë“  ???¬í•¨, ëª¨ë¥´ë©?"ë¯¸ìƒ")
-- ?ì—°?¤ëŸ¬???€??+ JSON ?•ì‹ ì¤€??
-**S4 ë¶„ê¸° ??(ë°˜ë“œ????ê°?**:
-- ??NOTION_RECORD_JSON (?„ì²´ ?•ë³´)
-- ??UI_ACTION_JSON (?¼ìš°?…ìš©)
-- ?œê°„ ?œì•½ ?¸ê¸‰ ??**ë¬´ì¡°ê±??¸í¡ ë¶„ê¸°**
-
-**?‘ë‹µ ?¤í???*:
-- ?¬ìš©?ì˜ ë§ˆì?ë§?ë°œí™”ë¥?ê¸°ë°˜?¼ë¡œ ?ì—°?¤ëŸ½ê²?ê³µê°
-- ê¸°ë²• ì¦‰ì‹œ ê°•ìš” ê¸ˆì?, ?ì§„???œì•ˆ
-- ?€??ë§¥ë½ ë°˜ì˜: ?? "? ì´ ???€?? ??"? ì´ ???€???˜ë“œ?œêµ°??
-- ë°˜ë³µ ë¬¸êµ¬ ?œê±°: "?¨ê»˜ ?´ì•¼ê¸°í•´ë´ìš”" ë§¤ë²ˆ ?¬ìš© ê¸ˆì?
-- ?œìŠ¤??ì§€ì¹?ë¶„ì„/?œê·¸ ì¶œë ¥ ?ˆë? ê¸ˆì?
-- ?œêµ­ ë¬¸í™” ë§¥ë½: ì²´ë©´/?˜ì¹˜??ê´€ê³?ì¤‘ì‹¬ ?´íœ˜
-- {self._get_tier_response_length(tier)} ?? ?ì—°?¤ëŸ¬??ë¬¸ë‹¨
-
-? ï¸ **CRITICAL ì¶œë ¥ ê·œì¹™**:
-1. S2: Intake JSON **1?Œë§Œ**
-2. S4: NOTION_RECORD_JSON + UI_ACTION_JSON **??ê°?ëª¨ë‘**
-3. ???„ë½ ê¸ˆì? (ëª¨ë¥´ë©?"ë¯¸ìƒ")
-4. SUDS_before = UI Action??suds (?™ì¼ ê°?
-5. ?œê°„ ?œì•½ ("5ë¶?, "ê¸‰í•¨") ??ë¬´ì¡°ê±?`action: "start_breath_page"`
-
-**S4 ë¶„ê¸° ?ˆì‹œ**:
-```
-[?ì—°?¤ëŸ¬???‘ë‹µ]
-
-[NOTION_RECORD_JSON]
-{{ëª¨ë“  ???¬í•¨}}
-
-[UI_ACTION_JSON]
-{{"action":"start_eftar"|"start_breath_page","route":"/eftar"|"/tri-modal","suds":0-10,"rationale":"..."}}
-```
-"""
-        
-        return full_prompt.strip()
-    
-    def _build_profile_context(self, profile: UserProfile) -> str:
-        """?¬ìš©???„ë¡œ??ì»¨í…?¤íŠ¸ ?ì„±"""
-        if not profile:
-            return ""
-        
-        context = f"""
-?‘¤ **?¬ìš©???„ë¡œ??*:
-- EFT ê²½í—˜ ?˜ì?: {profile.eft_experience_level}
-- ?Œí†µ ?¤í??? {profile.communication_style}
-- ê°ì • ë¯¼ê°?? {profile.emotional_sensitivity:.1f}/1.0
-- ?´ì „ ?¸ì…˜: {profile.previous_sessions}??"""
-        return context
-    
-    def _build_emotion_context(self, emotion: EmotionAnalysis) -> str:
-        """ê°ì • ë¶„ì„ ì»¨í…?¤íŠ¸ ?ì„±"""
-        context = f"""
-?§  **ê°ì • ë¶„ì„ ê²°ê³¼**:
-- ì£¼ìš” ê°ì •: {emotion.primary_emotion.value} (ê°•ë„: {emotion.intensity:.2f})
-- ë³´ì¡° ê°ì •: {emotion.secondary_emotion.value if emotion.secondary_emotion else "?†ìŒ"}
-- ë¶„ì„ ? ë¢°?? {emotion.confidence:.2f}
-- ê°ì • ?¤ì›Œ?? {', '.join(emotion.emotional_keywords)}
-"""
-        return context
-    
-    def _build_history_context(self, history: List[ConversationMessage]) -> str:
-        """?€???ˆìŠ¤? ë¦¬ ì»¨í…?¤íŠ¸ ?ì„±"""
-        if not history or len(history) == 0:
-            return "?“œ **?€???ˆìŠ¤? ë¦¬**: ì²??€?”ì…?ˆë‹¤."
-        
-        recent_messages = history[-3:]  # ìµœê·¼ 3ê°?ë©”ì‹œì§€ë§?        history_text = "?“œ **ìµœê·¼ ?€??ë§¥ë½**:\n"
-        
-        for msg in recent_messages:
-            role_emoji = "?‘¤" if msg.role == "user" else "?¤–"
-            history_text += f"- {role_emoji} {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}\n"
-        
-        return history_text
-    
-    def _build_safety_context(self, message: str) -> str:
-        """?ˆì „??ì²´í¬ ì»¨í…?¤íŠ¸"""
-        emergency_detected = any(
-            keyword in message.lower() 
-            for keyword in self.safety_guidelines["emergency_keywords"]
+        return (
+            "MOMENTARY EFT PROMPT\n"
+            f"message: {user_message}\n"
+            f"emotion: {emotion_name}\n"
+            f"intensity: {intensity}\n"
+            f"emotion_confidence: {confidence}\n"
+            f"style: {style_text}\n"
+            f"tier: {tier}\n"
+            f"history_count: {len(conversation_history or [])}\n"
+            f"system_base: {self.base_system_prompt}"
         )
-        
-        professional_needed = any(
-            keyword in message.lower()
-            for keyword in self.safety_guidelines["professional_referral_keywords"] 
-        )
-        
-        if emergency_detected:
-            return """
-?š¨ **?‘ê¸‰?í™© ê°ì?**: ?í•´/?ì‚´ ?„í—˜ ? í˜¸ê°€ ê°ì??˜ì—ˆ?µë‹ˆ??
-- ì¦‰ì‹œ ?„ë¬¸ê¸°ê? ?ˆë‚´ ?„ìˆ˜
-- ?°ëœ»??ì§€ì§€?€ ?¨ê»˜ êµ¬ì²´?ì¸ ?„ì?ì²??œê³µ
-- EFT ê¸°ë²•ë³´ë‹¤???ˆì „ ?•ë³´ ?°ì„ 
-"""
-        elif professional_needed:
-            return """
-? ï¸ **?„ë¬¸ê°€ ?ë‹´ ê¶Œì¥**: ?„ë¬¸??ì¹˜ë£Œê°€ ?„ìš”??ì¦ìƒ???¸ê¸‰?˜ì—ˆ?µë‹ˆ??
-- ?„ë¬¸ê°€ ?ë‹´ ê¶Œìœ 
-- EFT??ë³´ì¡°???„êµ¬ë¡œë§Œ ?œìš©
-- ?˜í•™??ì§„ë‹¨/ì²˜ë°© ?ˆë? ê¸ˆì?
-"""
-        else:
-            return "??**?ˆì „??ì²´í¬**: ?¼ë°˜?ì¸ ?ë‹´ ì§„í–‰ ê°€??
-    
-    def _build_eft_context(self, emotion: EmotionAnalysis) -> str:
-        """EFT ê¸°ë²• ì»¨í…?¤íŠ¸ ?ì„±"""
-        techniques = self.eft_technique_database.get(emotion.primary_emotion, [])
-        
-        if not techniques:
-            return "??**EFT ì¶”ì²œ**: ê¸°ë³¸ ê°ì • ì¡°ì ˆ ê¸°ë²• ?ìš©"
-        
-        best_technique = max(techniques, key=lambda x: x["effectiveness"])
-        
-        context = f"""
-??**ì¶”ì²œ EFT ê¸°ë²•**: {best_technique["name"]}
-- ??•‘ ?¬ì¸?? {', '.join([point.value for point in best_technique["points"]])}
-- ?‹ì—… êµ¬ë¬¸: "{best_technique["setup_phrase"]}"
-- ë¦¬ë§ˆ?¸ë”: "{best_technique["reminder"]}"
-- ?ˆìƒ ?Œìš”?œê°„: {best_technique["duration"]}ë¶?- ?¨ê³¼?? {best_technique["effectiveness"]:.0%}
-"""
-        return context
-    
-    def _build_culture_context(self, message: str) -> str:
-        """?œêµ­ ë¬¸í™” ì»¨í…?¤íŠ¸ ?ì„±"""
-        cultural_themes = []
-        
-        # ê°€ì¡?ê´€??        family_keywords = ["ë¶€ëª?, "?„ë§ˆ", "?„ë¹ ", "ê°€ì¡?, "?•ì œ", "?ë§¤", "?œëŒ", "ì²˜ê?"]
-        if any(keyword in message for keyword in family_keywords):
-            cultural_themes.append("family_dynamics")
-        
-        # ì§ì¥ ê´€??        work_keywords = ["?Œì‚¬", "ì§ì¥", "?ì‚¬", "?™ë£Œ", "?…ë¬´", "?¼ê·¼", "?¹ì§„", "ë©´ì ‘"]
-        if any(keyword in message for keyword in work_keywords):
-            cultural_themes.append("work_culture")
-        
-        # ?¬íšŒ???•ë°•
-        social_keywords = ["ê²°í˜¼", "?°ì• ", "?™ë²Œ", "?¤í™", "ì·¨ì—…", "ë¹„êµ", "?¨ë“¤"]
-        if any(keyword in message for keyword in social_keywords):
-            cultural_themes.append("social_pressure")
-        
-        if not cultural_themes:
-            return ""
-        
-        context = "?‡°?‡· **?œêµ­ ë¬¸í™” ê³ ë ¤?¬í•­**:\n"
-        for theme in cultural_themes:
-            theme_info = self.korean_culture_context[theme]
-            context += f"- {theme_info['description']}\n"
-        
-        return context
-    
-    def _build_style_guide(self, style: PromptStyle, emotion: EmotionAnalysis) -> str:
-        """?‘ë‹µ ?¤í???ê°€?´ë“œ ?ì„±"""
-        
-        templates = self.emotion_response_templates.get(emotion.primary_emotion, {})
-        
-        base_guide = f"""
-?¨ **?‘ë‹µ ?¤í???ê°€?´ë“œ**: {style.value}
-"""
-        
-        if templates:
-            validation = templates.get("validation", "")
-            exploration = templates.get("exploration", "")
-            transition = templates.get("transition", "")
-            
-            base_guide += f"""
-1. **ê°ì • ê²€ì¦?*: {validation}
-2. **?ìƒ‰ ì§ˆë¬¸**: {exploration}  
-3. **EFT ?°ê²°**: {transition}
-"""
-        
-        return base_guide
-    
+
     def recommend_eft_techniques(self, emotion_state: EmotionAnalysis) -> List[EFTRecommendation]:
-        """ê°ì • ?íƒœ ê¸°ë°˜ EFT ê¸°ë²• ì¶”ì²œ"""
-        
-        techniques = self.eft_technique_database.get(emotion_state.primary_emotion, [])
-        recommendations = []
-        
-        for tech in techniques:
-            recommendation = EFTRecommendation(
-                technique_name=tech["name"],
-                tapping_points=tech["points"],
-                setup_phrase=tech["setup_phrase"],
-                reminder_phrase=tech["reminder"],
-                duration_minutes=tech["duration"],
-                difficulty_level="beginner",  # ê¸°ë³¸ê°?                effectiveness_score=tech["effectiveness"],
-                additional_notes=f"{emotion_state.primary_emotion.value} ê°ì •???¹í™”??ê¸°ë²•?…ë‹ˆ??"
+        emotion_name = getattr(emotion_state, "primary_emotion", EmotionType.NEUTRAL)
+
+        if emotion_name == EmotionType.STRESS:
+            return [
+                EFTRecommendation(
+                    technique_name="Stress Relief Tap",
+                    tapping_points=[EFTPoint.CROWN, EFTPoint.EYEBROW, EFTPoint.COLLARBONE],
+                    setup_phrase="Breathe slowly and tap gently on each point.",
+                    reminder_phrase="Release control with calm breathing.",
+                    duration_minutes=6,
+                    difficulty_level="beginner",
+                    effectiveness_score=0.86,
+                    additional_notes="Stress-focused sequence.",
+                )
+            ]
+
+        if emotion_name in (EmotionType.ANXIETY, EmotionType.FEAR):
+            return [
+                EFTRecommendation(
+                    technique_name="Calm Grounding Tap",
+                    tapping_points=[EFTPoint.UNDER_NOSE, EFTPoint.SIDE_OF_EYE, EFTPoint.UNDER_ARM],
+                    setup_phrase="Name your fear, then tap with steady rhythm.",
+                    reminder_phrase="Keep exhale longer than inhale.",
+                    duration_minutes=5,
+                    difficulty_level="beginner",
+                    effectiveness_score=0.84,
+                    additional_notes="Use grounding phrases while tapping.",
+                )
+            ]
+
+        if emotion_name in (EmotionType.SADNESS, EmotionType.LONELINESS):
+            return [
+                EFTRecommendation(
+                    technique_name="Soothing Tap",
+                    tapping_points=[EFTPoint.UNDER_EYE, EFTPoint.EYEBROW, EFTPoint.UNDER_NOSE],
+                    setup_phrase="Acknowledge sadness, then tap compassionately.",
+                    reminder_phrase="Allow feelings without judging.",
+                    duration_minutes=7,
+                    difficulty_level="beginner",
+                    effectiveness_score=0.82,
+                    additional_notes="Focus on emotional safety while tapping.",
+                )
+            ]
+
+        if emotion_name in (EmotionType.ANGER, EmotionType.FRUSTRATION):
+            return [
+                EFTRecommendation(
+                    technique_name="Discharge Tap",
+                    tapping_points=[EFTPoint.SIDE_OF_EYE, EFTPoint.CHIN, EFTPoint.UNDER_ARM],
+                    setup_phrase="Describe anger in one sentence, then tap with steady pace.",
+                    reminder_phrase="Notice body tension and soften it.",
+                    duration_minutes=6,
+                    difficulty_level="beginner",
+                    effectiveness_score=0.81,
+                    additional_notes="Good for sudden tension spikes.",
+                )
+            ]
+
+        return [
+            EFTRecommendation(
+                technique_name="Balanced EFT Tap",
+                tapping_points=[EFTPoint.CROWN, EFTPoint.COLLARBONE],
+                setup_phrase="State the feeling, breathe, and tap slowly.",
+                reminder_phrase="Stay present and keep it simple.",
+                duration_minutes=4,
+                difficulty_level="beginner",
+                effectiveness_score=0.7,
+                additional_notes="General supportive sequence.",
             )
-            recommendations.append(recommendation)
-        
-        # ?¨ê³¼???œìœ¼ë¡??•ë ¬
-        recommendations.sort(key=lambda x: x.effectiveness_score, reverse=True)
-        
-        return recommendations[:3]  # ?ìœ„ 3ê°œë§Œ ë°˜í™˜
-    
-    def _get_tier_system_prompt(self, tier: str) -> str:
-        """?°ì–´ë³??œìŠ¤???„ë¡¬?„íŠ¸ ?ì„±"""
-        base_prompt = self.base_system_prompt
-        
-        if tier == "premium":
-            premium_addition = """
-?’ **?„ë¦¬ë¯¸ì—„ ?ë‹´ ëª¨ë“œ**:
-- ??ê¹Šì´ ?ˆëŠ” ê°ì • ë¶„ì„ê³?ê°œì¸?”ëœ ?‘ê·¼
-- ê³ ê¸‰ EFT ê¸°ë²• ë°?ë³µí•©???‘ê·¼ë²??œìš©  
-- ?¥ê¸°??ê´€?ì—?œì˜ ?¬ë¦¬???±ì¥ ì§€??- ê°œì¸ë³??¨í„´ ë¶„ì„???µí•œ ë§ì¶¤???„ëµ ?œê³µ
-- ë³´ë‹¤ ?„ë¬¸?ì´ê³??ì„¸???ë‹´ ?œê³µ
-"""
-            return base_prompt + premium_addition
-        elif tier == "enterprise":
-            enterprise_addition = """
-?¢ **?”í„°?„ë¼?´ì¦ˆ ?ë‹´ ëª¨ë“œ**:
-- ìµœê³ ê¸??¬ë¦¬ ë¶„ì„ ë°?ì¹˜ë£Œ???‘ê·¼
-- ?¤ì°¨?ì  ê°ì • ë¶„ì„ ë°??µí•©??ì¹˜ìœ  ë°©ë²•
-- ì¡°ì§ ë°??¨ì²´ë¥??„í•œ ?¹í™”???ë‹´ ê¸°ë²•
-- ë¬´ì œ??ê¹Šì´???€??ë°?ì§€?ì  ì¶”ì  ê´€ë¦?- ?„ë¬¸ ?¬ë¦¬?ë‹´???˜ì???ê³ ë„?”ëœ ?œë¹„??"""
-            return base_prompt + enterprise_addition
-        
-        return base_prompt  # ë¬´ë£Œ ?°ì–´??ê¸°ë³¸ ?„ë¡¬?„íŠ¸
-    
-    def _build_tier_guide(self, tier: str) -> str:
-        """?°ì–´ë³??‘ë‹µ ê°€?´ë“œ ?ì„±"""
-        if tier == "premium":
-            return """
-?’ **?„ë¦¬ë¯¸ì—„ ?œë¹„???¹ì§•**:
-- ë³´ë‹¤ ?ì„¸?˜ê³  êµ¬ì²´?ì¸ ë¶„ì„ ?œê³µ
-- ê°œì¸?”ëœ EFT ê¸°ë²• ì¡°í•© ì¶”ì²œ
-- ?¬ì¸µ?ì¸ ê°ì • ?êµ¬ ë°??¨í„´ ë¶„ì„
-- ?¨ê³„??ì¹˜ìœ  ê³„íš ?˜ë¦½
-"""
-        elif tier == "enterprise":
-            return """
-?¢ **?”í„°?„ë¼?´ì¦ˆ ?œë¹„???¹ì§•**:
-- ìµœê³  ?˜ì????„ë¬¸??ë¶„ì„
-- ?¤ê°??ì¹˜ë£Œ ?‘ê·¼ë²??µí•©
-- ?¥ê¸°???¬ë¦¬ ê±´ê°• ê´€ë¦?ë°©ì•ˆ
-- ì¡°ì§/?¨ì²´ ë§ì¶¤ ?”ë£¨???œê³µ
-"""
-        
-        return """
-?†“ **ë¬´ë£Œ ?œë¹„???¹ì§•**:
-- ê¸°ë³¸?ì¸ ê°ì • ì§€ì§€ ë°?ê³µê°
-- ?œì? EFT ê¸°ë²• ?ˆë‚´
-- ê°„ë‹¨?˜ê³  ?¤ìš©?ì¸ ì¡°ì–¸
-"""
-    
-    def _get_tier_response_length(self, tier: str) -> str:
-        """?°ì–´ë³??‘ë‹µ ê¸¸ì´ ê°€?´ë“œ"""
-        if tier == "premium":
-            return "400-800??
-        elif tier == "enterprise":
-            return "800-1200??
-        else:
-            return "200-400??  # ë¬´ë£Œ ?°ì–´
-    
+        ]
+
     def post_process_response(
-        self, 
-        ai_response: str, 
+        self,
+        ai_response: str,
         emotion_analysis: EmotionAnalysis,
-        tier: str = "free"
+        tier: str = "free",
     ) -> Dict[str, Any]:
-        """AI ?‘ë‹µ ?„ì²˜ë¦?""
-        
-        # 1. ?‘ë‹µ ?•ì œ
         cleaned_response = self._clean_ai_response(ai_response)
-        
-        # 2. EFT ì¶”ì²œ ?ì„±
         eft_recommendations = self.recommend_eft_techniques(emotion_analysis)
-        
-        # 3. ?œì•ˆ ?¡ì…˜ ?ì„±
         suggested_actions = self._generate_suggested_actions(emotion_analysis)
-        
-        # 4. ? ë¢°??ê³„ì‚°
-        confidence = self._calculate_response_confidence(cleaned_response, emotion_analysis)
-        
+
+        confidence = self._calculate_response_confidence(
+            cleaned_response,
+            emotion_analysis,
+        )
+
         return {
             "text": cleaned_response,
             "eft_recommendations": eft_recommendations,
             "suggested_actions": suggested_actions,
-            "confidence": confidence
+            "confidence": confidence,
         }
-    
+
+    def _load_base_system_prompt(self) -> str:
+        return "Use supportive prompts and safety-first responses for EFT guidance."
+
     def _clean_ai_response(self, response: str) -> str:
-        """AI ?‘ë‹µ ?•ì œ"""
-        
-        # ë¶ˆí•„?”í•œ prefix ?œê±°
-        prefixes_to_remove = [
-            "EFT ?„ë¬¸ ?ë‹´?¬ë¡œ??ë§ì??œë¦¬ë©?",
-            "?ë‹´??",
-            "Assistant:",
-            "AI:"
-        ]
-        
-        cleaned = response
+        if not response:
+            return ""
+
+        cleaned = response.strip()
+        prefixes_to_remove = ["EFT Assistant:", "Assistant:", "AI:"]
         for prefix in prefixes_to_remove:
-            cleaned = cleaned.replace(prefix, "").strip()
-        
-        # ê¸¸ì´ ?œí•œ (?ˆë¬´ ê¸??‘ë‹µ ë°©ì?)
-        if len(cleaned) > 800:
-            sentences = cleaned.split('. ')
-            cleaned = '. '.join(sentences[:4]) + '.'
-        
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+        if len(cleaned) > 900:
+            cleaned = cleaned[:900].rstrip()
         return cleaned
-    
+
     def _generate_suggested_actions(self, emotion: EmotionAnalysis) -> List[SuggestedAction]:
-        """?œì•ˆ ?¡ì…˜ ?ì„±"""
-        
-        actions = []
-        
-        # ê°ì •ë³?ë§ì¶¤ ?¡ì…˜
-        if emotion.primary_emotion in [EmotionType.STRESS, EmotionType.ANXIETY]:
-            actions.append(SuggestedAction(
-                action_type="breathing",
-                title="?¬í˜¸???°ìŠµ?˜ê¸°",
-                description="5ë¶„ê°„ ê¹Šì? ?¸í¡?¼ë¡œ ë§ˆìŒ??ì§„ì •?œì¼œë³´ì„¸??,
-                priority="high",
-                estimated_time_minutes=5
-            ))
-        
-        # EFT ?¸ì…˜ ?œì•ˆ
-        actions.append(SuggestedAction(
-            action_type="eft_session",
-            title="EFT ??•‘ ?¸ì…˜ ?œì‘",
-            description=f"{emotion.primary_emotion.value} ê°ì •???„í•œ ë§ì¶¤ EFT ê¸°ë²•",
-            priority="medium",
-            estimated_time_minutes=10
-        ))
-        
-        # ?’ì? ê°•ë„?????„ë¬¸ê°€ ?ë‹´ ê¶Œìœ 
-        if emotion.intensity > 0.8:
-            actions.append(SuggestedAction(
-                action_type="professional_help", 
-                title="?„ë¬¸ê°€ ?ë‹´ ê³ ë ¤?˜ê¸°",
-                description="ê°ì • ê°•ë„ê°€ ?’ì•„ ?„ë¬¸ê°€???„ì????„ìš”?????ˆìŠµ?ˆë‹¤",
-                priority="high",
-                estimated_time_minutes=60
-            ))
-        
+        intensity = float(getattr(emotion, "intensity", 0.0) or 0.0)
+        emotion_name = getattr(emotion, "primary_emotion", EmotionType.NEUTRAL)
+
+        actions: List[SuggestedAction] = []
+
+        if emotion_name in (EmotionType.STRESS, EmotionType.ANXIETY):
+            actions.append(
+                SuggestedAction(
+                    action_type="breathing",
+                    title="4-7-8 breathing",
+                    description="Inhale 4 seconds, hold 7 seconds, exhale 8 seconds.",
+                    priority="high",
+                    estimated_time_minutes=5,
+                )
+            )
+
+        actions.append(
+            SuggestedAction(
+                action_type="eft_session",
+                title="Start EFT session",
+                description="Run one short EFT round with the recommended points.",
+                priority="medium",
+                estimated_time_minutes=10,
+            )
+        )
+
+        if intensity >= 0.8:
+            actions.append(
+                SuggestedAction(
+                    action_type="professional_help",
+                    title="Consider professional support",
+                    description="If this feeling escalates, contact a counselor or counselor line.",
+                    priority="high",
+                    estimated_time_minutes=60,
+                )
+            )
+
         return actions
-    
-    def _calculate_response_confidence(
-        self, 
-        response: str, 
-        emotion: EmotionAnalysis
-    ) -> float:
-        """?‘ë‹µ ? ë¢°??ê³„ì‚°"""
-        
-        confidence_score = 0.7  # ê¸°ë³¸ ?ìˆ˜
-        
-        # ?‘ë‹µ ê¸¸ì´ ì²´í¬
-        if 50 <= len(response) <= 400:
-            confidence_score += 0.1
-        
-        # ê°ì • ë¶„ì„ ? ë¢°??ë°˜ì˜
-        confidence_score += emotion.confidence * 0.2
-        
-        # ìµœë? 1.0?¼ë¡œ ?œí•œ
-        return min(confidence_score, 1.0)
+
+    def _calculate_response_confidence(self, response: str, emotion: EmotionAnalysis) -> float:
+        score = 0.7
+        if 50 <= len(response) <= 500:
+            score += 0.1
+        if 0 <= float(getattr(emotion, "confidence", 0.0)) <= 1:
+            score += 0.2 * float(getattr(emotion, "confidence", 0.0))
+        return min(score, 1.0)
+

@@ -1,11 +1,23 @@
 """
-FastAPI router 패키지 export.
-main.py 등에서 import 할 때 사용된다.
+FastAPI router export.
+main.py에서 import할 때 사용.
 """
 
-from .guidance_router import router as guidance_router  # noqa: F401
-from .voice import router as voice_router  # noqa: F401
-from .profiles import router as proposal_profiles_router  # noqa: F401
-from .signals import router as proposal_signals_router  # noqa: F401
-from .proposals import router as proposal_router  # noqa: F401
-from .menstrual import router as menstrual_router  # noqa: F401
+
+def _optional_import(path: str, attr: str = "router"):
+    try:
+        mod = __import__(path, fromlist=[attr])
+        return getattr(mod, attr)
+    except Exception as e:
+        print(f"[WARN] {path} failed to import:", e)
+        return None
+
+
+guidance_router = _optional_import("backend.routers.guidance_router")
+voice_router = _optional_import("backend.routers.voice")
+
+proposal_profiles_router = _optional_import("backend.routers.profiles")
+proposal_signals_router = _optional_import("backend.routers.signals")
+proposal_router = _optional_import("backend.routers.proposals")
+
+menstrual_router = _optional_import("backend.routers.menstrual")

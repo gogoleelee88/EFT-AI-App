@@ -1,2 +1,3 @@
-from routers import notices as notices_router
+from backend.routers import notices as notices_router
+
 

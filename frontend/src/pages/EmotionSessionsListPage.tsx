@@ -4,7 +4,7 @@ import Card from '../components/ui/Card';
 import { useAuth } from '../hooks/useAuth';
 
 export interface EmotionSessionSummary {
-  id: number;
+  id: string;
   created_at: string;
   core_emotion: string;
   situation_context: string;

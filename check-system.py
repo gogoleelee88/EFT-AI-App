@@ -8,6 +8,8 @@ import sys
 import os
 import subprocess
 from pathlib import Path
+# from typing import Tuple
+
 
 # UTF-8 출력 설정
 if sys.platform.startswith('win'):

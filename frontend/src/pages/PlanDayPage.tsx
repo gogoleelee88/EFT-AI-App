@@ -15,6 +15,7 @@ import AlarmSettingStep from "../components/plan/AlarmSettingStep";
 import PlanSummary from "../components/plan/PlanSummary";
 import { TimeTable } from "../components/schedule/TimeTable";
 import type { ScheduleItem } from "../components/schedule/TimeTable";
+import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
 import {
   type AppOnlyEvent,
   buildPrivacyKey,
@@ -81,6 +82,8 @@ const PlanDayPage: React.FC = () => {
 
   // ?곹깭
   const [showGoogleSection, setShowGoogleSection] = useState(true);
+  const [plannedGoogleSyncMode, setPlannedGoogleSyncMode] =
+    useState<PrivacyMode>("NORMAL");
   const [appOnlyEvents, setAppOnlyEvents] = useState<AppOnlyEvent[]>(() =>
     loadAppOnlyEvents(wizard.state.date)
   );
@@ -90,6 +93,7 @@ const PlanDayPage: React.FC = () => {
   const [bannerPatchError, setBannerPatchError] = useState<string | null>(null);
   const [bannerPatchResult, setBannerPatchResult] = useState<string | null>(null);
   const [showEmotionPrompt, setShowEmotionPrompt] = useState(false);
+  const [showAlarmInstallGuide, setShowAlarmInstallGuide] = useState(false);
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
     if (resistanceLevel == null) return "시작저항";
@@ -132,6 +136,12 @@ const PlanDayPage: React.FC = () => {
   useEffect(() => {
     refreshAppOnlyEvents();
   }, [wizard.state.date, refreshAppOnlyEvents]);
+
+  useEffect(() => {
+    if (wizard.state.step === 1) {
+      setPlannedGoogleSyncMode(wizard.state.privacy_mode);
+    }
+  }, [wizard.state.step, wizard.state.privacy_mode]);
 
   const loadBanner = useCallback(async () => {
     try {
@@ -362,7 +372,10 @@ const PlanDayPage: React.FC = () => {
     return details.length > 0 ? details.join("\n") : undefined;
   }, [wizard.state.missions, wizard.state.microAction]);
 
-  const handleExportToGoogle = async (mode?: PrivacyMode) => {
+  const handleExportToGoogle = async (
+    mode?: PrivacyMode,
+    alarmOverride?: AlarmConfig
+  ) => {
     const privacyMode = mode || wizard.state.privacy_mode;
 
     if (!isConnected && privacyMode !== "APP_ONLY") {
@@ -370,17 +383,19 @@ const PlanDayPage: React.FC = () => {
       return;
     }
 
-    if (!wizard.state.task || !wizard.state.alarm) {
+    const task = wizard.state.task;
+    const alarm = alarmOverride ?? wizard.state.alarm;
+    if (!task || !alarm) {
       alert("작업 제목과 알람 시간을 모두 입력해 주세요.");
       return;
     }
 
-    const timeStr = wizard.state.alarm.time; // "HH:mm"
+    const timeStr = alarm.time; // "HH:mm"
     const [hours, minutes] = timeStr.split(":").map(Number);
     const start = new Date(wizard.state.date);
     start.setHours(hours, minutes, 0, 0);
 
-    const durationMinutes = wizard.state.task.est_minutes || 30;
+    const durationMinutes = task.est_minutes || 30;
     const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
     const endIso = end.toISOString();
     const startIso = start.toISOString();
@@ -388,13 +403,13 @@ const PlanDayPage: React.FC = () => {
     const endHour = Math.floor(totalMinutes / 60) % 24;
     const endMinute = totalMinutes % 60;
     const endLabel = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
-    const originalTitle = wizard.state.task.task_title;
+    const originalTitle = task.task_title;
     const originalDescription = buildExportDescription();
 
     try {
       // Task ID媛 ?덉쑝硫??ъ슜, ?놁쑝硫?savedPlan?먯꽌 媛?몄삤湲?(Google sync??
       const taskId =
-        wizard.state.task.task_id ||
+        task.task_id ||
         wizard.state.savedPlan?.items?.[0]?.task_id;
 
       if (privacyMode !== "APP_ONLY" && !taskId) {
@@ -740,9 +755,10 @@ const PlanDayPage: React.FC = () => {
                 onComplete={async (alarm, options) => {
                   wizard.setAlarm(alarm);
                   try {
+                    setPlannedGoogleSyncMode(options.syncMode);
                     await wizard.submit(userId, { alarm });
-                    await handleExportToGoogle(options.syncMode);
                     setShowEmotionPrompt(true);
+                    setShowAlarmInstallGuide(true);
                     // ?깃났 ???먮룞?쇰줈 step 5濡??대룞
                   } catch (err) {
                     console.error("????ㅽ뙣:", err);
@@ -765,13 +781,18 @@ const PlanDayPage: React.FC = () => {
                           일정에 등록하세요
                   </div>
                   </div>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={handleExportToGoogle}
-                      >
-                        {exportLabel}
-                      </Button>
+                       <Button
+                         variant="primary"
+                         size="sm"
+                         onClick={() =>
+                           handleExportToGoogle(
+                             plannedGoogleSyncMode,
+                             wizard.state.alarm!
+                           )
+                         }
+                       >
+                         {exportLabel}
+                       </Button>
           </div>
         </Card>
                 </div>
@@ -784,6 +805,15 @@ const PlanDayPage: React.FC = () => {
           wizard.state.microAction &&
           wizard.state.alarm && (
             <div className="space-y-4">
+              {showAlarmInstallGuide && (
+                <AlarmInstallGuide
+                  title="알람은 앱에서 푸시 연동이 안정적입니다"
+                  description="일정 알림은 앱에서 푸시 권한을 받아야 정확하게 동작합니다. 앱을 설치해서 알람을 연결해 주세요."
+                  className="mx-4"
+                  onDismiss={() => setShowAlarmInstallGuide(false)}
+                  showDismiss
+                />
+              )}
               <PlanSummary
                 task={wizard.state.task}
                 microAction={wizard.state.microAction}
@@ -812,7 +842,12 @@ const PlanDayPage: React.FC = () => {
                     <Button
                         variant="primary"
                       size="sm"
-                        onClick={handleExportToGoogle}
+                        onClick={() =>
+                          handleExportToGoogle(
+                            plannedGoogleSyncMode,
+                            wizard.state.alarm!
+                          )
+                        }
                       >
                         {exportLabel}
                     </Button>
@@ -835,10 +870,10 @@ const PlanDayPage: React.FC = () => {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="text-base font-bold text-gray-900">
-              다음 단계 진행 전 감정 입력이 필요합니다
+              일정에 대한 저항감이 있나요?
             </h2>
             <p className="mt-2 text-sm text-gray-600">
-              완료 후 감정 입력이 필요하면 아래에서 이어 진행하세요.
+              하기 싫은 마음이 든다면, 감정을 먼저 다뤄보세요.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleEmotionPromptClose}>
@@ -865,5 +900,3 @@ const PlanDayPage: React.FC = () => {
 };
 
 export default PlanDayPage;
-
-

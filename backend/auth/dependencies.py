@@ -1,12 +1,12 @@
 """
-?�리미엄 ?�증 ?�존??�??�청 검�?X-API-Key ?�더 기반 ?�리미엄 ?�용???�증 + Content-Type 검�?"""
+?ë¦¬ë¯¸ì ?¸ì¦ ?ì¡´??ë°??ì² ê²ì¦?X-API-Key ?¤ë ê¸°ë° ?ë¦¬ë¯¸ì ?¬ì©???¸ì¦ + Content-Type ê²ì¦?"""
 
 from typing import Annotated, Optional
 from fastapi import Depends, Header, HTTPException
 from config.settings import get_settings
 
 def verify_premium_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> str:
-    """?�리미엄 API ??검�?""
+    """?ë¦¬ë¯¸ì API ??ê²ì¦?""
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing X-API-Key", headers={"WWW-Authenticate": "API-Key"})
 
@@ -17,7 +17,7 @@ def verify_premium_api_key(x_api_key: Optional[str] = Header(default=None, alias
     return x_api_key
 
 def require_json_content_type(content_type: Optional[str] = Header(default=None, alias="Content-Type")) -> str:
-    """JSON Content-Type 강제 검�?""
+    """JSON Content-Type ê°ì ê²ì¦?""
     if not content_type:
         raise HTTPException(
             status_code=415,
@@ -34,6 +34,6 @@ def require_json_content_type(content_type: Optional[str] = Header(default=None,
 
     return content_type
 
-# ???�우?�에???�?�으�?바로 ?????�게 Annotated 별칭?�로 ?�출
+# ???¼ì°?°ì????ì¼ë¡?ë°ë¡ ?????ê² Annotated ë³ì¹?¼ë¡ ?¸ì¶
 PremiumAuth = Annotated[str, Depends(verify_premium_api_key)]
 RequireJSON = Annotated[str, Depends(require_json_content_type)]

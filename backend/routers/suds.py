@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Dict, Literal, Optional, Tuple
 
 from utils.action_contract import StartEFTARv1
-from models.suds import SUDSEntry
+from backend.models.suds import SUDSEntry
 from services.suds_logger import append_suds
 from services.auth_service import AuthService
 import os
@@ -83,16 +83,16 @@ def _build_response(score: int, *, trace_id: Optional[str], saved_at: Optional[s
     )
 
     if score >= 7:
-        # 7???�상: EFT ?�선 추천
+        # 7???´ì: EFT ?°ì ì¶ì²
         return SUDSResponse(ok=True, actions=[eft_action.model_dump(), breath_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
-    else:  # 6???�하
-        # 6???�하: ?�흡�??�선 추천
+    else:  # 6???´í
+        # 6???´í: ?¸í¡ë²??°ì ì¶ì²
         return SUDSResponse(ok=True, actions=[breath_action.model_dump(), eft_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
 
 def _get_supabase():
-    """Supabase ?�라?�언???�성"""
+    """Supabase ?´ë¼?´ì¸???ì±"""
     url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # 권장 (RLS ?�향 최소)
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # ê¶ì¥ (RLS ?í¥ ìµì)
     if not url or not key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
     return create_client(url, key)
@@ -143,7 +143,7 @@ async def _create_notion_emotion_page(notion_base_url: str, body: Dict[str, Any]
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(f"{notion_base_url}/api/notion/create-emotion-page", json=body)
         r.raise_for_status()
-        return r.json()   # (None 방�?)
+        return r.json()   # (None ë°©ì?)
 
 
 
@@ -294,7 +294,7 @@ def _persist_suds(request: SUDSRequest, access_token: Optional[str] = None) -> t
 async def save_suds(request: SUDSRequest, access_token: Optional[str] = None) -> SUDSResponse:
     trace_id, saved_at = _persist_suds(request, access_token=access_token)
 
-    # ???�전(STRICT7) 조회 ??Notion ?�펙(STRICT6)�?변????Notion ?�이지 ?�성
+    # ???¬ì(STRICT7) ì¡°í ??Notion ?¤í(STRICT6)ë¡?ë³????Notion ?ì´ì§ ?ì±
     try:
         sb = _get_supabase()
         checkin_res = (
@@ -313,12 +313,12 @@ async def save_suds(request: SUDSRequest, access_token: Optional[str] = None) ->
         intensity_before = int(checkin["intensity_before"])
         intensity_after = int(request.score)
         session_type = request.session_type or checkin.get("session_type")
-        delta = intensity_before - intensity_after  # Notion ?묐떟?�?�� ?�꾩�??
+        delta = intensity_before - intensity_after  # Notion ?ë¬ë?ë¨?£ ?¨ê¾©ê¶??
 
-        # user_email?� Notion ?�청?�서 ?�수
+        # user_email? Notion ?ì²?ì ?ì
         user_email = (checkin.get("user_id") or request.user_id or "")
         if "@" not in user_email:
-            user_email = "unknown@example.com"  # ???�시(?�스?�용). ?�중???�론?�에???�메??보내�??�기 ?�거 가??
+            user_email = "unknown@example.com"  # ???ì(?ì¤?¸ì©). ?ì¤???ë¡?¸ì???´ë©??ë³´ë´ë©??¬ê¸° ?ê±° ê°??
 
         notion_body = {
             "user_email": user_email,
@@ -328,14 +328,14 @@ async def save_suds(request: SUDSRequest, access_token: Optional[str] = None) ->
                 "situation_context": checkin["situation_context"],
                 "automatic_thought": checkin["automatic_thought"],
                 "physical_sensation": checkin.get("physical_sensation"),
-                # Notion 모델??받는 STRICT6 ?�드?�데 지�?DB???�으�?None?�로
+                # Notion ëª¨ë¸??ë°ë STRICT6 ?ë?¸ë° ì§ê¸?DB???ì¼ë©?None?¼ë¡
                 "behavioral_reaction": None,
                 "intensity": intensity_before,
                 "available_time": None,
                 "immediate_goal": checkin.get("immediate_goal"),
             },
             "intensity_after": intensity_after,
-            "solution": "EFT ??�� + 박스 ?�흡",
+            "solution": "EFT ?? + ë°ì¤ ?¸í¡",
         }
 
         notion_result = await _create_notion_emotion_page("http://127.0.0.1:8000", notion_body)
@@ -343,11 +343,11 @@ async def save_suds(request: SUDSRequest, access_token: Optional[str] = None) ->
         return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
     # except Exception as e:
-    #     logger.exception("?�️ Notion create failed", extra={"trace_id": trace_id})
+    #     logger.exception("?ï¸ Notion create failed", extra={"trace_id": trace_id})
     #     raise HTTPException(status_code=500, detail=f"Notion create failed: {e}")
     except Exception as e:
-        logger.exception("?�️ Notion create failed", extra={"trace_id": trace_id})
-        # raise ?��? ?�음 (SUDS ?�?��? ?�공 처리)
+        logger.exception("?ï¸ Notion create failed", extra={"trace_id": trace_id})
+        # raise ?ì? ?ì (SUDS ??¥ì? ?±ê³µ ì²ë¦¬)
         return _build_response(request.score, trace_id=trace_id, saved_at=saved_at)
 
 def _cors_headers(origin: Optional[str], requested_headers: Optional[str]) -> Dict[str, str]:
@@ -449,4 +449,5 @@ async def options_record(request: Request) -> Response:
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
+
 

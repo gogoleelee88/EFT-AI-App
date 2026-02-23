@@ -1,419 +1,359 @@
 """
-감정 분석 ?�비???�스??기반 감정 ?�태 분석 �?EFT 맞춤 추천???�한 ?�처�??�국??문장??룰베?�스�?감정 ?�벨 + 강도 + 맥락??뽑아?? EFT 추천 ?�진???�기 좋�? 구조�??�리?�주???�처리기
+감정 분석기 모듈
+
+문장 내 키워드 빈도와 감정 강도 지표를 기반으로 감정 상태를 판별한다.
+텍스트에 포함된 부정어/강조어/상황 패턴을 반영해 최종 감정 점수를 계산한다.
 """
 
 import re
-import asyncio
-from typing import Dict, List, Tuple, Optional, Any
-import numpy as np
-from collections import Counter
+from typing import Any, Dict, List, Optional, Tuple
 
-from models.chat_models import EmotionAnalysis, EmotionType
+from backend.models.chat_models import EmotionAnalysis, EmotionType
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
 class EmotionAnalyzer:
-    """?�국???�스??감정 분석�?""
-    
+    """감정 분석 클래스"""
+
     def __init__(self):
-        """감정 분석�?초기??""
+        """감정 분석器 초기화"""
         self.emotion_keywords = self._load_emotion_keywords()
         self.intensity_modifiers = self._load_intensity_modifiers()
         self.context_patterns = self._load_context_patterns()
         self.negation_words = self._load_negation_words()
-        
-        logger.info("??감정 분석�?초기???�료")
-    
+
+        logger.info("감정 분석 데이터 로드 완료")
+
     def _load_emotion_keywords(self) -> Dict[EmotionType, List[str]]:
-        """감정�??�워???�전"""
+        """감정별 핵심 키워드 사전"""
         return {
             EmotionType.JOY: [
-                "기쁘", "?�복", "즐거", "?�나", "�?, "만족", "?�상", "최고", "?�벽",
-                "??, "미소", "?�레", "?�분", "?�기", "?�쾌", "기분�?, "?�희",
-                "?�호", "?�??, "?��?, "�?, "꿀", "?�랑?�러", "?�콤", "?�뜻"
+                "기쁘", "행복", "좋", "사랑", "즐겁", "웃", "감사",
+                "희망", "신남", "설레", "만족", "평온", "안도",
             ],
             EmotionType.SADNESS: [
-                "?�프", "?�프", "?�울", "?�물", "??, "마음?�파", "?�상", "?�답", 
-                "?�무", "?�망", "좌절", "?�들", "괴로", "고통", "비참", "처량",
-                "?�쓸", "?�로", "공허", "?�울", "침울", "깊�??�숨", "?�숨", "체념"
+                "슬프", "우울", "속상", "절망", "눈물", "허전", "억울",
+                "불안", "힘들", "외롭", "우울함", "상심", "지침",
             ],
             EmotionType.ANGER: [
-                "??, "짜증", "?�받", "분노", "?�울", "빡쳐", "미치�?, "뭐야",
-                "?�이??, "말도?�돼", "개빡", "개열�?, "진짜", "?�떻�?, "??,
-                "죽이고싶", "?�리고싶", "복수", "?�망", "증오", "?�압", "참을?�없"
+                "화", "분노", "짜증", "억울", "억울함", "열받", "싫", "폭발",
+                "분개", "짜증남", "언짢", "성미", "답답", "불쾌", "격앙",
             ],
             EmotionType.FEAR: [
-                "무섭", "?�려", "걱정", "근심", "불안", "공포", "무서??, "?�려",
-                "?�싹", "?�름", "긴장", "초조", "조마조마", "?�장", "?��??�", 
-                "?�림", "�?, "공포�?, "불안�?, "?�험", "?�기�?
+                "무서", "두려", "겁", "긴장", "공포", "불안", "불길", "불심",
+                "위험", "위축", "걱정", "전전", "불신", "위협", "경직",
             ],
             EmotionType.SURPRISE: [
-                "?�??, "깜짝", "??", "??, "?�", "?�머", "?�상??, "진짜?",
-                "?�마", "?�떻�?, "믿을?�없", "?�상못했", "?�상못했", "갑자�?,
-                "?�닷?�이", "충격", "?�황", "?�리?�절"
+                "놀라", "깜짝", "예기치", "갑작", "충격", "뜻밖", "신기",
+                "어라", "허탈", "당황", "기대", "기묘", "돌발", "예상밖", "충돌",
             ],
             EmotionType.DISGUST: [
-                "??��", "??, "꼴보기싫", "구역�?, "?�러", "지�?, "짜증", "??,
-                "?�웩", "?�나?�", "못봐주겠", "?�심", "?�이??, "기�?막�?"
+                "싫", "혐오", "역겨", "메스꺼", "불쾌", "거북", "불쾌감",
+                "더러", "추함", "혐오감", "구역", "거부", "위생", "냄새",
             ],
             EmotionType.STRESS: [
-                "?�트?�스", "?�박", "부??, "?�곤", "지�?, "?�들", "벅차", "몰려",
-                "?�여", "?�질것같", "?�계", "과로", "번아??, "?�진", "지�?,
-                "무리", "버거", "감당?�돼", "머리?�파", "목어�?, "근육", "긴장"
+                "스트레스", "피곤", "지쳐", "압박", "과로", "번아웃", "마감",
+                "빡침", "힘듦", "지김", "지치", "숨막", "초조", "압박감", "불면",
             ],
             EmotionType.ANXIETY: [
-                "불안", "걱정", "근심", "초조", "조급", "불안??, "?�요", "?�려",
-                "?�려", "걱정?�러", "마음?�하지??, "?�절부??, "조마조마", 
-                "가?�답??, "?�장?�근", "?�떨�?, "?��??�", "불면", "?�못??
+                "불안", "초조", "긴장", "두근", "떨리", "공황", "불면",
+                "과호", "고민", "염려", "걱정", "심장", "잠깐", "안절부절", "우려",
             ],
             EmotionType.LONELINESS: [
-                "?�로", "?�자", "?�쓸", "고립", "?�절", "?�외", "공허", "?�빈",
-                "?�무?�없", "?��?, "곁에??, "버림�?, "?�통?�돼", "?�해?�돼",
-                "?�밥", "?�술", "?�영", "?�자�?, "?�톨??
+                "외롭", "쓸쓸", "고립", "혼자", "고독", "허무", "공허",
+                "그리", "누구", "연결", "버려", "위로", "무력", "의지없", "차갑",
             ],
             EmotionType.FRUSTRATION: [
-                "?�답", "막막", "좌절", "?�기", "?�돼", "?�떻�?, "방법??, "길막",
-                "진전??, "?�자�?, "발전??, "?�용??, "?�수�?, "�?, "?�계",
-                "막다�?, "?�망??, "?�망??, "?�쩔?�없"
-            ]
+                "답답", "좌절", "막히", "원망", "실망", "힘들", "못참", "체념",
+                "번복", "지연", "안돼", "불만", "조급", "낙담", "흘려", "단념",
+            ],
         }
-    
+
     def _load_intensity_modifiers(self) -> Dict[str, float]:
-        """강도 ?�식???�전 (배율)"""
+        """강도 보정 용어"""
         return {
-            # 강화 ?�식??            "?�말": 1.5, "?�무": 1.4, "진짜": 1.3, "?�전": 1.3, "?�청": 1.3,
-            "무척": 1.2, "매우": 1.2, "�?: 1.1, "?�당??: 1.2, "극도�?: 1.6,
-            "최고�?: 1.5, "최�?�?: 1.5, "?�각?�게": 1.4, "치명?�으�?: 1.6,
-            "죽도�?: 1.5, "미치?�록": 1.4, "?�멸?�으�?: 1.6,
-            
-            # ?�화 ?�식?? 
-            "좀": 0.8, "?�간": 0.7, "?�짝": 0.6, "조금": 0.7, "그냥": 0.8,
-            "별로": 0.6, "그렇�?: 0.8, "그런?��?: 0.7, "?�느?�도": 0.8,
-            "?�당??: 0.7, "?�소": 0.8, "?�느?�도": 0.8,
-            
-            # 반복/지??강화
-            "계속": 1.3, "지?�적?�로": 1.2, "?�임?�이": 1.4, "�?: 1.2,
-            "??��": 1.3, "??: 1.2, "?�꾸": 1.3, "??: 1.1, "?�시": 1.1
+            # 강한 강도
+            "매우": 1.5,
+            "정말": 1.4,
+            "완전": 1.4,
+            "진짜": 1.3,
+            "굉장히": 1.3,
+            "심하게": 1.4,
+            "대단히": 1.3,
+            "엄청": 1.3,
+            "정말로": 1.4,
+            "너무": 1.4,
+
+            # 중간 강도
+            "조금": 1.1,
+            "조금씩": 1.1,
+            "조금만": 1.0,
+            "약간": 1.0,
+            "좀": 1.1,
+            "약간씩": 1.0,
+
+            # 완화
+            "조금은": 0.8,
+            "약간의": 0.9,
+            "별로": 0.7,
+            "거의": 0.8,
+            "별로안": 0.6,
+            "조금도": 0.7,
+            "아주조금": 0.7,
         }
-    
+
     def _load_context_patterns(self) -> Dict[str, Dict[str, Any]]:
-        """?�황�??�턴 ?�식"""
+        """상황 패턴"""
         return {
             "work_stress": {
                 "patterns": [
-                    r"(?�사|직장|?�무|???�사|?�료|?�근|출근|?�근|?�급|?�진)",
-                    r"(?�로?�트|마감|?�의|보고??발표|?��?|?�과)"
+                    r"(상사|직장|업무|마감|보고서|회의|프로젝트|성과|일정|야근|퇴근)",
+                    r"(성과압박|업무량|책임|실수|실적|평가|고객|회의자료)",
                 ],
                 "boost_emotions": [EmotionType.STRESS, EmotionType.FRUSTRATION],
-                "multiplier": 1.2
+                "multiplier": 1.2,
             },
             "relationship_issues": {
                 "patterns": [
-                    r"(?�친|?�친|?�인|?�인|짝사???�별|?�어|차임|바람)",
-                    r"(친구|?�기|?�후�??�간관�??�람???�통|갈등)"
+                    r"(연애|연인|배우자|사람|친구|동료|서로|오해|다툼|싸움)",
+                    r"(소통|심술|냉담|거리|상처|비난|무시|속상)",
                 ],
                 "boost_emotions": [EmotionType.SADNESS, EmotionType.LONELINESS, EmotionType.ANGER],
-                "multiplier": 1.3
+                "multiplier": 1.3,
             },
-            "family_problems": {
+            "family_conflicts": {
                 "patterns": [
-                    r"(부�??�마|?�빠|가�??�제|?�매|?�댁|처�?|?�어머니|?�모)",
-                    r"(가??�?결혼|?�아|?�이|?�식)"
+                    r"(부모|형제|가족|아이|부모님|아버지|어머니|형제자매|집안)",
+                    r"(갈등|입장차|서운|눈치|의무|돌봄|부담|보살핌)",
                 ],
                 "boost_emotions": [EmotionType.STRESS, EmotionType.FRUSTRATION, EmotionType.SADNESS],
-                "multiplier": 1.4
+                "multiplier": 1.4,
             },
             "health_concerns": {
                 "patterns": [
-                    r"(?�프|�?몸살|감기|병원|?�사|??치료|건강|�?",
-                    r"(?�통|복통|?�화|불면|?�못|?�곤|지�?"
+                    r"(몸|아프|통증|두통|속|불면|식욕|숨|심장|어지러|피곤)",
+                    r"(병원|진료|검사|약|치료|회복|피로|증상|염려|건강)",
                 ],
                 "boost_emotions": [EmotionType.ANXIETY, EmotionType.SADNESS],
-                "multiplier": 1.3
+                "multiplier": 1.3,
             },
             "financial_stress": {
                 "patterns": [
-                    r"(??비용|비싸|비용|?�세|?��?�?카드|?�금|?�자)",
-                    r"(경제|?�정|?�입|지�??�활�??�돈)"
+                    r"(돈|대출|빚|지출|예산|월급|실직|부채|부담|생활비)",
+                    r"(경제|재정|절약|물가|비용|채무|수입|지갑)",
                 ],
                 "boost_emotions": [EmotionType.STRESS, EmotionType.ANXIETY],
-                "multiplier": 1.3
-            }
+                "multiplier": 1.3,
+            },
         }
-    
+
     def _load_negation_words(self) -> List[str]:
-        """부?�어 리스??""
-        return [
-            "??, "�?, "?�니", "??, "말고", "말아", "?�냐", "?�니??, 
-            "?��?", "?��?", "조금??, "별로", "그리", "?�히"
-        ]
-    
+        """부정어 목록"""
+        return ["안", "아니", "못", "안돼", "없", "안좋", "별로", "아닌", "싫", "말고"]
+
     async def analyze(self, text: str) -> EmotionAnalysis:
-        """?�스??감정 분석 메인 ?�수"""
-        
+        """입력 텍스트를 분석해 감정 결과 생성"""
         if not text or len(text.strip()) == 0:
             return self._create_neutral_emotion()
-        
+
         try:
-            # 1. ?�스???�처�?            cleaned_text = self._preprocess_text(text)
-            
-            # 2. 감정�??�수 계산
+            cleaned_text = self._preprocess_text(text)
             emotion_scores = self._calculate_emotion_scores(cleaned_text)
-            
-            # 3. ?�황�?컨텍?�트 부?�트 ?�용
             emotion_scores = self._apply_context_boost(cleaned_text, emotion_scores)
-            
-            # 4. 부?�어 처리
             emotion_scores = self._handle_negation(cleaned_text, emotion_scores)
-            
-            # 5. 최종 감정 �?강도 결정
+
             primary_emotion, secondary_emotion, intensity = self._determine_final_emotions(emotion_scores)
-            
-            # 6. 감정 ?�워??추출
             emotional_keywords = self._extract_emotional_keywords(cleaned_text, primary_emotion)
-            
-            # 7. ?�뢰??계산
             confidence = self._calculate_confidence(emotion_scores, cleaned_text)
-            
-            # 8. ?�황 분석 (맥락 ?�보)
             context_analysis = self._analyze_context(cleaned_text)
-            
+
             return EmotionAnalysis(
                 primary_emotion=primary_emotion,
                 secondary_emotion=secondary_emotion,
                 intensity=intensity,
                 confidence=confidence,
                 emotional_keywords=emotional_keywords,
-                context_analysis=context_analysis
+                context_analysis=context_analysis,
             )
-            
         except Exception as e:
-            logger.error(f"감정 분석 ?�류: {e}")
+            logger.error(f"감정 분석 중 오류: {e}")
             return self._create_neutral_emotion()
-    
+
     def _preprocess_text(self, text: str) -> str:
-        """?�스???�처�?""
-        # ?�문??변??�?공백 ?�리
+        """텍스트 정규화"""
         cleaned = text.lower().strip()
-        
-        # 반복 문자 ?�리 (?? "?�아?�악" -> "?�악")
-        cleaned = re.sub(r'(.)\1{2,}', r'\1\1', cleaned)
-        
-        # ?��??�는 ?�수문자 ?�거 (감정 ?�현?� ?��?)
-        cleaned = re.sub(r'[^\w\s!?.,~?�ㅜ?�ㅎ]', '', cleaned)
-        
+        cleaned = re.sub(r"(.)\1{2,}", r"\1\1", cleaned)
+        cleaned = re.sub(r"[^\w\s!?.,~가-힣]", "", cleaned)
         return cleaned
-    
+
     def _calculate_emotion_scores(self, text: str) -> Dict[EmotionType, float]:
-        """감정�??�수 계산"""
+        """감정 점수 집계"""
         emotion_scores = {emotion: 0.0 for emotion in EmotionType}
-        
+
         for emotion, keywords in self.emotion_keywords.items():
             for keyword in keywords:
-                # ?�워??매칭 ?�수
-                matches = len(re.findall(keyword, text))
-                base_score = matches * 1.0
-                
-                if base_score > 0:
-                    # 강도 ?�식???�용
-                    intensity_boost = self._calculate_intensity_boost(text, keyword)
-                    final_score = base_score * intensity_boost
-                    
-                    emotion_scores[emotion] += final_score
-        
+                matches = len(re.findall(re.escape(keyword), text))
+                if matches <= 0:
+                    continue
+
+                base_score = float(matches)
+                intensity_boost = self._calculate_intensity_boost(text, keyword)
+                emotion_scores[emotion] += base_score * intensity_boost
+
         return emotion_scores
-    
+
     def _calculate_intensity_boost(self, text: str, keyword: str) -> float:
-        """강도 ?�식?�에 ?�른 배율 계산"""
+        """키워드 주변의 강조어 반영"""
         boost = 1.0
-        
-        # ?�워???�뒤 5글??범위?�서 ?�식??찾기
-        keyword_positions = [m.start() for m in re.finditer(keyword, text)]
-        
+        keyword_positions = [m.start() for m in re.finditer(re.escape(keyword), text)]
+
         for pos in keyword_positions:
             start = max(0, pos - 10)
             end = min(len(text), pos + len(keyword) + 10)
             context = text[start:end]
-            
             for modifier, multiplier in self.intensity_modifiers.items():
                 if modifier in context:
                     boost *= multiplier
-                    break  # �?번째 ?�식?�만 ?�용
-        
-        return boost
-    
-    def _apply_context_boost(self, text: str, emotion_scores: Dict[EmotionType, float]) -> Dict[EmotionType, float]:
-        """?�황�?컨텍?�트 부?�트 ?�용"""
-        
-        for context_name, context_info in self.context_patterns.items():
-            context_matched = False
-            
-            # ?�턴 매칭 체크
-            for pattern in context_info["patterns"]:
-                if re.search(pattern, text):
-                    context_matched = True
                     break
-            
-            if context_matched:
-                # ?�당 ?�황?�서 강화??감정?�에 배율 ?�용
-                for emotion in context_info["boost_emotions"]:
-                    if emotion in emotion_scores:
-                        emotion_scores[emotion] *= context_info["multiplier"]
-                
-                logger.debug(f"컨텍?�트 부?�트 ?�용: {context_name}")
-        
+
+        return boost
+
+    def _apply_context_boost(
+        self,
+        text: str,
+        emotion_scores: Dict[EmotionType, float],
+    ) -> Dict[EmotionType, float]:
+        """상황 패턴 일치 시 감정 점수 보정"""
+        for context_name, context_info in self.context_patterns.items():
+            matched = any(re.search(pattern, text) for pattern in context_info["patterns"])
+            if not matched:
+                continue
+
+            for emotion in context_info["boost_emotions"]:
+                if emotion in emotion_scores:
+                    emotion_scores[emotion] *= context_info["multiplier"]
+
+            logger.debug(f"상황 패턴 적용: {context_name}")
+
         return emotion_scores
-    
+
     def _handle_negation(self, text: str, emotion_scores: Dict[EmotionType, float]) -> Dict[EmotionType, float]:
-        """부?�어 처리"""
-        
-        # 간단??부?�어 처리 (?? "??좋아" -> 기쁨 감소)
+        """부정어 보정"""
         negation_count = sum(text.count(neg_word) for neg_word in self.negation_words)
-        
-        if negation_count > 0:
-            # 긍정 감정?� 감소, 부??감정?� ?��?
-            positive_emotions = [EmotionType.JOY, EmotionType.SURPRISE]
-            negative_emotions = [
-                EmotionType.SADNESS, EmotionType.ANGER, EmotionType.FEAR,
-                EmotionType.STRESS, EmotionType.ANXIETY, EmotionType.FRUSTRATION
-            ]
-            
-            negation_factor = 0.7 ** negation_count  # 부?�어가 많을?�록 강한 감소
-            
-            for emotion in positive_emotions:
-                emotion_scores[emotion] *= negation_factor
-        
+        if negation_count <= 0:
+            return emotion_scores
+
+        negative_factor = 0.7 ** negation_count
+        for emotion in [EmotionType.JOY, EmotionType.SURPRISE]:
+            emotion_scores[emotion] *= negative_factor
+
         return emotion_scores
-    
+
     def _determine_final_emotions(self, emotion_scores: Dict[EmotionType, float]) -> Tuple[EmotionType, Optional[EmotionType], float]:
-        """최종 감정 �?강도 결정"""
-        
-        # ?�수가 ?�는 감정�??�터�?        non_zero_emotions = {k: v for k, v in emotion_scores.items() if v > 0}
-        
+        """최종 감정과 강도 결정"""
+        non_zero_emotions = {k: v for k, v in emotion_scores.items() if v > 0}
         if not non_zero_emotions:
             return EmotionType.NEUTRAL, None, 0.5
-        
-        # ?�수 ?�으�??�렬
+
         sorted_emotions = sorted(non_zero_emotions.items(), key=lambda x: x[1], reverse=True)
-        
-        primary_emotion = sorted_emotions[0][0]
-        primary_score = sorted_emotions[0][1]
-        
-        # 보조 감정 (2?��? 1?�의 50% ?�상????
-        secondary_emotion = None
-        if len(sorted_emotions) > 1:
-            secondary_score = sorted_emotions[1][1]
-            if secondary_score >= primary_score * 0.5:
-                secondary_emotion = sorted_emotions[1][0]
-        
-        # 강도 계산 (0.0 ~ 1.0)
-        max_possible_score = 10.0  # 가?�된 최�? ?�수
+        primary_emotion, primary_score = sorted_emotions[0]
+
+        secondary_emotion: Optional[EmotionType] = None
+        if len(sorted_emotions) > 1 and sorted_emotions[1][1] >= primary_score * 0.5:
+            secondary_emotion = sorted_emotions[1][0]
+
+        max_possible_score = 10.0
         intensity = min(primary_score / max_possible_score, 1.0)
-        
-        # 강도 보정 (?�무 ??? ?�도�?
         intensity = max(intensity, 0.3)
-        
+
         return primary_emotion, secondary_emotion, intensity
-    
+
     def _extract_emotional_keywords(self, text: str, primary_emotion: EmotionType) -> List[str]:
-        """감정 ?�워??추출"""
+        """감지된 핵심 키워드 추출"""
         keywords = []
-        
-        if primary_emotion in self.emotion_keywords:
-            emotion_keywords = self.emotion_keywords[primary_emotion]
-            for keyword in emotion_keywords:
-                if keyword in text:
-                    keywords.append(keyword)
-        
-        # 중복 ?�거 �?길이 ?�한
-        unique_keywords = list(set(keywords))[:10]
-        
-        return unique_keywords
-    
+        for keyword in self.emotion_keywords.get(primary_emotion, []):
+            if keyword in text:
+                keywords.append(keyword)
+
+        return list(dict.fromkeys(keywords))[:10]
+
     def _calculate_confidence(self, emotion_scores: Dict[EmotionType, float], text: str) -> float:
-        """분석 ?�뢰??계산"""
-        
-        confidence = 0.5  # 기본 ?�뢰??        
-        # 1. ?�체 감정 ?�수가 ?�을?�록 ?�뢰??증�?
+        """신뢰도 계산"""
+        confidence = 0.5
         total_score = sum(emotion_scores.values())
+
         if total_score > 5:
             confidence += 0.2
         elif total_score > 2:
             confidence += 0.1
-        
-        # 2. ?�스??길이가 ?�절?????�뢰??증�?
+
         text_length = len(text)
         if 10 <= text_length <= 200:
             confidence += 0.1
         elif 200 < text_length <= 500:
             confidence += 0.05
-        
-        # 3. 감정 ?�워?��? ?�양?????�뢰??증�?
-        unique_emotions = len([k for k, v in emotion_scores.items() if v > 0])
+
+        unique_emotions = len([v for v in emotion_scores.values() if v > 0])
         if unique_emotions >= 2:
             confidence += 0.1
         elif unique_emotions == 1:
             confidence += 0.05
-        
-        # 4. 강도 ?�식?��? ?�을 ???�뢰??증�?
-        has_modifiers = any(modifier in text for modifier in self.intensity_modifiers.keys())
-        if has_modifiers:
+
+        if any(modifier in text for modifier in self.intensity_modifiers.keys()):
             confidence += 0.1
-        
-        # 최�? 1.0?�로 ?�한
+
         return min(confidence, 1.0)
-    
+
     def _analyze_context(self, text: str) -> Dict[str, Any]:
-        """?�황 분석 (맥락 ?�보)"""
-        
+        """상황 분석"""
         context = {
             "detected_situations": [],
             "text_characteristics": {},
-            "emotional_complexity": "simple"
+            "emotional_complexity": "simple",
         }
-        
-        # 1. ?�황 감�?
+
         for situation_name, situation_info in self.context_patterns.items():
             for pattern in situation_info["patterns"]:
                 if re.search(pattern, text):
                     context["detected_situations"].append(situation_name)
                     break
-        
-        # 2. ?�스???�성 분석
+
         context["text_characteristics"] = {
             "length": len(text),
-            "sentence_count": len(text.split('.')),
-            "question_marks": text.count('?'),
-            "exclamation_marks": text.count('!'),
-            "repetitive_chars": len(re.findall(r'(.)\1{2,}', text))
+            "sentence_count": len(text.split(".")),
+            "question_marks": text.count("?"),
+            "exclamation_marks": text.count("!"),
+            "repetitive_chars": len(re.findall(r"(.)\1{2,}", text)),
         }
-        
-        # 3. 감정 복잡??결정
+
         if len(context["detected_situations"]) > 2:
             context["emotional_complexity"] = "complex"
         elif len(context["detected_situations"]) == 2:
             context["emotional_complexity"] = "moderate"
-        
+
         return context
-    
+
     def _create_neutral_emotion(self) -> EmotionAnalysis:
-        """중립 감정 ?�성 (?�류 ?�는 분석 불�? ??"""
+        """기본(중립) 감정 결과 생성"""
         return EmotionAnalysis(
             primary_emotion=EmotionType.NEUTRAL,
             secondary_emotion=None,
             intensity=0.5,
             confidence=0.3,
             emotional_keywords=[],
-            context_analysis={"error": "분석 ?�패 ?�는 중립???�스??}
+            context_analysis={"error": "분석할 수 있는 감정 힌트가 없어 중립으로 처리했습니다."},
         )
 
-# ?�역 감정 분석�??�스?�스 (?��???
+
 _emotion_analyzer_instance: Optional[EmotionAnalyzer] = None
 
+
 def get_emotion_analyzer() -> EmotionAnalyzer:
-    """감정 분석�??�스?�스 반환 (?��???"""
+    """감정 분석기 싱글톤 반환"""
     global _emotion_analyzer_instance
     if _emotion_analyzer_instance is None:
         _emotion_analyzer_instance = EmotionAnalyzer()
     return _emotion_analyzer_instance
+

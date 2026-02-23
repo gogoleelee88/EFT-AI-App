@@ -1,8 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { API_CONFIG, hasValidApiBase } from './config/api'
-import { isBackendApiPath, resolveBackendUrl } from './services/http'
+import { API_CONFIG, resolveBackendUrl, isApiPath } from "./config/api";
 
 declare const __BUILD_ID__: string
 declare const __BUILD_TIME__: string
@@ -40,53 +39,31 @@ if (shouldUseMockServiceWorker) {
   console.log('MSW mocking disabled (set VITE_USE_MSW=true to enable in DEV)')
 }
 
-const installBackendFetchProxy = () => {
-  if (!API_CONFIG.API_BASE_URL || typeof window === 'undefined') {
-    return
+const originalFetch = window.fetch.bind(window);
+const isAbsoluteUrl = (url: string) => /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(url)
+
+window.fetch = async (input: RequestInfo, init?: RequestInit) => {
+  if (typeof input === "string") {
+    const value = input.trim()
+    if (isAbsoluteUrl(value)) {
+      return originalFetch(value, init)
+    }
+    const requestUrl = new URL(value, window.location.origin)
+    if (isApiPath(requestUrl.pathname)) {
+      return originalFetch(resolveBackendUrl(requestUrl.pathname + requestUrl.search), init);
+    }
+    return originalFetch(value, init)
   }
-
-  const originalFetch = window.fetch.bind(window)
-  window.fetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (import.meta.env.DEV && !hasValidApiBase) {
-      return originalFetch(input, init)
+  if (input instanceof Request) {
+    const requestUrl = new URL(input.url, window.location.origin);
+    if (requestUrl.origin === window.location.origin && isApiPath(requestUrl.pathname)) {
+      return originalFetch(resolveBackendUrl(requestUrl.pathname + requestUrl.search), init ?? {});
     }
+  }
+  return originalFetch(input, init);
+};
 
-    if (typeof input === 'string') {
-      if (input.startsWith('/') && isBackendApiPath(input)) {
-        return originalFetch(resolveBackendUrl(input, API_CONFIG.API_BASE_URL), init)
-      }
-      return originalFetch(input, init)
-    }
-
-    if (input instanceof URL) {
-      const path = input.pathname + input.search
-      if (isBackendApiPath(path)) {
-        return originalFetch(resolveBackendUrl(path, API_CONFIG.API_BASE_URL), init)
-      }
-      return originalFetch(input.toString(), init)
-    }
-
-    if (input instanceof Request) {
-      try {
-        const parsed = new URL(input.url)
-        if (
-          parsed.origin === window.location.origin &&
-          isBackendApiPath(parsed.pathname)
-        ) {
-          return originalFetch(new Request(resolveBackendUrl(`${parsed.pathname}${parsed.search}`, API_CONFIG.API_BASE_URL), input))
-        }
-      } catch {
-        return originalFetch(input, init)
-      }
-    }
-
-    return originalFetch(input, init)
-  }) as typeof window.fetch
-}
-
-if (import.meta.env.PROD || hasValidApiBase) {
-  installBackendFetchProxy()
-}
+console.debug(`API base: ${API_CONFIG.API_BASE_URL}`);
 
 const root = createRoot(document.getElementById('root')!)
 

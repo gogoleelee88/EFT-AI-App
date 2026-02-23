@@ -1,0 +1,60 @@
+name: Deploy Frontend to Cloudflare Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-cloudflare-pages.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          missing=()
+          [ -z "${{ secrets.CF_API_TOKEN }}" ] && missing+=("CF_API_TOKEN")
+          [ -z "${{ secrets.CF_ACCOUNT_ID }}" ] && missing+=("CF_ACCOUNT_ID")
+          [ -z "${{ secrets.CF_PAGES_PROJECT }}" ] && missing+=("CF_PAGES_PROJECT")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required secrets: ${missing[*]}"
+            echo "Set secrets before using Cloudflare Pages deploy workflow."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies (root)
+        env:
+          NPM_CONFIG_OPTIONAL: "true"
+          NPM_CONFIG_OMIT: ""
+        run: |
+          npm ci --include=optional
+          ROLLUP_VER=$(node -p "require('./node_modules/rollup/package.json').version")
+          npm i --no-save @rollup/rollup-linux-x64-gnu@$ROLLUP_VER
+
+      - name: Build frontend
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          ROLLUP_NO_NATIVE: "1"
+        run: npm --prefix frontend run build:ci
+
+      - name: Copy Cloudflare redirects
+        run: cp frontend/public/_redirects frontend/dist/_redirects
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: ${{ secrets.CF_PAGES_PROJECT }}
+          directory: frontend/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
