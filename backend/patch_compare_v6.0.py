@@ -1,6 +1,7 @@
 import pathlib
 import re
 import sys
+from typing import Dict, Optional
 
 # 이 스크립트는 'compare.py' 파일의 v4 버전을 v6.0으로 패치합니다.
 # v6.0의 핵심 로직:
