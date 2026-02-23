@@ -9,7 +9,7 @@ import re
 from typing import Any, Callable, List, Optional, Tuple
 
 from backend.models.chat_models import StrictIntakeInput
-from backend.types.guidance_schema import (
+from backend.domain_types.guidance_schema import (
     PlannerBlock,
     PlannerPlan,
     ScenarioBlock,

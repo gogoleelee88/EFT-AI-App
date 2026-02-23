@@ -36,7 +36,7 @@ from services.voice_style_manager import (
     get_voice_style_manager,
 )
 from services.tts_service import synthesize_stream
-from backend.types.guidance_schema import (
+from backend.domain_types.guidance_schema import (
     ThemeRecommendation,
     GuidanceAction,
     GuidanceCursor,

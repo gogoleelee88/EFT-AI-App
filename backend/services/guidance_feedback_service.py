@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from backend.types.guidance_schema import GuidanceFeedbackRequest
+    from backend.domain_types.guidance_schema import GuidanceFeedbackRequest
 
 _ROOT = Path(__file__).resolve().parents[1]
 _DATA_DIR = _ROOT / "data"

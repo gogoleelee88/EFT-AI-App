@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from config.settings import get_settings
 from core.task_atom_chooser import get_task_atom_chooser
 from backend.models.chat_models import StrictIntakeInput
-from backend.types.guidance_schema import ThemeRecommendation, GuidanceAction, ScenarioBlock
+from backend.domain_types.guidance_schema import ThemeRecommendation, GuidanceAction, ScenarioBlock
 
 _SCENARIOS_PATH = Path(__file__).resolve().parent.parent / "data" / "scenarios.json"
 

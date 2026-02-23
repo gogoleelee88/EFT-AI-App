@@ -19,7 +19,7 @@ from core.policy_engine import (
     get_theme_recommendations,
 )
 from backend.models.chat_models import StrictIntakeInput
-from backend.types.guidance_schema import ThemeRecommendation
+from backend.domain_types.guidance_schema import ThemeRecommendation
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -170,5 +170,4 @@ def get_theme_recommender(module_mode: Optional[str] = None) -> ThemeRecommendat
     if mode == "pro":
         return LLMThemeRecommender()
     return RuleBasedThemeRecommender()
-
 

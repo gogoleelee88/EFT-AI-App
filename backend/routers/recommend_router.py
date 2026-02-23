@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from backend.models.chat_models import StrictIntakeInput
 from services.youtube_recommendation_service import recommend_youtube_meditations
-from backend.types.youtube_schema import YouTubeCandidate
+from backend.domain_types.youtube_schema import YouTubeCandidate
 
 router = APIRouter(prefix="/api/recommend", tags=["recommend"])
 

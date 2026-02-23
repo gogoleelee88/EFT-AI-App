@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from backend.models.chat_models import StrictIntakeInput
-from backend.types.guidance_schema import (
+from backend.domain_types.guidance_schema import (
     CaptionItem,
     GuidanceAction,
     GuidanceCursor,

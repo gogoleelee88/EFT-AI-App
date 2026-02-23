@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from backend.models.chat_models import StrictIntakeInput
-    from backend.types.guidance_schema import ThemeRecommendation
+    from backend.domain_types.guidance_schema import ThemeRecommendation
 
 
 class ThemeRecommendationStrategy(ABC):

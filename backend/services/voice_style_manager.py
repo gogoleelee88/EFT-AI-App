@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Literal, Optional
 
-from backend.types.voice_schema import FaceData, TTSConfig
+from backend.domain_types.voice_schema import FaceData, TTSConfig
 
 # ?쨍챙챘쨀?VoiceStyleManager 챙쨘챙 (?챠 ?챙???. 챙쨉챘? 500 ?쨍챙.
 _SESSION_MANAGERS: Dict[str, VoiceStyleManager] = {}
@@ -175,7 +175,7 @@ def get_voice_style_manager(session_id: str) -> VoiceStyleManager:
 # Integration: Chunk Loop?챙 ?쨍챙쨋 ?챙 (챙짙쩌챙)
 # ---------------------------------------------------------------------------
 #
-# from backend.types.voice_schema import FaceData, TTSConfig
+# from backend.domain_types.voice_schema import FaceData, TTSConfig
 # from backend.services.voice_style_manager import VoiceStyleManager
 #
 # # ???쨍챙????챘짼??챙짹 (?챘 ?챙징쨈??챙짙쩌챙)
