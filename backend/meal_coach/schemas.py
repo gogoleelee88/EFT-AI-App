@@ -223,3 +223,43 @@ class TenantActor(BaseModel):
     user_id: str
     tenant_id: str
     role: RoleType
+
+# --- Pydantic v2 forward-ref resolution (required when using future annotations) ---
+try:
+    # rebuild models so ForwardRef like "MealEstimateResponse" resolves correctly
+    for _m in [
+        Versions,
+        MealCreateRequest,
+        MealUpdateRequest,
+        MealResponse,
+        MealListItem,
+        MealListResponse,
+        PhotoInput,
+        MealPhotoCreateRequest,
+        MealPhotoResponse,
+        MealEstimateRequest,
+        NutritionPayload,
+        MealEstimateResponse,
+        PostCheckRequest,
+        PostCheckResponse,
+        PostCheckListResponse,
+        AdviceResponse,
+        SchedulerJobCreateRequest,
+        SchedulerJobResponse,
+        SchedulerRunRequest,
+        SchedulerRunResponse,
+        NotificationTriggerRequest,
+        NotificationTriggerResponse,
+        DeviceTokenUpsertRequest,
+        DeviceTokenResponse,
+        DeviceTokenListResponse,
+        WeeklySummaryResponse,
+        ConsentUpsertRequest,
+        ConsentResponse,
+        ConsentRevokeRequest,
+        TenantActor,
+    ]:
+        _m.model_rebuild()
+except Exception:
+    # keep startup from crashing here; the real error will show on route registration if still broken
+    pass
