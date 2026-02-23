@@ -1,0 +1,2 @@
+"""Menstrual module package."""
+
