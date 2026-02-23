@@ -138,10 +138,6 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
 
     return TOOL_SCHEMAS
 
-"summary": f"Emotion check-in saved. mood={mood}, intensity={intensity}, status={'success' if ok else 'failed'}",
-
-
-
 def _safe_date(value: str) -> date:
 
     return datetime.strptime(value, "%Y-%m-%d").date()
@@ -278,7 +274,7 @@ def _emotion_log_checkin(args: Dict[str, Any], session_id: str, user_id: str) ->
 
     return {
 
-        "summary": f"Emotion check-in saved. mood={mood}, intensity={intensity}, status={"success" if ok else "failed"}",
+        "summary": f"Emotion check-in saved. mood={mood}, intensity={intensity}, status={'success' if ok else 'failed'}",
 
         "saved": ok,
 
