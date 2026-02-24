@@ -1,0 +1,20 @@
+{
+  "labels": [
+    "commute",
+    "work_focus",
+    "meeting",
+    "workout",
+    "meal",
+    "chores",
+    "relax",
+    "sleep",
+    "social",
+    "unknown_event"
+  ],
+  "unknown_label": "unknown_event",
+  "question_gate": {
+    "confidence_threshold": 0.62,
+    "margin_threshold": 0.12,
+    "expires_minutes": 30
+  }
+}

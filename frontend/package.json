@@ -57,6 +57,7 @@
     "@types/three": "^0.179.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "eft-ai-app": "file:..",
     "firebase": "^12.6.0",
     "framer-motion": "^12.23.25",
     "lucide-react": "^0.541.0",

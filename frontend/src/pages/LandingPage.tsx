@@ -1,11 +1,25 @@
 ﻿import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, loading, logout } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   const handleGetStarted = () => {
     navigate('/');
+  };
+
+  const handleAuthClick = async () => {
+    if (isAuthenticated) {
+      await logout();
+      return;
+    }
+    navigate('/login');
   };
 
   return (
@@ -31,10 +45,10 @@ const LandingPage: React.FC = () => {
               앱 설치 가이드
             </button>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => void handleAuthClick()}
               className="border border-white text-white px-4 py-2 rounded-full font-bold text-sm hover:bg-white hover:text-black transition"
             >
-              로그인
+              {isAuthenticated ? '로그아웃' : '로그인'}
             </button>
           </div>
         </div>

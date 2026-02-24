@@ -1,0 +1,123 @@
+{
+  "inference": {
+    "l0_probs": {
+      "walk": 0.55,
+      "upstairs": 0.05,
+      "downstairs": 0.03,
+      "sit": 0.1,
+      "stand": 0.17,
+      "lay": 0.0,
+      "unknown": 0.1
+    },
+    "l1_top1": "commute",
+    "l1_confidence": 0.718969,
+    "margin_top1_top2": 0.650327,
+    "l1_topk": [
+      {
+        "label": "commute",
+        "confidence": 0.718969
+      },
+      {
+        "label": "workout",
+        "confidence": 0.068642
+      },
+      {
+        "label": "unknown_event",
+        "confidence": 0.049548
+      },
+      {
+        "label": "chores",
+        "confidence": 0.044527
+      },
+      {
+        "label": "work_focus",
+        "confidence": 0.034362
+      }
+    ],
+    "l1_probs": {
+      "commute": 0.718969,
+      "work_focus": 0.034362,
+      "meeting": 0.023046,
+      "workout": 0.068642,
+      "meal": 0.009548,
+      "chores": 0.044527,
+      "relax": 0.020371,
+      "sleep": 0.002881,
+      "social": 0.028107,
+      "unknown_event": 0.049548
+    },
+    "score_reasons": {
+      "commute": [
+        "from_l0:walk",
+        "from_l0:upstairs",
+        "from_l0:downstairs"
+      ],
+      "work_focus": [
+        "from_l0:sit",
+        "from_l0:stand",
+        "from_l0:unknown"
+      ],
+      "workout": [
+        "from_l0:walk",
+        "from_l0:upstairs",
+        "from_l0:downstairs"
+      ],
+      "chores": [
+        "from_l0:walk",
+        "from_l0:upstairs",
+        "from_l0:downstairs"
+      ],
+      "unknown_event": [
+        "from_l0:walk",
+        "from_l0:upstairs",
+        "from_l0:downstairs"
+      ]
+    },
+    "ask_question": false,
+    "question": null
+  },
+  "candidate_request": {
+    "user_id": null,
+    "day_id": null,
+    "ts_start": "2026-02-17T10:57:41.207690+00:00",
+    "ts_end": "2026-02-17T10:57:43.767690+00:00",
+    "top1": "commute",
+    "activity_topk": [
+      {
+        "label": "commute",
+        "confidence": 0.718969
+      },
+      {
+        "label": "workout",
+        "confidence": 0.068642
+      },
+      {
+        "label": "unknown_event",
+        "confidence": 0.049548
+      },
+      {
+        "label": "chores",
+        "confidence": 0.044527
+      },
+      {
+        "label": "work_focus",
+        "confidence": 0.034362
+      }
+    ],
+    "confidence": 0.718969,
+    "margin_top1_top2": 0.650327,
+    "screen_state": "on",
+    "orientation": "portrait",
+    "pickup_flag": true,
+    "mismatch_score": 0.281031,
+    "trigger_reasons": []
+  },
+  "question_request": null,
+  "candidate_response": {
+    "status_code": 0,
+    "body": {
+      "error": "HTTP connection failed: http://127.0.0.1:8000/api/spec/behavior/candidates?auto_ask=false ([WinError 10061] 대상 컴퓨터에서 연결을 거부했으므로 연결하지 못했습니다)"
+    }
+  },
+  "question_response": null
+}

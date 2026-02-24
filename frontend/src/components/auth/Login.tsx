@@ -120,13 +120,13 @@ const Login: React.FC<LoginProps> = ({ onSuccess, onError }) => {
       await submitLogin(user, mode);
     } catch (error: any) {
       console.error('로그인 실패:', error);
-      console.error('[GoogleAuth] error detail', {
-        code: error?.code,
-        message: error?.message,
-        name: error?.name,
-        customData: error?.customData,
-        stack: error?.stack,
-      });      
+      // console.error('[GoogleAuth] error detail', {
+      //   code: error?.code,
+      //   message: error?.message,
+      //   name: error?.name,
+      //   customData: error?.customData,
+      //   stack: error?.stack,
+      // });      
 
       let errorMessage = '로그인에 실패했습니다.';
 

@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "EFT Work Guide MVP",
+  "version": "0.3.0",
+  "description": "Blocked-task click guidance overlay on real pages (DOM mode MVP).",
+  "permissions": ["tabs", "activeTab", "storage", "idle"],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "https://*.your-domain.com/*"
+  ],
+  "background": {
+    "service_worker": "service_worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Start Work Guide",
+    "default_popup": "popup.html"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "n_train": 65205,
+  "n_val": 0,
+  "n_test": 250257,
+  "val_macro_f1": null,
+  "test_macro_f1": 0.14937892657822968,
+  "feature_dim": 51
+}

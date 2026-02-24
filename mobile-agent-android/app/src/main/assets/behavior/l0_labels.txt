@@ -1,0 +1,8 @@
+# One label per line. This order must match har_l0.tflite output index.
+walk
+upstairs
+downstairs
+sit
+stand
+lay
+unknown

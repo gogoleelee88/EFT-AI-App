@@ -1,0 +1,158 @@
+{
+  "version": "2026-02-12",
+  "sources": [
+    {
+      "name": "mcphases",
+      "role": "cycle-phase priors"
+    },
+    {
+      "name": "sleep_edf",
+      "role": "sleep debt thresholds"
+    },
+    {
+      "name": "wesad",
+      "role": "stress thresholds and confidence hints"
+    },
+    {
+      "name": "exam_stress",
+      "role": "behavioral disambiguation priors"
+    }
+  ],
+  "condition_score": {
+    "sleep_penalty": {
+      "LT5": -25,
+      "H5_6": -15,
+      "H6_7": -8,
+      "H7_8": 0,
+      "GT8": 0
+    },
+    "mood_penalty": {
+      "calm": 0,
+      "ok": -5,
+      "anxious": -15,
+      "low": -20,
+      "irritated": -15
+    },
+    "period_penalty": {
+      "on": -8,
+      "pre": -5,
+      "post": 0,
+      "none": 0
+    },
+    "fatigue_weight": 4,
+    "pain_weight": 6,
+    "behavior_inference": {
+      "require_inferred_flag": true,
+      "input_latency": {
+        "threshold_sec": 120,
+        "penalty": 5
+      },
+      "app_switch": {
+        "threshold_30min": 15,
+        "penalty": 5
+      }
+    }
+  },
+  "drivers": {
+    "sleep_debt": {
+      "base_score_by_band": {
+        "LT5": 92,
+        "H5_6": 82,
+        "H6_7": 62,
+        "H7_8": 24,
+        "GT8": 12
+      },
+      "fatigue_boost_per_point": 2,
+      "high_conf_sleep_bands": [
+        "LT5",
+        "H5_6"
+      ]
+    },
+    "stress": {
+      "mood_base_score": {
+        "calm": 14,
+        "ok": 28,
+        "anxious": 84,
+        "low": 72,
+        "irritated": 78
+      },
+      "inferred_stress_weight": 7,
+      "high_conf_moods": [
+        "anxious",
+        "irritated"
+      ],
+      "high_conf_inferred_threshold": 3
+    },
+    "post_meal_dip": {
+      "scale_max": 100,
+      "high_conf_threshold": 3,
+      "med_conf_threshold": 2
+    }
+  },
+  "menstrual": {
+    "weights": {
+      "cramps_0_4": 0.35,
+      "fatigue_0_4": 0.25,
+      "irritability_0_4": 0.25,
+      "focus_drop_0_4": 0.15
+    },
+    "confidence_thresholds": {
+      "med_score_min": 35
+    },
+    "self_report_confidence_cap": "med"
+  },
+  "disambiguation": {
+    "blocker_drivers": [
+      "SLEEP_DEBT_LOAD",
+      "POST_MEAL_DIP",
+      "STRESS_LOAD"
+    ],
+    "blocker_confidence": "high",
+    "blocker_min_score": 70,
+    "menstrual_score_penalty": 18
+  },
+  "quality_gate": {
+    "menstrual_self_report": {
+      "required_fields": [
+        "cramps_0_4",
+        "fatigue_0_4",
+        "irritability_0_4"
+      ],
+      "optional_fields": [
+        "bleeding_level_0_2",
+        "focus_drop_0_4"
+      ],
+      "confidence_by_coverage": [
+        {
+          "min_coverage": 0.6,
+          "confidence": "med"
+        },
+        {
+          "min_coverage": 0.0,
+          "confidence": "low"
+        }
+      ]
+    }
+  },
+  "plan_patch": {
+    "buffer": {
+      "before_minutes": 10,
+      "after_minutes": 15
+    },
+    "split_deep_work": {
+      "min_block_minutes": 90,
+      "segments": [
+        45,
+        15,
+        45
+      ]
+    },
+    "decision_delay": {
+      "defer_hour_utc": 9,
+      "defer_minute_utc": 30
+    },
+    "quality_gate": {
+      "disallow_move_or_cancel_when_confidence": "low"
+    }
+  }
+}

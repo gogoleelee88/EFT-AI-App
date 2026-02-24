@@ -1,0 +1,25 @@
+{
+  "dataset_name": "lodo_hhar",
+  "num_samples": 315462,
+  "num_subjects": 254,
+  "dataset_ids": [
+    0,
+    1,
+    2
+  ],
+  "label_counts": {
+    "walk": 48853,
+    "upstairs": 38393,
+    "downstairs": 34850,
+    "sit": 44995,
+    "stand": 57954,
+    "lay": 1944,
+    "unknown": 88473
+  },
+  "unknown_ratio": 0.2804553321794701,
+  "shape": [
+    315462,
+    128,
+    3
+  ]
+}

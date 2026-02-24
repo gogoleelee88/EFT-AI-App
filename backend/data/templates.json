@@ -1,0 +1,18 @@
+{
+  "grounding.grounding_breath.calm.instruction": [
+    "천천히 숨을 들이쉬고 내쉬어 보세요.",
+    "지금 이 순간에만 집중해 보세요."
+  ],
+  "self_compassion.self_compassion.calm.instruction": [
+    "지금 느끼는 감정을 있는 그대로 인정해 보세요.",
+    "{automatic_thought}라고 생각해도 괜찮아요."
+  ],
+  "defusion.defusion.calm.instruction": [
+    "그 생각은 그냥 '생각'일 뿐이에요.",
+    "{automatic_thought}를 붙였다 떼 보세요."
+  ],
+  "activation.activation.calm.instruction": [
+    "명상이 끝나면 바로 할 수 있는 작은 일 하나만 정해 보세요.",
+    "{task_atom}"
+  ]
+}

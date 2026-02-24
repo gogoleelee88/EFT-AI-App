@@ -1,0 +1,169 @@
+{
+  "inference": {
+    "l0_probs": {
+      "walk": 0.0,
+      "upstairs": 0.0,
+      "downstairs": 0.0,
+      "sit": 0.0,
+      "stand": 0.0,
+      "lay": 0.0,
+      "unknown": 1.0
+    },
+    "l1_top1": "unknown_event",
+    "l1_confidence": 0.730764,
+    "margin_top1_top2": 0.653841,
+    "l1_topk": [
+      {
+        "label": "unknown_event",
+        "confidence": 0.730764
+      },
+      {
+        "label": "relax",
+        "confidence": 0.076923
+      },
+      {
+        "label": "social",
+        "confidence": 0.061539
+      },
+      {
+        "label": "work_focus",
+        "confidence": 0.046154
+      },
+      {
+        "label": "commute",
+        "confidence": 0.03077
+      }
+    ],
+    "l1_probs": {
+      "commute": 0.03077,
+      "work_focus": 0.046154,
+      "meeting": 1e-06,
+      "workout": 1e-06,
+      "meal": 1e-06,
+      "chores": 0.023078,
+      "relax": 0.076923,
+      "sleep": 0.03077,
+      "social": 0.061539,
+      "unknown_event": 0.730764
+    },
+    "score_reasons": {
+      "commute": [
+        "from_l0:unknown"
+      ],
+      "work_focus": [
+        "from_l0:unknown"
+      ],
+      "relax": [
+        "from_l0:unknown"
+      ],
+      "social": [
+        "from_l0:unknown"
+      ],
+      "unknown_event": [
+        "from_l0:unknown",
+        "l0:unknown_high"
+      ]
+    },
+    "ask_question": true,
+    "question": {
+      "text": "지금 상태를 하나만 고르면 무엇에 가장 가까운가요?",
+      "options": [
+        "unknown_event",
+        "relax"
+      ],
+      "reasons": [
+        "top1_unknown_event",
+        "l0_unknown_high"
+      ],
+      "cooldown_key": "l1:relax+unknown_event",
+      "expires_minutes": 30
+    }
+  },
+  "candidate_request": {
+    "user_id": null,
+    "day_id": null,
+    "ts_start": "2026-02-17T10:21:45.043654+00:00",
+    "ts_end": "2026-02-17T10:21:47.603654+00:00",
+    "top1": "unknown_event",
+    "activity_topk": [
+      {
+        "label": "unknown_event",
+        "confidence": 0.730764
+      },
+      {
+        "label": "relax",
+        "confidence": 0.076923
+      },
+      {
+        "label": "social",
+        "confidence": 0.061539
+      },
+      {
+        "label": "work_focus",
+        "confidence": 0.046154
+      },
+      {
+        "label": "commute",
+        "confidence": 0.03077
+      }
+    ],
+    "confidence": 0.730764,
+    "margin_top1_top2": 0.653841,
+    "screen_state": null,
+    "orientation": null,
+    "pickup_flag": null,
+    "mismatch_score": 0.269236,
+    "trigger_reasons": [
+      "top1_unknown_event",
+      "l0_unknown_high"
+    ]
+  },
+  "question_request": {
+    "user_id": null,
+    "candidate_id": 5,
+    "question_text": "지금 상태를 하나만 고르면 무엇에 가장 가까운가요?",
+    "trigger_reasons": [
+      "top1_unknown_event",
+      "l0_unknown_high"
+    ],
+    "cooldown_key": "l1:relax+unknown_event",
+    "expires_minutes": 30,
+    "max_daily_questions": 8
+  },
+  "candidate_response": {
+    "status_code": 200,
+    "body": {
+      "candidate_id": 5,
+      "dedupe_hit": false,
+      "user_id": null,
+      "day_id": null,
+      "ts_start": "2026-02-17T10:21:45.043654Z",
+      "ts_end": "2026-02-17T10:21:47.603654Z",
+      "top1": "unknown_event",
+      "confidence": 0.730764,
+      "margin_top1_top2": 0.653841,
+      "mismatch_score": 0.269236,
+      "auto_question_id": null,
+      "auto_question_created": false,
+      "created_at": "2026-02-17T10:21:45.428008Z"
+    }
+  },
+  "question_response": {
+    "status_code": 200,
+    "body": {
+      "question_id": 1,
+      "user_id": null,
+      "candidate_id": 5,
+      "status": "asked",
+      "question_text": "지금 상태를 하나만 고르면 무엇에 가장 가까운가요?",
+      "trigger_reasons": [
+        "top1_unknown_event",
+        "l0_unknown_high"
+      ],
+      "cooldown_key": "l1:relax+unknown_event",
+      "asked_at": "2026-02-17T10:21:46.424758Z",
+      "expires_at": "2026-02-17T10:51:46.595807Z",
+      "cooldown_skipped": false
+    }
+  }
+}

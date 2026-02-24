@@ -1,0 +1,23 @@
+{
+  "dataset_name": "uci",
+  "num_samples": 10299,
+  "num_subjects": 30,
+  "dataset_ids": [
+    0
+  ],
+  "label_counts": {
+    "walk": 1722,
+    "upstairs": 1544,
+    "downstairs": 1406,
+    "sit": 1777,
+    "stand": 1906,
+    "lay": 1944,
+    "unknown": 0
+  },
+  "unknown_ratio": 0.0,
+  "shape": [
+    10299,
+    128,
+    3
+  ]
+}

@@ -1,0 +1,525 @@
+openapi: 3.0.3
+info:
+  title: Menstrual Module API
+  version: 1.0.0
+  description: |
+    Menstrual condition module API.
+    Policy: fertile window is hidden (`phase_only_no_fertility`).
+servers:
+  - url: /
+tags:
+  - name: menstrual
+paths:
+  /v1/menstrual/bleeding:
+    post:
+      tags: [menstrual]
+      summary: Log bleeding event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BleedingLogRequest'
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordResponse'
+  /v1/menstrual/symptoms:
+    post:
+      tags: [menstrual]
+      summary: Log daily symptoms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SymptomsLogRequest'
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordResponse'
+  /v1/menstrual/pmdd-lite:
+    post:
+      tags: [menstrual]
+      summary: Log DRSP-lite answers and compute PMDD/PMS index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PMDDLiteLogRequest'
+      responses:
+        '200':
+          description: Recorded and scored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recorded: { type: boolean }
+                  event:
+                    $ref: '#/components/schemas/RecordResponse'
+                  score:
+                    $ref: '#/components/schemas/PMDDLiteScoreResponse'
+  /v1/menstrual/triggers:
+    post:
+      tags: [menstrual]
+      summary: Log trigger context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerLogRequest'
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordResponse'
+  /v1/menstrual/meds:
+    post:
+      tags: [menstrual]
+      summary: Log meds and treatment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MedsLogRequest'
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordResponse'
+  /v1/menstrual/journal:
+    post:
+      tags: [menstrual]
+      summary: Add journal note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JournalLogRequest'
+      responses:
+        '200':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordResponse'
+    get:
+      tags: [menstrual]
+      summary: Search journal
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: minSeverity
+          schema: { type: integer, minimum: 0, maximum: 4 }
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        '200':
+          description: Entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JournalSearchResponse'
+  /v1/menstrual/calendar:
+    get:
+      tags: [menstrual]
+      summary: Get day summaries for calendar
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Calendar day summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarResponse'
+  /v1/menstrual/prediction:
+    get:
+      tags: [menstrual]
+      summary: Get next period prediction (range + confidence + why)
+      responses:
+        '200':
+          description: Prediction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PredictionResponse'
+  /v1/menstrual/insights:
+    get:
+      tags: [menstrual]
+      summary: Get symptom/PMDD insights
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Insights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InsightsResponse'
+  /v1/menstrual/export:
+    post:
+      tags: [menstrual]
+      summary: Create export job (CSV/PDF)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportJobRequest'
+      responses:
+        '200':
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJobResponse'
+        '409':
+          description: On-device mode block
+  /v1/menstrual/export/{jobId}:
+    get:
+      tags: [menstrual]
+      summary: Get export status or download file
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: format
+          schema:
+            type: string
+            enum: [csv, pdf]
+          description: If provided, returns the file as attachment.
+      responses:
+        '200':
+          description: Status JSON or file stream
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJobStatusResponse'
+            text/csv:
+              schema: { type: string }
+            application/pdf:
+              schema: { type: string, format: binary }
+  /v1/menstrual/settings:
+    get:
+      tags: [menstrual]
+      summary: Get menstrual privacy settings
+      responses:
+        '200':
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettingsResponse'
+    patch:
+      tags: [menstrual]
+      summary: Update menstrual privacy settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivacySettingsUpdateRequest'
+      responses:
+        '200':
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettingsResponse'
+
+components:
+  schemas:
+    RecordResponse:
+      type: object
+      properties:
+        recorded: { type: boolean }
+        event_id: { type: string }
+        date: { type: string, format: date, nullable: true }
+        timestamp: { type: string, format: date-time, nullable: true }
+    BleedingLogRequest:
+      type: object
+      required: [date, type, flow_level]
+      properties:
+        date: { type: string, format: date }
+        type:
+          type: string
+          enum: [menstruation_start, menstruation_end, spotting_start, spotting_end]
+        flow_level: { type: integer, minimum: 0, maximum: 4 }
+        cramp_level: { type: integer, minimum: 0, maximum: 5, nullable: true }
+        pain_areas:
+          type: array
+          items:
+            type: string
+            enum: [lower_abdomen, back, headache, breast, other]
+        notes: { type: string, nullable: true }
+        meds_taken:
+          type: array
+          items: { type: string }
+    SymptomsLogRequest:
+      type: object
+      required: [date, symptom_severity_map]
+      properties:
+        date: { type: string, format: date }
+        symptom_severity_map:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+            maximum: 4
+        notes: { type: string, nullable: true }
+        favorite_symptoms:
+          type: array
+          items: { type: string }
+    PMDDLiteLogRequest:
+      type: object
+      required: [date, answers]
+      properties:
+        date: { type: string, format: date }
+        answers:
+          type: array
+          minItems: 11
+          maxItems: 14
+          items:
+            type: integer
+            minimum: 0
+            maximum: 4
+        question_ids:
+          type: array
+          minItems: 11
+          maxItems: 14
+          items: { type: string }
+        notes: { type: string, nullable: true }
+    PMDDLiteScoreResponse:
+      type: object
+      properties:
+        pmdd_symptom_index: { type: number, minimum: 0, maximum: 100 }
+        pms_severity_band: { type: string, enum: [mild, moderate, severe] }
+        severity_thresholds:
+          type: object
+          additionalProperties: { type: number }
+        baseline_index: { type: number, nullable: true }
+        trend_delta: { type: number, nullable: true }
+        confidence: { type: string, enum: [fair, good] }
+        interpretation: { type: string }
+        scoring_version: { type: string }
+        high_emotional_count: { type: integer }
+        answered_items: { type: integer }
+        question_labels_ko:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label_ko: { type: string }
+        caution: { type: string }
+        medical_disclaimer: { type: string }
+    TriggerLogRequest:
+      type: object
+      required: [date, tags]
+      properties:
+        date: { type: string, format: date }
+        tags:
+          type: array
+          items:
+            type: string
+            enum: [conflict, overtime, caffeine, alcohol, travel, sickness, exercise_change, sleep_change, other]
+        stress_level: { type: integer, minimum: 0, maximum: 10, nullable: true }
+        note: { type: string, nullable: true }
+    MedsLogRequest:
+      type: object
+      required: [datetime, med_name, type]
+      properties:
+        datetime: { type: string, format: date-time }
+        med_name: { type: string }
+        dose: { type: string, nullable: true }
+        type: { type: string, enum: [painkiller, contraceptive, ssri, supplement, other] }
+        effect_rating: { type: integer, minimum: 0, maximum: 5, nullable: true }
+        note: { type: string, nullable: true }
+    JournalLogRequest:
+      type: object
+      required: [datetime, text]
+      properties:
+        datetime: { type: string, format: date-time }
+        text: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        severity: { type: integer, minimum: 0, maximum: 4, nullable: true }
+    JournalEntry:
+      type: object
+      properties:
+        event_id: { type: string }
+        datetime: { type: string, format: date-time }
+        text: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        severity: { type: integer, nullable: true }
+    JournalSearchResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalEntry'
+    CalendarResponse:
+      type: object
+      properties:
+        day_summaries:
+          type: array
+          items:
+            type: object
+            properties:
+              day_date: { type: string, format: date }
+              bleeding_status: { type: string, enum: [none, spotting, period] }
+              flow_level: { type: integer, nullable: true }
+              cycle_day_index: { type: integer, nullable: true }
+              phase: { type: string, enum: [menstruation, follicular, ovulation_window, luteal, unknown] }
+              phase_probabilities:
+                type: object
+                additionalProperties: { type: number }
+              pmdd_symptom_index: { type: number, nullable: true }
+              top_symptoms:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        fertility_window_visible: { type: boolean }
+        phase_policy: { type: string }
+        medical_disclaimer: { type: string }
+    PredictionResponse:
+      type: object
+      properties:
+        next_period_window_start: { type: string, format: date, nullable: true }
+        next_period_window_end: { type: string, format: date, nullable: true }
+        confidence_score: { type: integer, minimum: 0, maximum: 100 }
+        why_this: { type: string }
+        data_quality: { type: string, enum: [insufficient, fair, good] }
+        fertility_window_visible: { type: boolean }
+        phase_policy: { type: string }
+        medical_disclaimer: { type: string }
+    InsightsResponse:
+      type: object
+      properties:
+        symptom_trends:
+          type: array
+          items:
+            type: object
+            properties:
+              symptom: { type: string }
+              avg_severity: { type: number }
+              sample_count: { type: integer }
+        pmdd_index_timeline:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        worsening_days:
+          type: array
+          items: { type: string, format: date }
+        worsening_threshold_p75: { type: number, nullable: true }
+        top_triggers_in_worsening_days:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        trigger_vs_index_timeline:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recent_two_week_pattern: { type: string }
+        medical_disclaimer: { type: string }
+    ExportJobRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        formats:
+          type: array
+          items:
+            type: string
+            enum: [csv, pdf]
+        allow_server_export: { type: boolean, default: false }
+    ExportJobResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        status: { type: string, enum: [pending, completed, failed] }
+        created_at: { type: string, format: date-time }
+        formats:
+          type: array
+          items: { type: string, enum: [csv, pdf] }
+        medical_disclaimer: { type: string }
+    ExportJobStatusResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        status: { type: string, enum: [pending, completed, failed] }
+        formats:
+          type: array
+          items: { type: string, enum: [csv, pdf] }
+        ready_files:
+          type: array
+          items: { type: string, enum: [csv, pdf] }
+        error_message: { type: string, nullable: true }
+    PrivacySettingsResponse:
+      type: object
+      properties:
+        on_device_only: { type: boolean }
+        fertility_window_mode: { type: string, enum: [hidden, range_only] }
+        app_lock_enabled: { type: boolean }
+        app_lock_method: { type: string, nullable: true, enum: [faceid, touchid, pin] }
+        backup_mode: { type: string, enum: [local_encrypted, e2e_cloud] }
+        app_lock_recommended: { type: boolean }
+        privacy_notice: { type: string }
+    PrivacySettingsUpdateRequest:
+      type: object
+      properties:
+        on_device_only: { type: boolean }
+        fertility_window_mode: { type: string, enum: [hidden, range_only] }
+        app_lock_enabled: { type: boolean }
+        app_lock_method: { type: string, enum: [faceid, touchid, pin] }
+        backup_mode: { type: string, enum: [local_encrypted, e2e_cloud] }
