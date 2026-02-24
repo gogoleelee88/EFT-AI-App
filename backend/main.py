@@ -592,7 +592,11 @@ def _extract_origin(raw: Optional[str]) -> Optional[str]:
 
 extra = (settings.EXTRA_ALLOWED_ORIGINS or "").strip()
 origins: list[str] = list(settings.ALLOWED_ORIGINS)
-origins.extend(_parse_origin_csv(extra))
+origins.extend(_parse_origin_csv(extra))
+origins.extend([
+    "https://eft-ai-app-frontend-4ia5.vercel.app",
+    "https://app.moodtalk.app",
+])
 
 for _frontend_origin in (
     getattr(settings, "BASE_FRONTEND_URL", None),
@@ -615,7 +619,6 @@ if not allow_origins:
 
 cors_kwargs = {
     "allow_origins": list(dict.fromkeys(allow_origins)),
-    "allow_origin_regex": r"^https://.*\.vercel\.app$",
     "allow_credentials": True,
 }
 
