@@ -1,17 +1,23 @@
-﻿{
+﻿// {
+//   "version": 2,
+//   "installCommand": "cd frontend && npm ci",
+//   "buildCommand": "cd frontend && npm run build",
+//   "outputDirectory": "frontend/dist",
+//   "rewrites": [
+//     { "source": "/(.*)", "destination": "/index.html" }
+//   ],
+//   "headers": [
+//     {
+//       "source": "/(.*)",
+//       "headers": [
+//         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+//       ]
+//     }
+//   ]
+// }
+{
   "version": 2,
-  "installCommand": "cd frontend && npm ci",
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
-      ]
-    }
   ]
 }
