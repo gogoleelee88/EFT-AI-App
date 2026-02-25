@@ -2,6 +2,7 @@
 
 import textwrap
 import os
+import logging
 from supabase import create_client
 
 from fastapi import APIRouter, Cookie, HTTPException
@@ -501,8 +502,14 @@ def get_emotion_stats(
             average_intensity=round(avg_intensity, 2),
         )
     except Exception as e:
+        k = os.getenv("OPENAI_API_KEY", "")
+        logging.getLogger(__name__).warning(
+            "STATS FAIL openai_key len=%s head=%s err=%r",
+            len(k),
+            k[:6],
+            e,
+        )
         raise HTTPException(status_code=500, detail=f"Failed to load emotion stats: {e}")
-
 
 @router.get("/insights", response_model=EmotionInsightsResponse)
 async def get_emotion_insights(
@@ -725,6 +732,7 @@ async def generate_session_advice(payload: SessionAdviceRequest) -> SessionAdvic
         or "gpt-5.2"
     )
 
+    logging.getLogger(__name__).warning("OPENAI_API_KEY len=%s head=%s", len(os.getenv("OPENAI_API_KEY","")), (os.getenv("OPENAI_API_KEY","")[:6]))
     client = get_openai_client()
     if client is None:
         return _fallback_session_advice(payload)
@@ -796,7 +804,6 @@ async def generate_session_advice(payload: SessionAdviceRequest) -> SessionAdvic
         )
     except Exception:
         return _fallback_session_advice(payload)
-
 
 
 
