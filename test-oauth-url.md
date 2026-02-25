@@ -23,7 +23,7 @@ http://localhost:8000/api/spec/google/auth
 ```
 
 만약 `authUrl`이 반환되면, **그 URL을 복사**해서 확인하세요:
-- `client_id=205804764856-sb15l3lin3n14nnhocijt0nr0lc8m2sf.apps.googleusercontent.com` 있는지
+- `client_id=` 있는지
 - `redirect_uri=http://localhost:8000/api/spec/google/callback` 정확한지
 - `scope=https://www.googleapis.com/auth/calendar.events` 있는지
 
