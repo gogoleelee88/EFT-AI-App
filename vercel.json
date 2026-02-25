@@ -1,5 +1,4 @@
-$vercel = @'
-{
+﻿{
   "version": 2,
   "installCommand": "cd frontend && npm ci",
   "buildCommand": "cd frontend && npm run build",
@@ -11,18 +10,8 @@ $vercel = @'
     {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        }
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
       ]
     }
   ]
 }
-'@
-
-# UTF-8 (BOM 없이)로 저장
-[System.IO.File]::WriteAllText("vercel.json", $vercel, (New-Object System.Text.UTF8Encoding($false)))
-
-python -m json.tool vercel.json > $null
-echo $LASTEXITCODE
