@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
 from backend.models.chat_models import StrictIntakeInput
 from core.theme_recommender import get_theme_recommender
 from backend.domain_types.guidance_schema import ThemeRecommendation
@@ -501,14 +502,9 @@ def get_emotion_stats(
             emotion_distribution=dist,
             average_intensity=round(avg_intensity, 2),
         )
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        k = os.getenv("OPENAI_API_KEY", "")
-        logging.getLogger(__name__).warning(
-            "STATS FAIL openai_key len=%s head=%s err=%r",
-            len(k),
-            k[:6],
-            e,
-        )
         raise HTTPException(status_code=500, detail=f"Failed to load emotion stats: {e}")
 
 @router.get("/insights", response_model=EmotionInsightsResponse)
@@ -804,7 +800,6 @@ async def generate_session_advice(payload: SessionAdviceRequest) -> SessionAdvic
         )
     except Exception:
         return _fallback_session_advice(payload)
-
 
 
 
