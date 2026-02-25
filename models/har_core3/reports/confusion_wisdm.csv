@@ -1,0 +1,8 @@
+,walk,upstairs,downstairs,sit,stand,lay,unknown
+walk,143,1,0,60,672,0,178
+upstairs,0,630,6,6,2,0,1
+downstairs,2,3,494,4,4,0,0
+sit,50,2,3,373,665,0,146
+stand,31,2,0,45,4096,0,149
+lay,0,0,0,0,0,0,0
+unknown,15,1,0,18,194,0,3268

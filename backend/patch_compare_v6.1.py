@@ -1,6 +1,7 @@
 import pathlib
 import re
 import sys
+from typing import Dict, Optional
 
 # 이 스크립트는 'compare.py' 파일의 v4 버전을 v6.1로 패치합니다.
 # v6.0의 버그 (정규식 패턴 불일치, 디버깅 코드 오류)를 수정한 최종본입니다.

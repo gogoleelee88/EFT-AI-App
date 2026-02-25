@@ -1,0 +1,11 @@
+# One label per line. This order must match model output index.
+commute
+work_focus
+meeting
+workout
+meal
+chores
+relax
+sleep
+social
+unknown_event

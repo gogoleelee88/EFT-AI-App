@@ -1,0 +1,87 @@
+{
+  "prediction_success": {
+    "next_period_window_start": "2026-03-12",
+    "next_period_window_end": "2026-03-16",
+    "confidence_score": 68,
+    "why_this": "Based on 6 recent cycle(s): avg 29.1 days, variability 3.8 days, range ±4 days.",
+    "data_quality": "good",
+    "fertility_window_visible": false,
+    "phase_policy": "phase_only_no_fertility",
+    "medical_disclaimer": "Not a medical device and not for diagnosis, contraception, or pregnancy prevention."
+  },
+  "prediction_insufficient": {
+    "next_period_window_start": null,
+    "next_period_window_end": null,
+    "confidence_score": 20,
+    "why_this": "Prediction is limited: fewer than 2 full cycle intervals were recorded. Log more menstruation starts for a reliable range.",
+    "data_quality": "insufficient",
+    "fertility_window_visible": false,
+    "phase_policy": "phase_only_no_fertility",
+    "medical_disclaimer": "Not a medical device and not for diagnosis, contraception, or pregnancy prevention."
+  },
+  "pmdd_lite_scored": {
+    "recorded": true,
+    "event": {
+      "recorded": true,
+      "event_id": "3fbe8f0c-326a-4ece-9a9b-34fa22c4b7ff",
+      "date": "2026-02-15",
+      "timestamp": null
+    },
+    "score": {
+      "pmdd_symptom_index": 58.74,
+      "pms_severity_band": "moderate",
+      "severity_thresholds": {
+        "moderate_min": 36.0,
+        "severe_min": 62.0
+      },
+      "baseline_index": 47.3,
+      "trend_delta": 11.44,
+      "confidence": "good",
+      "interpretation": "최근 개인 기준선 대비 증상 부담이 뚜렷하게 상승했습니다.",
+      "scoring_version": "drsp_lite_v1_ko_weighted",
+      "high_emotional_count": 3,
+      "answered_items": 12,
+      "question_labels_ko": [
+        { "id": "depressed_mood", "label_ko": "우울하거나 슬픈 기분" },
+        { "id": "hopelessness", "label_ko": "희망이 없다고 느낌" }
+      ],
+      "caution": "이 점수는 진단이 아니라 상담 준비용 추적 지표입니다. 악화가 지속되면 전문가 상담을 권장합니다.",
+      "medical_disclaimer": "Not a medical device and not for diagnosis, contraception, or pregnancy prevention."
+    }
+  },
+  "on_device_mode_block_record": {
+    "detail": "On-device only mode is enabled. Sensitive menstrual logs are not accepted by the server."
+  },
+  "on_device_mode_block_export": {
+    "detail": "On-device only mode is enabled. Server-side export is blocked unless allow_server_export=true is explicitly provided."
+  },
+  "export_job_completed": {
+    "job_id": "f4f31fb8-d3fb-4adf-bc27-cb56f1f66f8e",
+    "status": "completed",
+    "formats": ["csv", "pdf"],
+    "ready_files": ["csv", "pdf"],
+    "error_message": null
+  },
+  "insights_response": {
+    "symptom_trends": [
+      { "symptom": "irritable", "avg_severity": 2.8, "sample_count": 6 },
+      { "symptom": "fatigue", "avg_severity": 2.4, "sample_count": 6 }
+    ],
+    "pmdd_index_timeline": [
+      { "date": "2026-02-01", "pmdd_symptom_index": 42.1 },
+      { "date": "2026-02-03", "pmdd_symptom_index": 55.6 }
+    ],
+    "worsening_days": ["2026-02-03", "2026-02-07"],
+    "worsening_threshold_p75": 53.2,
+    "top_triggers_in_worsening_days": [
+      { "tag": "overtime", "count": 2 },
+      { "tag": "sleep_change", "count": 2 }
+    ],
+    "trigger_vs_index_timeline": [
+      { "date": "2026-02-01", "pmdd_symptom_index": 42.1, "trigger_tags": [] },
+      { "date": "2026-02-03", "pmdd_symptom_index": 55.6, "trigger_tags": ["overtime"] }
+    ],
+    "recent_two_week_pattern": "Recent 2-week PMDD-lite pattern shows worsening in the latter half.",
+    "medical_disclaimer": "Not a medical device and not for diagnosis, contraception, or pregnancy prevention."
+  }
+}

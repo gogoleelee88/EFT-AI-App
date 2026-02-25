@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 from backend.models.chat_models import StrictIntakeInput
 from core.theme_recommender import get_theme_recommender
-from backend.types.guidance_schema import ThemeRecommendation
+from backend.domain_types.guidance_schema import ThemeRecommendation
 from services.auth_service import AuthService
 from services.emotion_insight_service import (
     generate_emotion_adaptive_report_bundle,
@@ -796,7 +796,6 @@ async def generate_session_advice(payload: SessionAdviceRequest) -> SessionAdvic
         )
     except Exception:
         return _fallback_session_advice(payload)
-
 
 
 

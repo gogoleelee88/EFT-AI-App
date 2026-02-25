@@ -1,3 +1,6 @@
+console.log("VITE_FIREBASE_API_KEY exists?", !!import.meta.env.VITE_FIREBASE_API_KEY);
+console.log("VITE_FIREBASE_API_KEY head:", (import.meta.env.VITE_FIREBASE_API_KEY || "").slice(0, 6));
+
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
@@ -19,6 +22,7 @@ const isMissingEnvValue = (value: string | undefined): boolean => {
     trimmed.length === 0 ||
     /^<\s*set_me\s*>$/i.test(trimmed) ||
     trimmed === 'your_api_key' ||
+    trimmed === 'your-prod-firebase-api-key' ||   // ✅ 추가
     trimmed === 'your_project_id' ||
     trimmed === 'your_project_id.firebaseapp.com' ||
     trimmed === 'your_project_id.appspot.com' ||

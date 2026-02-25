@@ -1,12 +1,21 @@
 import React from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
 const RootLanding: React.FC = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const navigate = useNavigate();
+  const { isAuthenticated, loading, logout } = useAuth();
 
-  if (!loading && isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+  if (loading) {
+    return null;
+  }
+
+  const handleAuthClick = async () => {
+    if (isAuthenticated) {
+      await logout();
+      return;
+    }
+    navigate("/login");
   }
 
   return (
@@ -16,6 +25,26 @@ const RootLanding: React.FC = () => {
         style={{ width: "100%", height: "100%", border: "none", display: "block" }}
         title="Landing Page"
       />
+      <button
+        type="button"
+        onClick={() => void handleAuthClick()}
+        style={{
+          position: "absolute",
+          top: 14,
+          right: 16,
+          zIndex: 40,
+          border: "1px solid #ffffff",
+          color: "#ffffff",
+          padding: "8px 16px",
+          borderRadius: 9999,
+          fontWeight: 700,
+          fontSize: 14,
+          background: "rgba(0, 0, 0, 0.4)",
+          cursor: "pointer",
+        }}
+      >
+        {isAuthenticated ? "로그아웃" : "로그인"}
+      </button>
       <Link
         to="/demo"
         style={{

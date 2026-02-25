@@ -58,6 +58,7 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5173",
             "http://127.0.0.1:5174",
             "https://eft-ai-app-frontend-4ia5.vercel.app",
+            "https://app.moodtalk.app",
             "https://www.moodtalk.app",
             "https://moodtalk.app",
         ]
@@ -199,7 +200,7 @@ class Settings(BaseSettings):
     COOKIE_NAME_ACCESS: str = "access_token"
     COOKIE_NAME_REFRESH: str = "refresh_token"
     COOKIE_SECURE: bool = True
-    COOKIE_SAMESITE: str = "lax"
+    COOKIE_SAMESITE: str = "none"
     COOKIE_DOMAIN: Optional[str] = None
 
     FIREBASE_PROJECT_ID: Optional[str] = None
@@ -316,12 +317,12 @@ class Settings(BaseSettings):
     @field_validator("COOKIE_SAMESITE", mode="after")
     @classmethod
     def _normalize_cookie_samesite(cls, value: str, info: ValidationInfo) -> str:
-        normalized = (value or "lax").strip().lower()
+        normalized = (value or "none").strip().lower()
+        if normalized not in {"strict", "lax", "none"}:
+            normalized = "none"
         if normalized == "none" and not bool(info.data.get("COOKIE_SECURE", False)):
             return "lax"
-        if normalized in {"strict", "lax"}:
-            return normalized
-        return "lax"
+        return normalized
 
 
 _settings: Optional[Settings] = None

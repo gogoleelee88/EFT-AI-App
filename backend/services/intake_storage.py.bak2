@@ -1,0 +1,249 @@
+"""
+StrictIntakeInput ?곗?????諛?n8n ?뱁 ????鍮??- Supabase PostgreSQL濡?7媛吏 吏臾??곗?????(AI ????
+- n8n ?뱁?쇰? ?몄 ?곕
+"""
+
+from dotenv import load_dotenv
+import httpx
+import os
+from datetime import datetime
+from typing import Optional, Dict, Any
+import logging
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from backend.models.chat_models import StrictIntakeInput
+
+logger = logging.getLogger(__name__)
+
+# SQLAlchemy Base ?대??Base = declarative_base()
+
+
+class IntakeDataModel(Base):
+    """StrictIntake ?곗????대?紐⑤?""
+    __tablename__ = "intake_data"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(255))
+    user_id = Column(String(255))
+    core_emotion = Column(String(100), nullable=False)
+    situation_context = Column(Text, nullable=False)
+    automatic_thought = Column(Text, nullable=False)
+    physical_sensation = Column(Text)
+    behavioral_reaction = Column(Text)
+    intensity = Column(Integer, nullable=False)
+    available_time = Column(Integer)
+    immediate_goal = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    sent_to_n8n = Column(Boolean, default=False)
+    n8n_sent_at = Column(DateTime)
+    n8n_error = Column(Text)
+
+
+class IntakeStorageService:
+    """StrictIntakeInput ?곗?????諛?????鍮??(Supabase PostgreSQL)"""
+
+    def __init__(self, n8n_webhook_url: Optional[str] = None, database_url: Optional[str] = None):
+        """
+        Args:
+            n8n_webhook_url: n8n ?뱁 URL (?寃쎈?????媛?몄?
+            database_url: Supabase PostgreSQL URL (?寃쎈?????媛?몄?
+        """
+        self.n8n_webhook_url = n8n_webhook_url
+
+        # DATABASE_URL 媛?몄ㅺ?(?寃쎈????? ??쇰명?
+        self.database_url = database_url or os.getenv("DATABASE_URL")
+
+        if not self.database_url:
+            raise ValueError("DATABASE_URL ?寃쎈??? ?ㅼ?? ???듬??")
+
+        # SQLAlchemy ?吏 ???        self.engine = create_engine(
+            self.database_url,
+            pool_pre_ping=True,  # ?곌껐 ????寃??            pool_recycle=3600,   # 1?媛留???곌껐 ?ъ??            echo=False           # SQL 荑쇰━ 濡洹?(?踰源???True)
+        )
+
+        # ?몄 ?⑺由????        self.SessionLocal = sessionmaker(bind=self.engine)
+
+        # ??대?珥湲??        self._init_database()
+
+    def _init_database(self):
+        """Supabase PostgreSQL ??대????(??쇰????"""
+        try:
+            Base.metadata.create_all(bind=self.engine)
+            logger.info(f"??Supabase ?곗?곕??댁???대?珥湲???猷: intake_data")
+        except Exception as e:
+            logger.error(f"??Supabase ??대?????ㅽ? {e}")
+            raise
+
+    async def save_intake(
+        self,
+        intake: StrictIntakeInput,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None
+    ) -> int:
+        """
+        StrictIntakeInput ?곗?곕? Supabase PostgreSQL?????
+        Args:
+            intake: 7媛吏 吏臾??곗??            session_id: ?몄 ID (??)
+            user_id: ?ъ??ID (??)
+
+        Returns:
+            ??λ ?곗?곗 ID
+        """
+        db = self.SessionLocal()
+        try:
+            # ???肄?????            new_record = IntakeDataModel(
+                session_id=session_id,
+                user_id=user_id,
+                core_emotion=intake.core_emotion,
+                situation_context=intake.situation_context,
+                automatic_thought=intake.automatic_thought,
+                physical_sensation=intake.physical_sensation,
+                behavioral_reaction=intake.behavioral_reaction,
+                intensity=intake.intensity,
+                available_time=intake.available_time,
+                immediate_goal=intake.immediate_goal
+            )
+
+            db.add(new_record)
+            db.commit()
+            db.refresh(new_record)
+
+            data_id = new_record.id
+            logger.info(f"[DB ????깃났] ID: {data_id}, 媛?: {intake.core_emotion}, 媛?: {intake.intensity}")
+
+            return data_id
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[DB ????ㅽ? {e}")
+            raise
+        finally:
+            db.close()
+
+    async def send_to_n8n(self, intake: StrictIntakeInput, data_id: int) -> bool:
+        """
+        StrictIntakeInput ?곗?곕? n8n ?뱁?쇰? ???
+        Args:
+            intake: 7媛吏 吏臾??곗??            data_id: DB????λ ?곗??ID
+
+        Returns:
+            ????깃났 ?щ?
+        """
+        if not self.n8n_webhook_url:
+            logger.warning("[n8n] ?뱁 URL???ㅼ?? ?? (????ㅽ?")
+            return False
+
+        # n8n ??????대?? 援ъ?        payload = {
+            "data_id": data_id,
+            "timestamp": datetime.now().isoformat(),
+            "intake_data": {
+                "core_emotion": intake.core_emotion,
+                "situation_context": intake.situation_context,
+                "automatic_thought": intake.automatic_thought,
+                "physical_sensation": intake.physical_sensation,
+                "behavioral_reaction": intake.behavioral_reaction,
+                "intensity": intake.intensity,
+                "available_time": intake.available_time,
+                "immediate_goal": intake.immediate_goal
+            }
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    self.n8n_webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+
+                if response.status_code in [200, 201]:
+                    logger.info(f"[n8n ????깃났] ID: {data_id}, 媛?: {intake.core_emotion}")
+                    self._update_n8n_status(data_id, success=True)
+                    return True
+                else:
+                    error_msg = f"HTTP {response.status_code}: {response.text}"
+                    logger.error(f"[n8n ????ㅽ? {error_msg}")
+                    self._update_n8n_status(data_id, success=False, error=error_msg)
+                    return False
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"[n8n ?????? {error_msg}")
+            self._update_n8n_status(data_id, success=False, error=error_msg)
+            return False
+
+    def _update_n8n_status(self, data_id: int, success: bool, error: Optional[str] = None):
+        """n8n ????? ???댄?""
+        db = self.SessionLocal()
+        try:
+            record = db.query(IntakeDataModel).filter(IntakeDataModel.id == data_id).first()
+            if record:
+                record.sent_to_n8n = success
+                if success:
+                    record.n8n_sent_at = datetime.utcnow()
+                    record.n8n_error = None
+                else:
+                    record.n8n_error = error
+                db.commit()
+        except Exception as e:
+            logger.error(f"[n8n ?? ???댄??ㅽ? {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+    async def save_and_send(
+        self,
+        intake: StrictIntakeInput,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        StrictIntakeInput ?곗?곕? ??ν怨?n8n?쇰? ???(?듯??⑥)
+
+        Returns:
+            寃곌낵 ???由?(db_saved, db_id, n8n_sent)
+        """
+        # 1. Supabase ???        data_id = await self.save_intake(intake, session_id, user_id)
+
+        # 2. n8n ???        n8n_success = await self.send_to_n8n(intake, data_id)
+
+        return {
+            "db_saved": True,
+            "db_id": data_id,
+            "n8n_sent": n8n_success
+        }
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """??λ ?곗???듦? 議고 (愿由ъ??"""
+        db = self.SessionLocal()
+        try:
+            from sqlalchemy import func
+
+            # ?泥??곗????            total_count = db.query(IntakeDataModel).count()
+
+            # 媛?蹂??듦?
+            emotion_stats = db.query(
+                IntakeDataModel.core_emotion,
+                func.count(IntakeDataModel.id).label('count')
+            ).group_by(IntakeDataModel.core_emotion).all()
+
+            emotion_distribution = {emotion: count for emotion, count in emotion_stats}
+
+            # ?洹 媛?
+            avg_intensity = db.query(func.avg(IntakeDataModel.intensity)).scalar() or 0
+
+            # n8n ????듦?
+            n8n_sent_count = db.query(IntakeDataModel).filter(IntakeDataModel.sent_to_n8n == True).count()
+
+            return {
+                "total_records": total_count,
+                "emotion_distribution": emotion_distribution,
+                "average_intensity": round(float(avg_intensity), 2),
+                "n8n_sent": n8n_sent_count,
+                "n8n_pending": total_count - n8n_sent_count
+            }
+        finally:
+            db.close()
+
+

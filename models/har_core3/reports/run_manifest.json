@@ -1,0 +1,10 @@
+{
+  "mode": "lodo",
+  "holdout": "hhar",
+  "paths": {
+    "uci_root": "C:\\Users\\lco20\\Downloads\\human+activity+recognition+using+smartphones (1)\\UCI HAR Dataset\\UCI HAR Dataset",
+    "wisdm_root": "C:\\Users\\lco20\\OneDrive\\바탕 화면\\archive\\wisdm",
+    "hhar_root": "C:\\Users\\lco20\\Downloads\\heterogeneity+activity+recognition"
+  },
+  "wisdm_subject_policy": "pseudo_subject_group_256"
+}

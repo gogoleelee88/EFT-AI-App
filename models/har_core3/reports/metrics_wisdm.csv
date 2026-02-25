@@ -1,0 +1,3 @@
+metric,value
+macro_f1,0.722286
+prediction_format,parquet

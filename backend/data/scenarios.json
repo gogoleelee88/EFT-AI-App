@@ -1,0 +1,181 @@
+{
+  "standard_grounding": [
+    { "block_id": "sg_intro", "type": "intro", "base_text": "편안하게 눈을 감고 호흡에 집중합니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+    { "block_id": "sg_main", "type": "main", "base_text": "천천히 숨을 들이쉬고 내쉬어 보세요. 지금 이 순간에만 집중해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+    { "block_id": "sg_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+  ],
+  "overwhelm_focus": [
+    { "block_id": "of_intro", "type": "intro", "base_text": "편안하게 앉아 눈을 감고, 잠시 호흡에만 집중해 보세요.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+    { "block_id": "of_breath", "type": "main", "base_text": "들어오는 숨과 나가는 숨의 온도를 느껴 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+    { "block_id": "of_bridge", "type": "bridge_advice", "adapt_instruction": "사용자의 현재 표정과 감정을 언급하며 공감하는 멘트를 한 문장으로 추가해주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+    { "block_id": "of_activation", "type": "activation", "base_text": "명상이 끝나면 바로 할 수 있는 작은 일 하나만 정해 보세요.", "adapt_instruction": "task_atom을 그대로 포함하여 한 문장으로 안내해주세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 }
+  ],
+  "self_compassion": [
+    { "block_id": "sc_intro", "type": "intro", "base_text": "편안하게 앉아 눈을 감고 호흡에 집중합니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+    { "block_id": "sc_bridge", "type": "bridge_advice", "adapt_instruction": "사용자의 현재 표정과 감정을 언급하며 공감하는 멘트를 한 문장으로 추가해주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+    { "block_id": "sc_main", "type": "main", "base_text": "지금 느끼는 감정을 있는 그대로 인정해 보세요. 괜찮아요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+    { "block_id": "sc_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다. 조금만 쉬어가도 돼요.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+  ],
+  "thought_labeling": [
+    { "block_id": "tl_intro", "type": "intro", "base_text": "편안하게 눈을 감고 호흡에 집중합니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+    { "block_id": "tl_bridge", "type": "bridge_advice", "adapt_instruction": "사용자 표정과 감정을 반영해 따뜻하게 한마디 공감한 뒤, 다음 단계로 이어주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+    { "block_id": "tl_main", "type": "main", "base_text": "들어오는 생각은 그냥 '생각'일 뿐이에요. 붙였다 떼 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+    { "block_id": "tl_outro", "type": "outro", "base_text": "잘 하셨어요. 오늘도 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+  ],
+  "micro_task_bridging": [
+    { "block_id": "mt_intro", "type": "intro", "base_text": "잠시 숨을 고르고 이 순간에만 집중해 보세요.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+    { "block_id": "mt_bridge", "type": "bridge_advice", "adapt_instruction": "지금 표정이나 감정 상태를 짧게 언급하고, 명상 끝나면 할 작은 일 하나를 떠올리라고 부드럽게 안내해주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+    { "block_id": "mt_main", "type": "activation", "base_text": "명상이 끝나면 바로 할 수 있는 작은 일 하나만 정해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+    { "block_id": "mt_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다. 한 걸음씩만 나가도 돼요.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+  ],
+  "grounding_breath": [
+    { "block_id": "gb_intro", "type": "intro", "base_text": "편안하게 눈을 감고 호흡에 집중합니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+    { "block_id": "gb_main", "type": "main", "base_text": "천천히 숨을 들이쉬고 내쉬어 보세요. 지금 이 순간에만 집중해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+    { "block_id": "gb_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+  ],
+  "anxiety_short": {
+    "keywords": ["불안", "그라운딩", "호흡", "3분", "짧은"],
+    "default_task": "숨 쉬기 1분",
+    "blocks": [
+      { "block_id": "axs_intro", "type": "intro", "base_text": "편안하게 눈을 감고 호흡에만 집중합니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 },
+      { "block_id": "axs_main", "type": "main", "base_text": "들어오는 숨과 나가는 숨을 느껴 보세요. 지금 이 순간만 있습니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "axs_outro", "type": "outro", "base_text": "잘 하셨어요. 오늘도 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "anxiety_deep": {
+    "keywords": ["불안", "안전지대", "호흡", "10분", "깊은"],
+    "default_task": "안전한 장소 떠올리기",
+    "blocks": [
+      { "block_id": "axd_intro", "type": "intro", "base_text": "편안하게 앉아 눈을 감고, 몸이 바닥에 닿는 느낌을 느껴 보세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "axd_bridge", "type": "bridge_advice", "adapt_instruction": "불안을 인정하는 한 문장을 추가해 주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "axd_main", "type": "main", "base_text": "천천히 호흡에 집중합니다. 들어오는 숨, 나가는 숨. 지금 여기는 안전합니다.", "min_hold_ms": 4000, "max_hold_ms": 6000 },
+      { "block_id": "axd_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다. 조금만 쉬어가도 돼요.", "min_hold_ms": 2500, "max_hold_ms": 4000 }
+    ]
+  },
+  "anxiety_action": {
+    "keywords": ["불안", "호흡", "행동", "재진입"],
+    "default_task": "물 한 잔 마시기",
+    "blocks": [
+      { "block_id": "axa_intro", "type": "intro", "base_text": "잠시 숨을 고르고 이 순간에만 집중해 보세요.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+      { "block_id": "axa_main", "type": "main", "base_text": "들어오는 숨과 나가는 숨의 온도를 느껴 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "axa_activation", "type": "activation", "base_text": "명상이 끝나면 바로 할 수 있는 작은 일 하나만 정해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "axa_outro", "type": "outro", "base_text": "한 걸음씩만 나가도 돼요. 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "anger_short": {
+    "keywords": ["분노", "열기", "배출", "3분"],
+    "default_task": "손 씻기 30초",
+    "blocks": [
+      { "block_id": "agr_intro", "type": "intro", "base_text": "편안하게 앉아 눈을 감습니다. 지금 느끼는 감정을 인정합니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+      { "block_id": "agr_main", "type": "main", "base_text": "숨을 천천히 내쉬며 몸의 긴장이 빠져나가게 합니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "agr_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "anger_deep": {
+    "keywords": ["분노", "객관화", "멈춤", "10분"],
+    "default_task": "창문 열고 바람 쐬기",
+    "blocks": [
+      { "block_id": "agd_intro", "type": "intro", "base_text": "눈을 감고 지금 몸이 어디에 닿아 있는지 느껴 보세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "agd_bridge", "type": "bridge_advice", "adapt_instruction": "분노를 판단하지 않고 인정하는 한 문장을 추가해 주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "agd_main", "type": "main", "base_text": "그 감정은 '생각'일 뿐입니다. 붙였다 떼 보세요. 숨을 내쉬며 멈춥니다.", "min_hold_ms": 4000, "max_hold_ms": 6000 },
+      { "block_id": "agd_outro", "type": "outro", "base_text": "잘 하셨어요. 오늘도 수고 많으셨습니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 }
+    ]
+  },
+  "anger_action": {
+    "keywords": ["분노", "멈춤", "행동", "재진입"],
+    "default_task": "물 마시기",
+    "blocks": [
+      { "block_id": "aga_intro", "type": "intro", "base_text": "잠시 멈추고 호흡에만 집중합니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+      { "block_id": "aga_main", "type": "main", "base_text": "숨을 길게 내쉬어 보세요. 다음 행동 하나만 정합니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "aga_activation", "type": "activation", "base_text": "명상이 끝나면 바로 할 수 있는 작은 일 하나만 정해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "aga_outro", "type": "outro", "base_text": "한 걸음만 나가도 돼요. 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "depression_short": {
+    "keywords": ["우울", "위로", "3분", "짧은"],
+    "default_task": "창문 열기",
+    "blocks": [
+      { "block_id": "dps_intro", "type": "intro", "base_text": "편안하게 눈을 감고, 지금 느끼는 그대로 괜찮다고 말해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "dps_main", "type": "main", "base_text": "조금만 쉬어가도 돼요. 숨 쉬는 것만 해도 충분합니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "dps_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "depression_deep": {
+    "keywords": ["우울", "수용", "10분", "깊은"],
+    "default_task": "따뜻한 음료 한 잔",
+    "blocks": [
+      { "block_id": "dpd_intro", "type": "intro", "base_text": "눈을 감고 몸이 의자나 바닥에 닿는 느낌을 느껴 보세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "dpd_bridge", "type": "bridge_advice", "adapt_instruction": "지금 감정을 있는 그대로 인정하는 한 문장을 추가해 주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "dpd_main", "type": "main", "base_text": "지금 느끼는 것은 '감정'일 뿐입니다. 괜찮아요. 조금만 쉬어가도 돼요.", "min_hold_ms": 4000, "max_hold_ms": 6000 },
+      { "block_id": "dpd_outro", "type": "outro", "base_text": "잘 하셨어요. 오늘도 수고 많으셨습니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 }
+    ]
+  },
+  "depression_action": {
+    "keywords": ["우울", "작은 움직임", "재진입"],
+    "default_task": "일어나서 스트레칭 1분",
+    "blocks": [
+      { "block_id": "dpa_intro", "type": "intro", "base_text": "잠시 숨을 고르고, 지금 이 순간만 있어 보세요.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+      { "block_id": "dpa_main", "type": "main", "base_text": "작은 움직임 하나만 해 보세요. 지금 할 수 있는 것만.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "dpa_activation", "type": "activation", "base_text": "명상이 끝나면 바로 할 수 있는 작은 일 하나만 정해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "dpa_outro", "type": "outro", "base_text": "한 걸음씩만 나가도 돼요. 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "insomnia_short": {
+    "keywords": ["불면", "이완", "3분", "잠"],
+    "default_task": "이불 덮고 눈 감기",
+    "blocks": [
+      { "block_id": "ins_intro", "type": "intro", "base_text": "눈을 감고 몸이 침대나 바닥에 닿는 느낌을 느껴 보세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "ins_main", "type": "main", "base_text": "숨을 천천히 내쉬며 몸의 무게를 내려놓습니다. 지금은 쉬어도 돼요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "ins_outro", "type": "outro", "base_text": "오늘도 수고 많으셨습니다. 편히 쉬세요.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "insomnia_deep": {
+    "keywords": ["불면", "바디스캔", "생각 끄기", "10분"],
+    "default_task": "손끝부터 이완하기",
+    "blocks": [
+      { "block_id": "ind_intro", "type": "intro", "base_text": "눈을 감고 발끝부터 머리끝까지 천천히 느껴 보세요.", "min_hold_ms": 3500, "max_hold_ms": 5000 },
+      { "block_id": "ind_bridge", "type": "bridge_advice", "adapt_instruction": "잠들기 전 마음을 가볍게 하는 한 문장을 추가해 주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "ind_main", "type": "main", "base_text": "생각이 떠오르면 '생각'이라고만 말하고 숨에 집중합니다. 들어오는 숨, 나가는 숨.", "min_hold_ms": 4000, "max_hold_ms": 6000 },
+      { "block_id": "ind_outro", "type": "outro", "base_text": "편히 쉬세요. 오늘도 수고 많으셨습니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 }
+    ]
+  },
+  "insomnia_action": {
+    "keywords": ["불면", "이완", "행동"],
+    "default_task": "따뜻한 물 한 잔",
+    "blocks": [
+      { "block_id": "ina_intro", "type": "intro", "base_text": "눈을 감고 호흡에만 집중해 보세요.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+      { "block_id": "ina_main", "type": "main", "base_text": "몸의 무게를 내려놓고, 지금은 쉬어도 됩니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "ina_activation", "type": "activation", "base_text": "잠들기 전 할 작은 일 하나만 정해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "ina_outro", "type": "outro", "base_text": "편히 쉬세요. 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "focus_short": {
+    "keywords": ["집중", "잡념", "3분", "각성"],
+    "default_task": "물 한 모금 마시기",
+    "blocks": [
+      { "block_id": "fcs_intro", "type": "intro", "base_text": "눈을 감고 호흡 한 번에만 집중합니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 },
+      { "block_id": "fcs_main", "type": "main", "base_text": "잡념이 떠오르면 '생각'이라고만 말하고 다시 숨으로 돌아옵니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "fcs_outro", "type": "outro", "base_text": "잘 하셨어요. 이제 할 일로 돌아가 보세요.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  },
+  "focus_deep": {
+    "keywords": ["집중", "잡념 제거", "목표 시각화", "10분"],
+    "default_task": "할 일 1개만 적기",
+    "blocks": [
+      { "block_id": "fcd_intro", "type": "intro", "base_text": "편안하게 앉아 눈을 감고, 지금 할 일 하나만 떠올려 보세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "fcd_bridge", "type": "bridge_advice", "adapt_instruction": "집중을 방해하는 것을 한 문장으로 인정하고 넘어가는 멘트를 추가해 주세요.", "min_hold_ms": 3000, "max_hold_ms": 4500 },
+      { "block_id": "fcd_main", "type": "main", "base_text": "잡념은 붙였다 떼 보세요. 숨 한 번 들이쉬고, 목표 하나만 생각합니다.", "min_hold_ms": 4000, "max_hold_ms": 6000 },
+      { "block_id": "fcd_outro", "type": "outro", "base_text": "이제 할 일로 돌아가 보세요. 수고 많으셨습니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 }
+    ]
+  },
+  "focus_action": {
+    "keywords": ["집중", "목표", "행동", "재진입"],
+    "default_task": "할 일 1개만 시작하기",
+    "blocks": [
+      { "block_id": "fca_intro", "type": "intro", "base_text": "잠시 숨을 고르고, 지금 할 일 하나만 떠올립니다.", "min_hold_ms": 2500, "max_hold_ms": 4000 },
+      { "block_id": "fca_main", "type": "main", "base_text": "잡념은 '생각'이라고만 말하고, 할 일로 시선을 돌립니다.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "fca_activation", "type": "activation", "base_text": "명상이 끝나면 바로 시작할 일 하나만 정해 보세요.", "min_hold_ms": 3000, "max_hold_ms": 5000 },
+      { "block_id": "fca_outro", "type": "outro", "base_text": "지금 바로 시작해 보세요. 수고 많으셨습니다.", "min_hold_ms": 2000, "max_hold_ms": 3500 }
+    ]
+  }
+}

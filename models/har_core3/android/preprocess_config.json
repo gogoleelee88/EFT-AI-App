@@ -1,0 +1,10 @@
+{
+  "sampling_hz": 50,
+  "window_t": 128,
+  "expected_channels": [
+    0,
+    1,
+    2
+  ],
+  "normalization": "zscore_per_window"
+}

@@ -1,0 +1,2 @@
+"""Meal condition coaching module."""
+

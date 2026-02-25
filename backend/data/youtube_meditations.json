@@ -1,0 +1,92 @@
+[
+  {
+    "video_id": "ZToicYcHIOU",
+    "title": "10 Minute Guided Meditation for Calm",
+    "channel_title": "Goodful",
+    "duration_sec": 600,
+    "duration_bucket": 10,
+    "theme_id": "self_compassion",
+    "tags": ["calm", "self_compassion", "kindness"]
+  },
+  {
+    "video_id": "inpok4MKVLM",
+    "title": "5 Minute Meditation You Can Do Anywhere",
+    "channel_title": "Goodful",
+    "duration_sec": 300,
+    "duration_bucket": 5,
+    "theme_id": "thought_labeling",
+    "tags": ["thoughts", "focus", "labeling"]
+  },
+  {
+    "video_id": "O-6f5wQXSu8",
+    "title": "20 Minute Guided Meditation for Self Compassion",
+    "channel_title": "Great Meditation",
+    "duration_sec": 1200,
+    "duration_bucket": 20,
+    "theme_id": "self_compassion",
+    "tags": ["relax", "self_compassion"]
+  },
+  {
+    "video_id": "U9YKY7fdwyg",
+    "title": "10 Minute Mindfulness Meditation",
+    "channel_title": "The Mindful Movement",
+    "duration_sec": 600,
+    "duration_bucket": 10,
+    "theme_id": "thought_labeling",
+    "tags": ["mindfulness", "focus"]
+  },
+  {
+    "video_id": "aXItOY0sLRY",
+    "title": "5 Minute Reset Meditation",
+    "channel_title": "Mindful in Minutes",
+    "duration_sec": 300,
+    "duration_bucket": 5,
+    "theme_id": "micro_task_bridging",
+    "tags": ["activation", "reset"]
+  },
+  {
+    "video_id": "sG7DBA-mgFY",
+    "title": "10 Minute Morning Meditation for Energy",
+    "channel_title": "Great Meditation",
+    "duration_sec": 600,
+    "duration_bucket": 10,
+    "theme_id": "micro_task_bridging",
+    "tags": ["activation", "energy"]
+  },
+  {
+    "video_id": "6p_yaNFSYao",
+    "title": "20 Minute Guided Meditation for Overthinking",
+    "channel_title": "Jason Stephenson",
+    "duration_sec": 1200,
+    "duration_bucket": 20,
+    "theme_id": "thought_labeling",
+    "tags": ["calm", "thoughts"]
+  },
+  {
+    "video_id": "W19PdslW7iw",
+    "title": "30 Minute Deep Compassion Meditation",
+    "channel_title": "Meditation Station",
+    "duration_sec": 1800,
+    "duration_bucket": 30,
+    "theme_id": "self_compassion",
+    "tags": ["deep", "compassion"]
+  },
+  {
+    "video_id": "Hzi3PDz1AWU",
+    "title": "30 Minute Focus and Reset Meditation",
+    "channel_title": "The Mindful Movement",
+    "duration_sec": 1800,
+    "duration_bucket": 30,
+    "theme_id": "micro_task_bridging",
+    "tags": ["focus", "plan"]
+  },
+  {
+    "video_id": "lW8__S1bS84",
+    "title": "20 Minute Grounding Meditation",
+    "channel_title": "Mindful in Minutes",
+    "duration_sec": 1200,
+    "duration_bucket": 20,
+    "theme_id": "micro_task_bridging",
+    "tags": ["grounding", "reset"]
+  }
+]

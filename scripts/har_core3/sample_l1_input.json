@@ -1,0 +1,24 @@
+{
+  "l0_probs": {
+    "walk": 0.55,
+    "upstairs": 0.05,
+    "downstairs": 0.03,
+    "sit": 0.10,
+    "stand": 0.17,
+    "lay": 0.00,
+    "unknown": 0.10
+  },
+  "context": {
+    "hour": 8,
+    "day_of_week": 2,
+    "calendar_hint": "commute",
+    "speed_kmh": 6.2,
+    "steps_per_min": 72,
+    "screen_on_ratio": 0.35,
+    "location_hint": "transit",
+    "call_active": false,
+    "screen_state": "on",
+    "orientation": "portrait",
+    "pickup_flag": true
+  }
+}

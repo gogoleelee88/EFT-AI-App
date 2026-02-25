@@ -1,0 +1,23 @@
+{
+  "dataset_name": "wisdm",
+  "num_samples": 54906,
+  "num_subjects": 215,
+  "dataset_ids": [
+    1
+  ],
+  "label_counts": {
+    "walk": 5018,
+    "upstairs": 2996,
+    "downstairs": 2418,
+    "sit": 6145,
+    "stand": 21228,
+    "lay": 0,
+    "unknown": 17101
+  },
+  "unknown_ratio": 0.31145958547335445,
+  "shape": [
+    54906,
+    128,
+    3
+  ]
+}

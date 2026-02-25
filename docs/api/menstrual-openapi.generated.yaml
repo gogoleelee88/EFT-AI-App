@@ -1,0 +1,1220 @@
+openapi: "3.1.0"
+info:
+  title: "Menstrual Module API (Generated)"
+  version: "1.0.0"
+  description: "Auto-generated from FastAPI app.openapi()."
+paths:
+  /v1/menstrual/bleeding:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Bleeding"
+      operationId: "post_bleeding_v1_menstrual_bleeding_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BleedingLogRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/symptoms:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Symptoms"
+      operationId: "post_symptoms_v1_menstrual_symptoms_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SymptomsLogRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/pmdd-lite:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Pmdd Lite"
+      operationId: "post_pmdd_lite_v1_menstrual_pmdd_lite_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PMDDLiteLogRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                type: "object"
+                additionalProperties: true
+                title: "Response Post Pmdd Lite V1 Menstrual Pmdd Lite Post"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/triggers:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Trigger"
+      operationId: "post_trigger_v1_menstrual_triggers_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerLogRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/meds:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Meds"
+      operationId: "post_meds_v1_menstrual_meds_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedsLogRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/journal:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Journal"
+      operationId: "post_journal_v1_menstrual_journal_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JournalLogRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+    get:
+      tags:
+        - "menstrual"
+      summary: "Get Journal"
+      operationId: "get_journal_v1_menstrual_journal_get"
+      parameters:
+        -
+          name: "from"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+                format: "date"
+              -
+                type: "null"
+            title: "From"
+        -
+          name: "to"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+                format: "date"
+              -
+                type: "null"
+            title: "To"
+        -
+          name: "tag"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Tag"
+        -
+          name: "minSeverity"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "integer"
+                maximum: 4
+                minimum: 0
+              -
+                type: "null"
+            title: "Minseverity"
+        -
+          name: "q"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Q"
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalSearchResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/calendar:
+    get:
+      tags:
+        - "menstrual"
+      summary: "Get Calendar"
+      operationId: "get_calendar_v1_menstrual_calendar_get"
+      parameters:
+        -
+          name: "from"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            format: "date"
+            title: "From"
+        -
+          name: "to"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            format: "date"
+            title: "To"
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/prediction:
+    get:
+      tags:
+        - "menstrual"
+      summary: "Get Prediction"
+      operationId: "get_prediction_v1_menstrual_prediction_get"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PredictionResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/insights:
+    get:
+      tags:
+        - "menstrual"
+      summary: "Get Insights"
+      operationId: "get_insights_v1_menstrual_insights_get"
+      parameters:
+        -
+          name: "from"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            format: "date"
+            title: "From"
+        -
+          name: "to"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            format: "date"
+            title: "To"
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/export:
+    post:
+      tags:
+        - "menstrual"
+      summary: "Post Export"
+      operationId: "post_export_v1_menstrual_export_post"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportJobRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJobResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/export/{job_id}:
+    get:
+      tags:
+        - "menstrual"
+      summary: "Get Export Job"
+      operationId: "get_export_job_v1_menstrual_export__job_id__get"
+      parameters:
+        -
+          name: "job_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Job Id"
+        -
+          name: "format"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+                pattern: "^(csv|pdf)$"
+              -
+                type: "null"
+            title: "Format"
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJobStatusResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+  /v1/menstrual/settings:
+    get:
+      tags:
+        - "menstrual"
+      summary: "Get Settings"
+      operationId: "get_settings_v1_menstrual_settings_get"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacySettingsResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+    patch:
+      tags:
+        - "menstrual"
+      summary: "Patch Settings"
+      operationId: "patch_settings_v1_menstrual_settings_patch"
+      parameters:
+        -
+          name: "access_token"
+          in: "cookie"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Access Token"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrivacySettingsUpdateRequest"
+      responses:
+        200:
+          description: "Successful Response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrivacySettingsResponse"
+        422:
+          description: "Validation Error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+components:
+  schemas:
+    BleedingLogRequest:
+      properties:
+        date:
+          type: "string"
+          format: "date"
+          title: "Date"
+        type:
+          type: "string"
+          enum:
+            - "menstruation_start"
+            - "menstruation_end"
+            - "spotting_start"
+            - "spotting_end"
+          title: "Type"
+          description: "menstruation_start/end or spotting_start/end"
+        flow_level:
+          type: "integer"
+          maximum: 4.0
+          minimum: 0.0
+          title: "Flow Level"
+        cramp_level:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 5.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Cramp Level"
+        pain_areas:
+          items:
+            type: "string"
+            enum:
+              - "lower_abdomen"
+              - "back"
+              - "headache"
+              - "breast"
+              - "other"
+          type: "array"
+          title: "Pain Areas"
+        notes:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 2000
+            -
+              type: "null"
+          title: "Notes"
+        meds_taken:
+          items:
+            type: "string"
+          type: "array"
+          title: "Meds Taken"
+      type: "object"
+      required:
+        - "date"
+        - "type"
+        - "flow_level"
+      title: "BleedingLogRequest"
+    CalendarResponse:
+      properties:
+        day_summaries:
+          items:
+            $ref: "#/components/schemas/MenstrualDaySummaryItem"
+          type: "array"
+          title: "Day Summaries"
+        fertility_window_visible:
+          type: "boolean"
+          title: "Fertility Window Visible"
+          default: false
+        phase_policy:
+          type: "string"
+          title: "Phase Policy"
+        medical_disclaimer:
+          type: "string"
+          title: "Medical Disclaimer"
+      type: "object"
+      required:
+        - "phase_policy"
+        - "medical_disclaimer"
+      title: "CalendarResponse"
+    ExportJobRequest:
+      properties:
+        from:
+          type: "string"
+          format: "date"
+          title: "From"
+        to:
+          type: "string"
+          format: "date"
+          title: "To"
+        formats:
+          items:
+            type: "string"
+            enum:
+              - "csv"
+              - "pdf"
+          type: "array"
+          title: "Formats"
+        allow_server_export:
+          type: "boolean"
+          title: "Allow Server Export"
+          default: false
+      type: "object"
+      required:
+        - "from"
+        - "to"
+      title: "ExportJobRequest"
+    ExportJobResponse:
+      properties:
+        job_id:
+          type: "string"
+          title: "Job Id"
+        status:
+          type: "string"
+          enum:
+            - "pending"
+            - "completed"
+            - "failed"
+          title: "Status"
+        created_at:
+          type: "string"
+          format: "date-time"
+          title: "Created At"
+        formats:
+          items:
+            type: "string"
+            enum:
+              - "csv"
+              - "pdf"
+          type: "array"
+          title: "Formats"
+        medical_disclaimer:
+          type: "string"
+          title: "Medical Disclaimer"
+      type: "object"
+      required:
+        - "job_id"
+        - "status"
+        - "created_at"
+        - "medical_disclaimer"
+      title: "ExportJobResponse"
+    ExportJobStatusResponse:
+      properties:
+        job_id:
+          type: "string"
+          title: "Job Id"
+        status:
+          type: "string"
+          enum:
+            - "pending"
+            - "completed"
+            - "failed"
+          title: "Status"
+        formats:
+          items:
+            type: "string"
+            enum:
+              - "csv"
+              - "pdf"
+          type: "array"
+          title: "Formats"
+        ready_files:
+          items:
+            type: "string"
+          type: "array"
+          title: "Ready Files"
+        error_message:
+          anyOf:
+            -
+              type: "string"
+            -
+              type: "null"
+          title: "Error Message"
+      type: "object"
+      required:
+        - "job_id"
+        - "status"
+      title: "ExportJobStatusResponse"
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          type: "array"
+          title: "Detail"
+      type: "object"
+      title: "HTTPValidationError"
+    InsightsResponse:
+      properties:
+        symptom_trends:
+          items:
+            $ref: "#/components/schemas/SymptomTrendItem"
+          type: "array"
+          title: "Symptom Trends"
+        pmdd_index_timeline:
+          items:
+            additionalProperties:
+              anyOf:
+                -
+                  type: "string"
+                -
+                  type: "number"
+            type: "object"
+          type: "array"
+          title: "Pmdd Index Timeline"
+        worsening_days:
+          items:
+            type: "string"
+            format: "date"
+          type: "array"
+          title: "Worsening Days"
+        worsening_threshold_p75:
+          anyOf:
+            -
+              type: "number"
+            -
+              type: "null"
+          title: "Worsening Threshold P75"
+        top_triggers_in_worsening_days:
+          items:
+            additionalProperties:
+              anyOf:
+                -
+                  type: "string"
+                -
+                  type: "integer"
+            type: "object"
+          type: "array"
+          title: "Top Triggers In Worsening Days"
+        trigger_vs_index_timeline:
+          items:
+            $ref: "#/components/schemas/TriggerTimelineItem"
+          type: "array"
+          title: "Trigger Vs Index Timeline"
+        recent_two_week_pattern:
+          type: "string"
+          title: "Recent Two Week Pattern"
+        medical_disclaimer:
+          type: "string"
+          title: "Medical Disclaimer"
+      type: "object"
+      required:
+        - "recent_two_week_pattern"
+        - "medical_disclaimer"
+      title: "InsightsResponse"
+    JournalLogRequest:
+      properties:
+        datetime:
+          type: "string"
+          format: "date-time"
+          title: "Datetime"
+        text:
+          type: "string"
+          maxLength: 8000
+          minLength: 1
+          title: "Text"
+        tags:
+          items:
+            type: "string"
+          type: "array"
+          title: "Tags"
+        severity:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 4.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Severity"
+      type: "object"
+      required:
+        - "datetime"
+        - "text"
+      title: "JournalLogRequest"
+    JournalSearchResponse:
+      properties:
+        entries:
+          items:
+            $ref: "#/components/schemas/JournalEntry"
+          type: "array"
+          title: "Entries"
+      type: "object"
+      title: "JournalSearchResponse"
+    MedsLogRequest:
+      properties:
+        datetime:
+          type: "string"
+          format: "date-time"
+          title: "Datetime"
+        med_name:
+          type: "string"
+          maxLength: 120
+          minLength: 1
+          title: "Med Name"
+        dose:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 120
+            -
+              type: "null"
+          title: "Dose"
+        type:
+          type: "string"
+          enum:
+            - "painkiller"
+            - "contraceptive"
+            - "ssri"
+            - "supplement"
+            - "other"
+          title: "Type"
+        effect_rating:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 5.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Effect Rating"
+        note:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 2000
+            -
+              type: "null"
+          title: "Note"
+      type: "object"
+      required:
+        - "datetime"
+        - "med_name"
+        - "type"
+      title: "MedsLogRequest"
+    PMDDLiteLogRequest:
+      properties:
+        date:
+          type: "string"
+          format: "date"
+          title: "Date"
+        answers:
+          items:
+            type: "integer"
+          type: "array"
+          maxItems: 14
+          minItems: 11
+          title: "Answers"
+        question_ids:
+          anyOf:
+            -
+              items:
+                type: "string"
+              type: "array"
+              maxItems: 14
+              minItems: 11
+            -
+              type: "null"
+          title: "Question Ids"
+        notes:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 2000
+            -
+              type: "null"
+          title: "Notes"
+      type: "object"
+      required:
+        - "date"
+        - "answers"
+      title: "PMDDLiteLogRequest"
+    PredictionResponse:
+      properties:
+        next_period_window_start:
+          anyOf:
+            -
+              type: "string"
+              format: "date"
+            -
+              type: "null"
+          title: "Next Period Window Start"
+        next_period_window_end:
+          anyOf:
+            -
+              type: "string"
+              format: "date"
+            -
+              type: "null"
+          title: "Next Period Window End"
+        confidence_score:
+          type: "integer"
+          maximum: 100.0
+          minimum: 0.0
+          title: "Confidence Score"
+        why_this:
+          type: "string"
+          title: "Why This"
+        data_quality:
+          type: "string"
+          enum:
+            - "insufficient"
+            - "fair"
+            - "good"
+          title: "Data Quality"
+        fertility_window_visible:
+          type: "boolean"
+          title: "Fertility Window Visible"
+          default: false
+        phase_policy:
+          type: "string"
+          title: "Phase Policy"
+        medical_disclaimer:
+          type: "string"
+          title: "Medical Disclaimer"
+      type: "object"
+      required:
+        - "confidence_score"
+        - "why_this"
+        - "data_quality"
+        - "phase_policy"
+        - "medical_disclaimer"
+      title: "PredictionResponse"
+    PrivacySettingsResponse:
+      properties:
+        on_device_only:
+          type: "boolean"
+          title: "On Device Only"
+        fertility_window_mode:
+          type: "string"
+          enum:
+            - "hidden"
+            - "range_only"
+          title: "Fertility Window Mode"
+          default: "hidden"
+        app_lock_enabled:
+          type: "boolean"
+          title: "App Lock Enabled"
+        app_lock_method:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "faceid"
+                - "touchid"
+                - "pin"
+            -
+              type: "null"
+          title: "App Lock Method"
+        backup_mode:
+          type: "string"
+          enum:
+            - "local_encrypted"
+            - "e2e_cloud"
+          title: "Backup Mode"
+          default: "local_encrypted"
+        app_lock_recommended:
+          type: "boolean"
+          title: "App Lock Recommended"
+        privacy_notice:
+          type: "string"
+          title: "Privacy Notice"
+      type: "object"
+      required:
+        - "on_device_only"
+        - "app_lock_enabled"
+        - "app_lock_recommended"
+        - "privacy_notice"
+      title: "PrivacySettingsResponse"
+    PrivacySettingsUpdateRequest:
+      properties:
+        on_device_only:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "On Device Only"
+        fertility_window_mode:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "hidden"
+                - "range_only"
+            -
+              type: "null"
+          title: "Fertility Window Mode"
+        app_lock_enabled:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "App Lock Enabled"
+        app_lock_method:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "faceid"
+                - "touchid"
+                - "pin"
+            -
+              type: "null"
+          title: "App Lock Method"
+        backup_mode:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "local_encrypted"
+                - "e2e_cloud"
+            -
+              type: "null"
+          title: "Backup Mode"
+      type: "object"
+      title: "PrivacySettingsUpdateRequest"
+    RecordResponse:
+      properties:
+        recorded:
+          type: "boolean"
+          title: "Recorded"
+          default: true
+        event_id:
+          type: "string"
+          title: "Event Id"
+        date:
+          anyOf:
+            -
+              type: "string"
+              format: "date"
+            -
+              type: "null"
+          title: "Date"
+        timestamp:
+          anyOf:
+            -
+              type: "string"
+              format: "date-time"
+            -
+              type: "null"
+          title: "Timestamp"
+      type: "object"
+      required:
+        - "event_id"
+      title: "RecordResponse"
+    SymptomsLogRequest:
+      properties:
+        date:
+          type: "string"
+          format: "date"
+          title: "Date"
+        symptom_severity_map:
+          additionalProperties:
+            type: "integer"
+          type: "object"
+          title: "Symptom Severity Map"
+        notes:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 2000
+            -
+              type: "null"
+          title: "Notes"
+        favorite_symptoms:
+          items:
+            type: "string"
+          type: "array"
+          title: "Favorite Symptoms"
+      type: "object"
+      required:
+        - "date"
+      title: "SymptomsLogRequest"
+    TriggerLogRequest:
+      properties:
+        date:
+          type: "string"
+          format: "date"
+          title: "Date"
+        tags:
+          items:
+            type: "string"
+            enum:
+              - "conflict"
+              - "overtime"
+              - "caffeine"
+              - "alcohol"
+              - "travel"
+              - "sickness"
+              - "exercise_change"
+              - "sleep_change"
+              - "other"
+          type: "array"
+          minItems: 1
+          title: "Tags"
+        stress_level:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 10.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Stress Level"
+        note:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 2000
+            -
+              type: "null"
+          title: "Note"
+      type: "object"
+      required:
+        - "date"
+        - "tags"
+      title: "TriggerLogRequest"

@@ -1,0 +1,23 @@
+{
+  "dataset_name": "hhar",
+  "num_samples": 250257,
+  "num_subjects": 9,
+  "dataset_ids": [
+    2
+  ],
+  "label_counts": {
+    "walk": 42113,
+    "upstairs": 33853,
+    "downstairs": 31026,
+    "sit": 37073,
+    "stand": 34820,
+    "lay": 0,
+    "unknown": 71372
+  },
+  "unknown_ratio": 0.28519481972532235,
+  "shape": [
+    250257,
+    128,
+    3
+  ]
+}

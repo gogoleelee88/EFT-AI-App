@@ -1,0 +1,17 @@
+{
+  "name": "resume-os",
+  "version": "0.1.0",
+  "description": "Desktop \"실행 복귀 OS\" agent (Electron + React + SQLite3 MVP)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^30.0.0",
+    "sqlite3": "^5.1.7",
+    "active-win": "^8.0.0",
+    "iohook": "^0.9.3",
+    "node-tflite": "^0.0.2"
+  }
+}
+
