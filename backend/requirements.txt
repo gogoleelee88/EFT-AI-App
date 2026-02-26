@@ -1,4 +1,4 @@
-# EFT AI 서버 의존성 패키지
+vLLM이# EFT AI 서버 의존성 패키지
 
 # FastAPI 서버
 fastapi==0.104.1
@@ -61,6 +61,3 @@ black==23.11.0
 supabase==2.8.1
 
 gotrue==2.8.1
-
-
-postgrest==0.17.1
