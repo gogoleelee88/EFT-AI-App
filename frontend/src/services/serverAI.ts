@@ -1208,5 +1208,11 @@ export async function recordSuds(
   }
 }
 
+export async function serverAIRespond(input: string): Promise<string> {
+  const serverAI = getServerAI();
+  const response = await serverAI.chat(input);
+  return response.response;
+}
+
 export default ServerAI;
 export type { ChatResponse, ComparisonResponse };
