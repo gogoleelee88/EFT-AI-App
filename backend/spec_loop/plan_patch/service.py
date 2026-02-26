@@ -156,7 +156,7 @@ def suggest_plan_patch(
         suggestions.append(
             {
                 "patch_type": "BUFFER_BLOCK",
-                "reason": "嶺??욕퐲?????뜯뫀?ｈ굜??嶺?瑗룟퐲???嶺??욘?彛??嶺???????嶺뚯쉸?욤굜?쇈뀋?嶺??욱씇嶺???嶺뚯쉸?앲굜????嶺?嶺?瑗룡?勇싲８?녻굜?嶺??욕퐲???嶺?瑗룟퐲?",
+                "reason": "중요한 일정 앞뒤에 여유 시간을 추가해보세요. 다음 일정으로 부드럽게 넘어가고, 예상치 못한 지연도 줄일 수 있어요.",
                 "allowed": True,
                 "blocked_reason": None,
                 "preview": {
@@ -668,7 +668,6 @@ def apply_plan_patch(
         "calendar_synced": calendar_synced,
         "calendar_message": calendar_message,
     }
-
 
 
 

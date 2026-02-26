@@ -82,7 +82,7 @@ def _require_authenticated_user_id(access_token: Optional[str]) -> str:
 
 
 class EmotionCheckinRequest(BaseModel):
-    """媛?泥댄???泥. ?濡???吏 ??ぉ(7~8媛?怨?1:1 留ㅼ?"""
+    """감정 체크인 요청 본문. 프론트 입력 문항(7~8개)과 1:1 매핑."""
     session_id: str
     session_type: Literal["eftar", "meditation"] | None = None
     user_id: str | None = None
@@ -90,11 +90,11 @@ class EmotionCheckinRequest(BaseModel):
     situation_context: str
     automatic_thought: str
     physical_sensation: str | None = None
-    coping_attempt: str | None = None  # ?濡??behavioral_reaction ?????應??議
+    coping_attempt: str | None = None  # 기존 behavioral_reaction 필드와의 호환을 위해 유지
     immediate_goal: str | None = None
     intensity_before: int
     plan_start_resistance: str | None = None
-    available_time: int | None = None  # ?ъ?媛???媛(遺?. ?濡??8踰吏???ぉ
+    available_time: int | None = None  # 사용 가능 시간(분), 프론트 8번째 문항
 
 
 @router.post("/checkin")
@@ -103,7 +103,7 @@ def save_emotion_checkin(
     access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ):
     """
-    媛?泥댄????? 湲곗〈 ?逾??theme_recommendations, default_theme_id Optional 異?.
+    감정 체크인을 저장하고 기존 응답에 추천 테마 정보를 선택적으로 추가한다.
     """
     try:
         sb = _get_supabase()
@@ -131,7 +131,7 @@ def save_emotion_checkin(
                 immediate_goal=payload.immediate_goal,
                 available_time=payload.available_time,
             )
-            # MODULE_MODE=lite: 洹移 湲곕?/ pro: LLM 湲곕?+ Rule fallback
+            # MODULE_MODE=lite: 규칙 기반 / pro: LLM 기반 + 규칙 fallback
             recommender = get_theme_recommender()
             themes, default_theme_id, decision_trace = recommender.recommend(intake, intent=None)
             out["theme_recommendations"] = [t.model_dump() for t in themes]
@@ -157,7 +157,7 @@ class EmotionCandidatesResponse(BaseModel):
 @router.post("/candidates", response_model=EmotionCandidatesResponse)
 async def emotion_candidates(req: EmotionCandidatesRequest):
 
-    # ??몄 ??遺臾?ㅺ린
+    # 세션 상태 불러오기
     raw = redis_client.get(f"session:compare:{req.session_id}")
     if not raw:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -165,7 +165,7 @@ async def emotion_candidates(req: EmotionCandidatesRequest):
 
     intake = {item.key: item.value for item in state.checklist}
 
-    # ? ?珥釉由??LLM ?蹂?異異
+    # 컨텍스트 기반 LLM 후보 추론
     inference_list = await get_emotion_candidates(
         user_input=intake.get("situation_context") or "",
         strict6_output=intake,
@@ -205,7 +205,7 @@ class EmotionCheckinSummary(BaseModel):
     physical_sensation: Optional[str] = None
     coping_attempt: Optional[str] = None
     immediate_goal: Optional[str] = None
-    intensity: int = Field(..., description="?몄 ????媛?(intensity_before)")
+    intensity: int = Field(..., description="체크인 강도 점수(intensity_before)")
 
 
 class EmotionStatsResponse(BaseModel):
@@ -386,8 +386,8 @@ def get_recent_emotion_checkins(
     access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ) -> List[EmotionCheckinSummary]:
     """
-    理洹?STRICT 媛??명?댄?emotion_checkins) 湲곕??議고.
-    ??蹂??'理洹?媛??몄' 移대???ъ?
+    최근 emotion_checkins 기록을 조회한다.
+    대시보드의 '최근 감정 기록' 카드에서 사용한다.
     """
     try:
         sb = _get_supabase()
@@ -433,7 +433,8 @@ def get_emotion_session(
     access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ) -> EmotionCheckinSummary:
     """
-    ?⑥?媛??몄(emotion_checkins) 1嫄?議고. ?痢 ?硫??
+    특정 emotion_checkins 1건을 조회한다.
+    세션 상세 화면에서 사용한다.
     """
     try:
         sb = _get_supabase()
@@ -477,7 +478,7 @@ def get_emotion_stats(
     access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ) -> EmotionStatsResponse:
     """
-    emotion_checkins 湲곕?湲곕낯 ?듦?
+    emotion_checkins 기반 기본 통계를 조회한다.
     """
     try:
         sb = _get_supabase()
@@ -494,10 +495,11 @@ def get_emotion_stats(
                 average_intensity=0.0,
             )
 
-        # 媛?遺姿 + ?洹 媛?        dist: Dict[str, int] = {}
+        # Aggregate core emotion counts and intensity values.
+        dist: Dict[str, int] = {}
         intensities: List[int] = []
         for r in rows:
-            ce = r.get("core_emotion") or "湲고?"
+            ce = r.get("core_emotion") or "기타"
             dist[ce] = dist.get(ce, 0) + 1
             intensities.append(int(r.get("intensity_before") or 0))
 
@@ -520,9 +522,9 @@ async def get_emotion_insights(
     access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ) -> EmotionInsightsResponse:
     """
-    OpenAI 湲곕?媛??⑦??듭같 ?梨.
-    - user_id媛 紐?硫??대??ъ?留
-    - ?應?access_token 荑仍???ъ???蹂
+    OpenAI 기반 감정 인사이트 생성 API.
+    - user_id는 현재 인증 사용자 기준으로만 조회한다.
+    - access_token 쿠키 인증이 필요하다.
     """
     resolved_user_id = _require_authenticated_user_id(access_token)
 

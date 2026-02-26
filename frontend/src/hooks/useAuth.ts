@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { signOut } from 'firebase/auth';
 import { resolveBackendUrl } from '@/services/http';
+import { auth } from '@/firebase/config';
 
 interface EFTUser {
   uid: string;
@@ -67,6 +69,14 @@ export const useAuth = () => {
     try {
       await fetch(resolveBackendUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' });
     } finally {
+      try {
+        await signOut(auth);
+      } catch {
+        // Ignore local Firebase sign-out failures and still clear app state.
+      }
+      sessionStorage.removeItem('auth_mode');
+      sessionStorage.removeItem('auth_marketing');
+      sessionStorage.removeItem('auth_connect_notion');
       setUser(null);
     }
   }, []);
