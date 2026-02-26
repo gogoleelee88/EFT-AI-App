@@ -3,5 +3,20 @@ services:
     name: eft-ai-backend
     env: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT --log-level debug --access-log
     healthCheckPath: /healthz
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: '["https://eft-ai-app-frontend-4ia5.vercel.app"]'
+      - key: BASE_FRONTEND_URL
+        value: https://eft-ai-app-frontend-4ia5.vercel.app
+      - key: FRONTEND_URL
+        value: https://eft-ai-app-frontend-4ia5.vercel.app
+      - key: FRONTEND_DASHBOARD_URL
+        value: https://eft-ai-app-frontend-4ia5.vercel.app/dashboard
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: COOKIE_DOMAIN
+        value: ""
