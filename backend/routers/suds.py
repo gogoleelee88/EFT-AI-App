@@ -3,21 +3,35 @@ import httpx
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
+import os
+import traceback
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from typing import Any, Dict, Literal, Optional, Tuple
+from supabase import create_client
 
 from utils.action_contract import StartEFTARv1
 from backend.models.suds import SUDSEntry
 from services.suds_logger import append_suds
 from services.auth_service import AuthService
-import os
-from supabase import create_client
 
 router = APIRouter(tags=["suds"])
 
 logger = logging.getLogger(__name__)
 _auth_service = AuthService()
+
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        logger.error("create_client failed: %r", e)
+        logger.error(traceback.format_exc())
+        raise
 
 
 DEFAULT_EFTAR_ROUTE = "/eftar"
@@ -88,16 +102,6 @@ def _build_response(score: int, *, trace_id: Optional[str], saved_at: Optional[s
     else:  # 6???´í
         # 6???´í: ?¸í¡ë²??°ì ì¶ì²
         return SUDSResponse(ok=True, actions=[breath_action.model_dump(), eft_action.model_dump()], trace_id=trace_id, saved_at=saved_at)
-
-def _get_supabase():
-    """Supabase ?´ë¼?´ì¸???ì±"""
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # ê¶ì¥ (RLS ?í¥ ìµì)
-    if not url or not key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-    return create_client(url, key)
-
-
 def _safe_str(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -449,5 +453,3 @@ async def options_record(request: Request) -> Response:
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
-
-

@@ -41,23 +41,51 @@ if (shouldUseMockServiceWorker) {
 
 const originalFetch = window.fetch.bind(window);
 const isAbsoluteUrl = (url: string) => /^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(url)
+const apiOrigin = (() => {
+  try {
+    return new URL(API_CONFIG.API_BASE_URL).origin
+  } catch {
+    return ''
+  }
+})()
+const withApiCredentials = (init?: RequestInit): RequestInit => ({
+  ...init,
+  credentials: init?.credentials ?? 'include',
+})
+const shouldAttachApiCredentials = (rawUrl: string): boolean => {
+  try {
+    const parsed = new URL(rawUrl, window.location.origin)
+    return parsed.origin === apiOrigin && isApiPath(parsed.pathname)
+  } catch {
+    return false
+  }
+}
 
 window.fetch = async (input: RequestInfo, init?: RequestInit) => {
   if (typeof input === "string") {
     const value = input.trim()
     if (isAbsoluteUrl(value)) {
-      return originalFetch(value, init)
+      return shouldAttachApiCredentials(value)
+        ? originalFetch(value, withApiCredentials(init))
+        : originalFetch(value, init)
     }
     const requestUrl = new URL(value, window.location.origin)
     if (isApiPath(requestUrl.pathname)) {
-      return originalFetch(resolveBackendUrl(requestUrl.pathname + requestUrl.search), init);
+      return originalFetch(
+        resolveBackendUrl(requestUrl.pathname + requestUrl.search),
+        withApiCredentials(init)
+      );
     }
     return originalFetch(value, init)
   }
   if (input instanceof Request) {
     const requestUrl = new URL(input.url, window.location.origin);
     if (requestUrl.origin === window.location.origin && isApiPath(requestUrl.pathname)) {
-      return originalFetch(resolveBackendUrl(requestUrl.pathname + requestUrl.search), init ?? {});
+      const rewrittenRequest = new Request(
+        resolveBackendUrl(requestUrl.pathname + requestUrl.search),
+        input
+      );
+      return originalFetch(rewrittenRequest, withApiCredentials(init));
     }
   }
   return originalFetch(input, init);

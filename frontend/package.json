@@ -40,7 +40,6 @@
     "test:watch": "node ./scripts/run-vitest.cjs --watch"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.7.2",
     "@mediapipe/camera_utils": "^0.3.1675466862",
     "@mediapipe/face_detection": "^0.4.1646425229",
     "@mediapipe/face_mesh": "^0.4.1633559619",

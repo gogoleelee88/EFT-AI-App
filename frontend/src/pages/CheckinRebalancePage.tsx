@@ -227,7 +227,9 @@ const CheckinRebalancePage: React.FC = () => {
       const params = new URLSearchParams({ date });
       if (dayId) params.set("day_id", String(dayId));
       if (user?.uid) params.set("user_id", user.uid);
-      const res = await fetch(`/api/spec/plan/patch/suggest?${params.toString()}`);
+      const res = await fetch(`/api/spec/plan/patch/suggest?${params.toString()}`, {
+        credentials: "include",
+      });
       if (!res.ok) {
         setRecommendedPatch(null);
         return;
@@ -256,6 +258,7 @@ const CheckinRebalancePage: React.FC = () => {
     try {
       const res = await fetch("/api/spec/plan/patch/apply", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: dateForPatch,
@@ -312,7 +315,9 @@ const CheckinRebalancePage: React.FC = () => {
     const poll = async () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       try {
-        const res = await fetch(`/api/spec/jobs/${jobId}`);
+        const res = await fetch(`/api/spec/jobs/${jobId}`, {
+          credentials: "include",
+        });
         if (!res.ok) return;
         const data = await res.json();
         const status = data.status;
@@ -438,6 +443,7 @@ const CheckinRebalancePage: React.FC = () => {
     try {
       const res = await fetch("/api/spec/condition/checkin", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -492,6 +498,7 @@ const CheckinRebalancePage: React.FC = () => {
     try {
       const res = await fetch("/api/spec/adapt/day", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           day_id: numericDayId,
@@ -538,6 +545,7 @@ const CheckinRebalancePage: React.FC = () => {
     try {
       const res = await fetch("/api/spec/simulate/day", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ day_id: numericDayId }),
       });

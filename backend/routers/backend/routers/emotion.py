@@ -1,8 +1,9 @@
 # backend/routes/emotion_candidates.py
 
-import redis
 import os
-from supabase import create_client
+import logging
+import traceback
+import redis
 
 import json
 from datetime import datetime
@@ -11,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from supabase import create_client
 
 from routes.compare import (  # compare.py?ì ?´ë? ?ë ê²??¬ì¬??    SessionState,
     ChecklistItem,
@@ -22,6 +24,20 @@ from routes.compare import (  # compare.py?ì ?´ë? ?ë ê²??¬ì¬??    Sessi
 )
 
 router = APIRouter(prefix="/api/emotion", tags=["emotion"])
+logger = logging.getLogger(__name__)
+
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        logger.error("create_client failed: %r", e)
+        logger.error(traceback.format_exc())
+        raise
 
 class EmotionCheckinRequest(BaseModel):
     session_id: str
@@ -197,6 +213,7 @@ async def get_emotion_candidates(req: EmotionCandidatesRequest):
     for label in inference.emotion_candidates:
         desc = f"ì§ê¸??íë¥?'{label}' ìª½ì ??ê°ê¹ê² ?ë ???í?ì¸??"
         candidates_out.append({"label": label, "description": desc})
+    candidates_out.append({
 
     # "??ëª¨ë¥´ê²ì´?? ?µì? ë°±ì?ì??ê°ìë¡?ì¶ê??´ë ??    candidates_out.append({
         "label": "??ëª¨ë¥´ê²ì",
@@ -252,11 +269,3 @@ async def set_emotion_choice(req: EmotionChoiceRequest):
         core_emotion_final=req.user_choice,
         chosen_at=now,
     )
-
-def _get_supabase():
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not url or not key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-    return create_client(url, key)
-

@@ -30,7 +30,10 @@ export function createApiHeaders(apiKey?: string): Headers {
 
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const requestPath = resolveBackendUrl(path);
-  const res = await fetch(requestPath, init);
+  const res = await fetch(requestPath, {
+    ...init,
+    credentials: init.credentials ?? 'include',
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} ${res.statusText} ${text}`);

@@ -1,5 +1,7 @@
 // AI 동반자 시스템 - 법적으로 안전한 설계
 
+import { serverAIRespond } from './serverAI';
+
 interface ConversationContext {
   userId: string;
   sessionId: string;
@@ -505,8 +507,13 @@ class AICompanion {
   // === Transformers.js 실제 구현 (비활성화됨) ===
   private async useTransformersJS(userInput: string): Promise<string | null> {
     try {
+      return await serverAIRespond(userInput);
+      /*
       // 동적 import로 Transformers.js 로드 (번들 크기 최적화)
-      const { pipeline } = await import('@huggingface/transformers');
+      // const { pipeline } = await import('@huggingface/transformers');
+      const pipeline: any = async (..._args: any[]) => {
+        throw new Error('Transformers import disabled');
+      };
       
       // 404 오류 없는 안정적인 모델들 사용
       const emotionClassifier = await pipeline('sentiment-analysis', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
@@ -536,6 +543,7 @@ class AICompanion {
       console.log('✅ Level 2 AI 응답 생성 성공:', {sentiment: sentimentResult, response: cleanResponse});
       return cleanResponse;
       
+      */
     } catch (error) {
       console.log('❌ Transformers.js 완전 실패, 시뮬레이션으로 폴백:', error);
       return null; // 폴백으로 simulateAIResponse 사용
@@ -883,6 +891,10 @@ class AICompanion {
   private generateSessionId(): string {
     return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   }
+}
+
+export async function aiCompanionRespond(input: string): Promise<string> {
+  return serverAIRespond(input);
 }
 
 export default AICompanion;

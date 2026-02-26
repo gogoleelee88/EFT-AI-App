@@ -80,17 +80,17 @@ export default defineConfig({
               }
             }
           },
-          {
-            urlPattern: /^https:\/\/huggingface\.co\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'huggingface-models-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 30
-              }
-            }
-          }
+          // {
+          //   urlPattern: /^https:\/\/huggingface\.co\/.*/,
+          //   handler: 'CacheFirst',
+          //   options: {
+          //     cacheName: 'huggingface-models-cache',
+          //     expiration: {
+          //       maxEntries: 50,
+          //       maxAgeSeconds: 60 * 60 * 24 * 30
+          //     }
+          //   }
+          // }
         ]
       },
       // 🔧 개발 환경에서는 PWA 비활성화 (12월 5일 발표용 임시)
@@ -109,7 +109,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'ai-vendor': ['@huggingface/transformers'],
+          // 'ai-vendor': ['@huggingface/transformers'],
           'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           'react-vendor': ['react', 'react-dom', 'react-router-dom']
         }

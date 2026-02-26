@@ -149,7 +149,9 @@ const PlanDayPage: React.FC = () => {
       if (user?.uid) params.set("user_id", user.uid);
       const dayId = wizard.state.savedPlan?.day_id;
       if (dayId != null) params.set("day_id", String(dayId));
-      const res = await fetch(`/api/spec/plan/patch/suggest?${params.toString()}`);
+      const res = await fetch(`/api/spec/plan/patch/suggest?${params.toString()}`, {
+        credentials: "include",
+      });
       if (!res.ok) {
         setBannerSummary(null);
         setBannerPatch(null);
@@ -182,6 +184,7 @@ const PlanDayPage: React.FC = () => {
     try {
       const res = await fetch("/api/spec/plan/patch/apply", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: wizard.state.date,
