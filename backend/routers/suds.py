@@ -3,20 +3,35 @@ import httpx
 from datetime import datetime, timezone
 from uuid import uuid4
 import logging
+import os
+import traceback
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from typing import Any, Dict, Literal, Optional, Tuple
+from supabase import create_client
 
 from utils.action_contract import StartEFTARv1
 from backend.models.suds import SUDSEntry
 from services.suds_logger import append_suds
 from services.auth_service import AuthService
-from services.supabase_client import _get_supabase
 
 router = APIRouter(tags=["suds"])
 
 logger = logging.getLogger(__name__)
 _auth_service = AuthService()
+
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        logger.error("create_client failed: %r", e)
+        logger.error(traceback.format_exc())
+        raise
 
 
 DEFAULT_EFTAR_ROUTE = "/eftar"
@@ -438,4 +453,3 @@ async def options_record(request: Request) -> Response:
     origin = request.headers.get("origin")
     requested_headers = request.headers.get("access-control-request-headers")
     return Response(status_code=200, content="OK", headers=_cors_headers(origin, requested_headers))
-

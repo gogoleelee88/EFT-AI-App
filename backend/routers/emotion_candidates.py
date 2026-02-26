@@ -3,16 +3,17 @@
 import textwrap
 import os
 import logging
+import traceback
 
 from fastapi import APIRouter, Cookie, HTTPException
 from services.emotion_candidates_service import get_emotion_candidates
-from services.supabase_client import _get_supabase
 from routers.compare import SessionState
 import json
 
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta
+from supabase import create_client
 
 from fastapi import HTTPException
 from backend.models.chat_models import StrictIntakeInput
@@ -38,6 +39,20 @@ except Exception as e:
 
 router = APIRouter(prefix="/api/emotion", tags=["emotion"])
 auth_service = AuthService()
+logger = logging.getLogger(__name__)
+
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        logger.error("create_client failed: %r", e)
+        logger.error(traceback.format_exc())
+        raise
 
 
 def _decode_user_id_from_cookie(access_token: Optional[str]) -> Optional[str]:
@@ -496,6 +511,7 @@ def get_emotion_stats(
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.exception("emotion stats failed")
         raise HTTPException(status_code=500, detail=f"Failed to load emotion stats: {e}")
 
 @router.get("/insights", response_model=EmotionInsightsResponse)
@@ -791,5 +807,3 @@ async def generate_session_advice(payload: SessionAdviceRequest) -> SessionAdvic
         )
     except Exception:
         return _fallback_session_advice(payload)
-
-

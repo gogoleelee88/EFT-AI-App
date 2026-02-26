@@ -1,7 +1,9 @@
 # backend/routes/emotion_candidates.py
 
+import os
+import logging
+import traceback
 import redis
-from services.supabase_client import _get_supabase
 
 import json
 from datetime import datetime
@@ -10,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from supabase import create_client
 
 from routes.compare import (  # compare.py?ì ?´ë? ?ë ê²??¬ì¬??    SessionState,
     ChecklistItem,
@@ -21,6 +24,20 @@ from routes.compare import (  # compare.py?ì ?´ë? ?ë ê²??¬ì¬??    Sessi
 )
 
 router = APIRouter(prefix="/api/emotion", tags=["emotion"])
+logger = logging.getLogger(__name__)
+
+
+def _get_supabase():
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not url or not key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        logger.error("create_client failed: %r", e)
+        logger.error(traceback.format_exc())
+        raise
 
 class EmotionCheckinRequest(BaseModel):
     session_id: str
