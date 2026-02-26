@@ -3,10 +3,10 @@
 import textwrap
 import os
 import logging
-from supabase import create_client
 
 from fastapi import APIRouter, Cookie, HTTPException
 from services.emotion_candidates_service import get_emotion_candidates
+from services.supabase_client import _get_supabase
 from routers.compare import SessionState
 import json
 
@@ -26,15 +26,6 @@ from services.emotion_insight_service import (
 )
 from config.settings import get_settings
 from services.chatgpt_service import get_openai_client
-
-
-
-def _get_supabase():
-    url = (os.getenv("SUPABASE_URL") or "").strip()
-    key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
-    if not url or not key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-    return create_client(url, key)
 
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -800,6 +791,5 @@ async def generate_session_advice(payload: SessionAdviceRequest) -> SessionAdvic
         )
     except Exception:
         return _fallback_session_advice(payload)
-
 
 

@@ -457,7 +457,12 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event() -> None:
     """Initialize app state and ensure DB tables exist."""
-    logger.info("server startup begin")
+    logger.info("server startup begin")
+    import httpx
+    import gotrue
+    import supabase
+    print("[VERSIONS]", "httpx", httpx.__version__, "gotrue", gotrue.__version__, "supabase", supabase.__version__)
+    print("[PROXY_ENV]", "HTTP_PROXY", bool(os.getenv("HTTP_PROXY")), "HTTPS_PROXY", bool(os.getenv("HTTPS_PROXY")))
 
     try:
         Base.metadata.create_all(bind=engine)

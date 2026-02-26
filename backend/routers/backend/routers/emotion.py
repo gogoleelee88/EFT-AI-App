@@ -1,8 +1,7 @@
 # backend/routes/emotion_candidates.py
 
 import redis
-import os
-from supabase import create_client
+from services.supabase_client import _get_supabase
 
 import json
 from datetime import datetime
@@ -197,6 +196,7 @@ async def get_emotion_candidates(req: EmotionCandidatesRequest):
     for label in inference.emotion_candidates:
         desc = f"ì§ê¸??íë¥?'{label}' ìª½ì ??ê°ê¹ê² ?ë ???í?ì¸??"
         candidates_out.append({"label": label, "description": desc})
+    candidates_out.append({
 
     # "??ëª¨ë¥´ê²ì´?? ?µì? ë°±ì?ì??ê°ìë¡?ì¶ê??´ë ??    candidates_out.append({
         "label": "??ëª¨ë¥´ê²ì",
@@ -252,11 +252,3 @@ async def set_emotion_choice(req: EmotionChoiceRequest):
         core_emotion_final=req.user_choice,
         chosen_at=now,
     )
-
-def _get_supabase():
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not url or not key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-    return create_client(url, key)
-
