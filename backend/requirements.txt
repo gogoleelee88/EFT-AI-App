@@ -1,3 +1,6 @@
+# Render fallback requirements
+# If build runs at repo root, include backend requirements:
+-r backend/requirements.txt
 vLLM이# EFT AI 서버 의존성 패키지
 
 # FastAPI 서버
