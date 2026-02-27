@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val generatedVersionCode = (System.getenv("APP_VERSION_CODE")?.toIntOrNull()
+    ?: (System.currentTimeMillis() / 1000).toInt())
+val generatedVersionName = System.getenv("APP_VERSION_NAME")
+    ?: "1.0.${generatedVersionCode}"
+
 android {
     namespace = "com.eft.mobileagent"
     compileSdk = 35
@@ -11,8 +16,8 @@ android {
         applicationId = "com.eft.mobileagent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = generatedVersionCode
+        versionName = generatedVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BACKEND_BASE_URL", "\"http://192.168.0.139:8000\"")
