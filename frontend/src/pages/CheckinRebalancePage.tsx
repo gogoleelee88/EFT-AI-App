@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { SpecCard, ModeBadge, TodayConditionBanner, type SpecMode } from "../components/spec";
 import { Button } from "../components/ui/Button";
@@ -176,7 +176,7 @@ const CheckinRebalancePage: React.FC = () => {
     google_calendar_sync_message?: string | null;
   } | null>(null);
 
-  /* S8: ?쒕??덉씠??+ Job ?대쭅 */
+  /* S8: simulation + job polling */
   const [simulateLoading, setSimulateLoading] = useState(false);
   const [jobId, setJobId] = useState<number | null>(null);
   const [jobStatus, setJobStatus] = useState<"pending" | "completed" | "failed" | null>(null);
@@ -205,15 +205,16 @@ const CheckinRebalancePage: React.FC = () => {
   const targetPlan: DayPlanLike | null = updatedPlan || originalPlan;
 
   const firstTask = targetPlan?.items && targetPlan.items.length > 0 ? targetPlan.items[0] : null;
+  const isFirstTwoMinuteStep = (step?: string) =>
+    typeof step === "string" &&
+    (step.includes("첫 2분 시작") || step.includes("First 2-minute start"));
   const firstMicroStepRaw =
-    (firstTask?.micro_steps && firstTask.micro_steps[0]) || "泥?2遺?李⑹닔 (?앹꽦 ?꾩슂)";
+    (firstTask?.micro_steps && firstTask.micro_steps[0]) || "첫 2분 시작(생성 필요)";
   const hasFirstTwoMin =
-    firstTask?.micro_steps?.some(
-      (s) => typeof s === "string" && s.includes("泥?2遺?李⑹닔")
-    ) ?? false;
+    firstTask?.micro_steps?.some((s) => isFirstTwoMinuteStep(s)) ?? false;
   const ctaLabel = hasFirstTwoMin
     ? firstMicroStepRaw
-    : `2遺?李⑹닔(?앹꽦 ?꾩슂): ${firstMicroStepRaw}`;
+    : `2분 시작(생성 필요): ${firstMicroStepRaw}`;
 
   const finalMode = response?.final_mode ?? targetPlan?.mode ?? 100;
   const specMode: SpecMode =
@@ -249,7 +250,7 @@ const CheckinRebalancePage: React.FC = () => {
     const numericDayId = Number(dayIdInput || state.dayId);
     const dateForPatch = targetDate || new Date().toISOString().slice(0, 10);
     if (!recommendedPatch) {
-      setPatchError("?곸슜 媛?ν븳 ?⑥튂媛 ?놁뒿?덈떎.");
+      setPatchError("적용 가능한 패치가 없습니다.");
       return;
     }
     setPatchError(null);
@@ -271,7 +272,7 @@ const CheckinRebalancePage: React.FC = () => {
       if (!res.ok) {
         throw new Error(data?.detail || `status ${res.status}`);
       }
-      setPatchResultMessage(data.message || "?⑥튂瑜??곸슜?덉뒿?덈떎.");
+      setPatchResultMessage(data.message || "패치를 적용했습니다.");
       if (data.updated_plan) {
         setResponse((prev) =>
           prev
@@ -287,7 +288,7 @@ const CheckinRebalancePage: React.FC = () => {
       }
       await fetchPatchSuggestion(dateForPatch, Number.isNaN(numericDayId) ? undefined : numericDayId);
     } catch (e) {
-      setPatchError(e instanceof Error ? e.message : "?⑥튂 ?곸슜???ㅽ뙣?덉뒿?덈떎.");
+      setPatchError(e instanceof Error ? e.message : "패치 적용에 실패했습니다.");
     } finally {
       setPatchLoading(false);
     }
@@ -308,7 +309,7 @@ const CheckinRebalancePage: React.FC = () => {
     return () => clearTimeout(t);
   }, [showModeDownToast]);
 
-  /* S8: Job ?대쭅 ??4珥?媛꾧꺽, ??鍮꾧??????쇱떆?뺤? */
+  /* S8: job polling (4s interval, paused when hidden) */
   useEffect(() => {
     if (jobId == null || jobStatus !== null) return;
 
@@ -326,10 +327,10 @@ const CheckinRebalancePage: React.FC = () => {
           setJobResult(data.result ?? data);
         } else if (status === "failed") {
           setJobStatus("failed");
-          setJobError(typeof data.result === "string" ? data.result : data.detail ?? "Job ?ㅽ뙣");
+          setJobError(typeof data.result === "string" ? data.result : data.detail ?? "작업 실패");
         }
       } catch {
-        // ?ㅽ듃?뚰겕 ?ㅻ쪟 ???ㅼ쓬 ?대쭅?먯꽌 ?ъ떆??
+        // Retry on next poll tick after transient network errors
       }
     };
 
@@ -338,7 +339,7 @@ const CheckinRebalancePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [jobId, jobStatus]);
 
-  /* S9: Job completed ??異뺥븯 ?④낵 1??*/
+  /* S9: show celebration for 1 second when completed */
   useEffect(() => {
     if (jobStatus !== "completed") return;
     setShowCelebration(true);
@@ -346,7 +347,7 @@ const CheckinRebalancePage: React.FC = () => {
     return () => clearTimeout(t);
   }, [jobStatus]);
 
-  // Checkin/Adapt ???DayPlan???좎쭨 湲곗??쇰줈 Google ?쇱젙 ?숆린??
+  // Sync Google events using target DayPlan date after checkin/adapt
   useEffect(() => {
     if (!googleConnected || !targetDate) return;
     fetchGoogleEvents(targetDate);
@@ -371,7 +372,7 @@ const CheckinRebalancePage: React.FC = () => {
         }
       } catch (e) {
         if (!mounted) return;
-        const message = e instanceof Error ? e.message : "Failed to load meals";
+        const message = e instanceof Error ? e.message : "식사 목록을 불러오지 못했습니다.";
         setMealLoadError(message);
       }
     };
@@ -384,7 +385,7 @@ const CheckinRebalancePage: React.FC = () => {
   const handleSubmit = async () => {
     const numericDayId = Number(dayIdInput || state.dayId);
     if (!numericDayId || Number.isNaN(numericDayId)) {
-      setError("癒쇱? DayPlan(day_id)???좏깮?섍굅??/plan/day?먯꽌 怨꾪쉷????ν븯?몄슂.");
+      setError("먼저 DayPlan(day_id)을 선택하거나 /plan/day에서 계획을 저장해 주세요.");
       return;
     }
 
@@ -472,8 +473,8 @@ const CheckinRebalancePage: React.FC = () => {
         data.updated_day_plan?.date || targetDate || new Date().toISOString().slice(0, 10);
       await fetchPatchSuggestion(dateForPatch, numericDayId);
     } catch (e) {
-      console.error("condition/checkin ?ㅻ쪟:", e);
-      setError("而⑤뵒??泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄?댁＜?몄슂.");
+      console.error("condition/checkin error:", e);
+      setError("컨디션 처리 중 실패했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
@@ -483,11 +484,11 @@ const CheckinRebalancePage: React.FC = () => {
     const numericDayId = Number(dayIdInput || state.dayId);
     const conditionId = response?.condition_id;
     if (!numericDayId || Number.isNaN(numericDayId)) {
-      setAdaptError("day_id媛 ?놁뒿?덈떎. ?꾩뿉??DayPlan ID瑜??낅젰?섏꽭??");
+      setAdaptError("day_id가 없습니다. 위에서 DayPlan ID를 입력해 주세요.");
       return;
     }
     if (conditionId == null) {
-      setAdaptError("癒쇱? '而⑤뵒??諛섏쁺?섍린'瑜??ㅽ뻾??二쇱꽭??");
+      setAdaptError("'컨디션 적용'을 먼저 실행해 주세요.");
       return;
     }
 
@@ -523,9 +524,9 @@ const CheckinRebalancePage: React.FC = () => {
         google_calendar_sync_message: data.google_calendar_sync_message ?? null,
       });
     } catch (e) {
-      console.error("adapt/day ?ㅻ쪟:", e);
+      console.error("adapt/day error:", e);
       setAdaptError(
-        e instanceof Error ? e.message : "?섎룞 議곗젙 ?붿껌???ㅽ뙣?덉뒿?덈떎."
+        e instanceof Error ? e.message : "수동 조정 요청에 실패했습니다."
       );
     } finally {
       setAdaptLoading(false);
@@ -535,7 +536,7 @@ const CheckinRebalancePage: React.FC = () => {
   const handleSimulateClick = async () => {
     const numericDayId = Number(dayIdInput || state.dayId);
     if (!numericDayId || Number.isNaN(numericDayId)) {
-      setJobError("day_id媛 ?놁뒿?덈떎. DayPlan ID瑜??낅젰?섏꽭??");
+      setJobError("day_id가 없습니다. DayPlan ID를 입력해 주세요.");
       return;
     }
     setJobError(null);
@@ -555,22 +556,22 @@ const CheckinRebalancePage: React.FC = () => {
       }
       const data = await res.json();
       const id = data.job_id;
-      if (id == null) throw new Error("job_id ?놁쓬");
+      if (id == null) throw new Error("job_id가 없습니다.");
       setJobId(id);
     } catch (e) {
-      console.error("simulate/day ?ㅻ쪟:", e);
-      setJobError(e instanceof Error ? e.message : "?쒕??덉씠???쒖옉 ?ㅽ뙣");
+      console.error("simulate/day error:", e);
+      setJobError(e instanceof Error ? e.message : "시뮬레이션 시작에 실패했습니다.");
     } finally {
       setSimulateLoading(false);
     }
   };
 
   const MODE_DOWN_TOAST_MESSAGE =
-    "?섎㈃/?쇰줈/?듭쬆 ?좏샇濡??쒖옉 ?깃났瑜좎쓣 ?곗꽑?댁슂.";
+    "수면/피로/통증 신호를 반영해 시작 성공률을 우선했습니다.";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 flex flex-col">
-      {/* S4: 紐⑤뱶 ?섑뼢 ?좎뒪????final_mode 70/40??????以?*/}
+      {/* S4: mode-down toast (final_mode 70/40) */}
       {showModeDownToast && (
         <div
           role="status"
@@ -581,7 +582,7 @@ const CheckinRebalancePage: React.FC = () => {
         </div>
       )}
 
-      {/* S9: ?쒕? ?꾨즺 ???뚰떚??異뺥븯 ?④낵 1??*/}
+      {/* S9: completion celebration particles (1s) */}
       {showCelebration && (
         <div
           className="fixed inset-0 z-40 pointer-events-none flex items-center justify-center"
@@ -609,13 +610,13 @@ const CheckinRebalancePage: React.FC = () => {
       <div className="flex-1 px-4 py-4 flex justify-center">
         <div className="w-full max-w-3xl space-y-4 pb-28">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-gray-800">?㈉ 而⑤뵒??湲곕컲 ?쇱젙 ?ъ“??</h1>
+            <h1 className="text-xl font-bold text-gray-800">오늘 컨디션 기반 일정 조정</h1>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate("/dashboard")}
             >
-              ??쒕낫?쒕줈 ?뚯븘媛湲?
+              대시보드로
             </Button>
           </div>
 
@@ -646,30 +647,30 @@ const CheckinRebalancePage: React.FC = () => {
                     type="number"
                     value={dayIdInput}
                     onChange={(e) => setDayIdInput(e.target.value)}
-                    placeholder={state.dayId != null ? String(state.dayId) : "?? 1"}
+                    placeholder={state.dayId != null ? String(state.dayId) : "예: 1"}
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    ?섎㈃ ?쒓컙
+                    수면 시간
                   </label>
                   <select
                     value={sleepHours}
                     onChange={(e) => setSleepHours(e.target.value as SleepHours)}
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="LT5">5?쒓컙 誘몃쭔</option>
-                    <option value="H5_6">5~6?쒓컙</option>
-                    <option value="H6_7">6~7?쒓컙</option>
-                    <option value="H7_8">7~8?쒓컙</option>
-                    <option value="GT8">8?쒓컙 ?댁긽</option>
+                    <option value="LT5">5시간 미만</option>
+                    <option value="H5_6">5~6시간</option>
+                    <option value="H6_7">6~7시간</option>
+                    <option value="H7_8">7~8시간</option>
+                    <option value="GT8">8시간 이상</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      ?쇰줈(0~10)
+                      피로 (0~10)
                     </label>
                     <input
                       type="number"
@@ -682,7 +683,7 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      ?듭쬆(0~10)
+                      통증 (0~10)
                     </label>
                     <input
                       type="number"
@@ -700,14 +701,14 @@ const CheckinRebalancePage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                   <div className="md:col-span-2">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Link with meal (optional)
+                      식사와 연동 (선택)
                     </label>
                     <select
                       value={selectedMealId}
                       onChange={(e) => setSelectedMealId(e.target.value)}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
-                      <option value="">Select meal_id</option>
+                      <option value="">식사 항목 선택</option>
                       {mealOptions.map((meal) => (
                         <option key={meal.meal_id} value={meal.meal_id}>
                           {meal.meal_id} | {meal.meal_time.slice(0, 16).replace("T", " ")}
@@ -725,7 +726,7 @@ const CheckinRebalancePage: React.FC = () => {
                         checked={linkMealSignal}
                         onChange={(e) => setLinkMealSignal(e.target.checked)}
                       />
-                      send post-meal signal
+                      식후 신호 전송
                     </label>
                   </div>
                 </div>
@@ -734,39 +735,39 @@ const CheckinRebalancePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    湲곕텇
+                    기분
                   </label>
                   <select
                     value={mood}
                     onChange={(e) => setMood(e.target.value as Mood)}
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="calm">李⑤텇??</option>
-                    <option value="ok">愿쒖갖??</option>
-                    <option value="anxious">遺덉븞</option>
-                    <option value="low">?곗슱/湲곗슫 ?놁쓬</option>
-                    <option value="irritated">?덈?/吏쒖쬆</option>
+                    <option value="calm">차분함</option>
+                    <option value="ok">보통</option>
+                    <option value="anxious">불안</option>
+                    <option value="low">무기력</option>
+                    <option value="irritated">예민</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    ?앸━ ?곹깭(?좏깮)
+                    생리 상태 (선택)
                   </label>
                   <select
                     value={periodStatus}
                     onChange={(e) => setPeriodStatus(e.target.value as PeriodStatus)}
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="">?좏깮 ????</option>
-                    <option value="on">?앸━ 以?</option>
-                    <option value="pre">?앸━ ??</option>
-                    <option value="post">?앸━ 吏곹썑</option>
-                    <option value="none">?대떦 ?놁쓬</option>
+                    <option value="">선택 안 함</option>
+                    <option value="on">생리 중</option>
+                    <option value="pre">생리 전</option>
+                    <option value="post">생리 후</option>
+                    <option value="none">해당 없음</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">
-                    異쒗삁 ?쒖옉??period_start_date)
+                    생리 시작일 (period_start_date)
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -780,7 +781,7 @@ const CheckinRebalancePage: React.FC = () => {
                       size="sm"
                       onClick={() => setPeriodStartDate(new Date().toISOString().slice(0, 10))}
                     >
-                      ?ㅻ뒛
+                      오늘
                     </Button>
                   </div>
                 </div>
@@ -789,21 +790,21 @@ const CheckinRebalancePage: React.FC = () => {
               <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-semibold text-rose-700">
-                    Menstrual Quick Check (?섎（ 1?? 10珥?
+                    생리 빠른 체크 (약 1분)
                   </div>
-                  <span className="text-[11px] text-rose-700">self-report</span>
+                  <span className="text-[11px] text-rose-700">자가 입력</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      異쒗삁(0~2, ?좏깮)
+                      출혈량 (0~2, 선택)
                     </label>
                     <select
                       value={menstrualBleedingLevel}
                       onChange={(e) => setMenstrualBleedingLevel(e.target.value)}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                     >
-                      <option value="">?좏깮 ????</option>
+                      <option value="">선택 안 함</option>
                       <option value="0">0</option>
                       <option value="1">1</option>
                       <option value="2">2</option>
@@ -811,7 +812,7 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      寃쎈젴(0~4, ?꾩닔)
+                      복통 (0~4, 필수)
                     </label>
                     <input
                       type="number"
@@ -824,7 +825,7 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      ?쇰줈(0~4, ?꾩닔)
+                      피로 (0~4, 필수)
                     </label>
                     <input
                       type="number"
@@ -837,7 +838,7 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      ?덈?(0~4, ?꾩닔)
+                      예민함 (0~4, 필수)
                     </label>
                     <input
                       type="number"
@@ -850,14 +851,14 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      吏묒쨷???0~4, ?좏깮)
+                      집중 저하 (0~4, 선택)
                     </label>
                     <select
                       value={menstrualFocusDrop}
                       onChange={(e) => setMenstrualFocusDrop(e.target.value)}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                     >
-                      <option value="">?좏깮 ????</option>
+                      <option value="">선택 안 함</option>
                       <option value="0">0</option>
                       <option value="1">1</option>
                       <option value="2">2</option>
@@ -869,7 +870,7 @@ const CheckinRebalancePage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      硫붾え(?좏깮, 0~60??
+                      메모 (선택, 0~60자)
                     </label>
                     <input
                       type="text"
@@ -885,11 +886,11 @@ const CheckinRebalancePage: React.FC = () => {
                     onClick={handleSubmit}
                     disabled={loading}
                   >
-                    {loading ? "?ъ“??以?.." : "而⑤뵒??諛섏쁺?섍린"}
+                    {loading ? "제출 중..." : "컨디션 적용"}
                   </Button>
                 </div>
                 <p className="text-[11px] text-gray-600">
-                  ??湲곕뒫? ?섎즺 吏꾨떒/移섎즺/?덊썑 ?먮떒???쒓났?섏? ?딆쑝硫? ?⑦꽩 湲곕컲 ?쇱젙 蹂댁“?⑹엯?덈떎.
+                  이 기능은 의료적 진단/치료/예후를 제공하지 않으며, 계획 보조 용도입니다.
                 </p>
               </div>
 
@@ -901,13 +902,13 @@ const CheckinRebalancePage: React.FC = () => {
             </div>
           </SpecCard>
 
-          {/* Google 罹섎┛??而⑦뀓?ㅽ듃 (Checkin?? */}
+          {/* Google Calendar context (Checkin) */}
           <SpecCard glass className="p-4">
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-gray-800">
-                    ?뱟 ?ㅻ뒛??Google ?쇱젙
+                    오늘 Google 이벤트
                   </span>
                   {targetDate && (
                     <span className="text-[11px] text-gray-500">
@@ -921,11 +922,11 @@ const CheckinRebalancePage: React.FC = () => {
                     variant="outline"
                     onClick={connectGoogle}
                   >
-                    Google 罹섎┛???곕룞
+                    Google Calendar 연결
                   </Button>
                 ) : lastSync ? (
                   <span className="text-[11px] text-gray-500">
-                    留덉?留??숆린??{" "}
+                    마지막 동기화{" "}
                     {lastSync.toLocaleTimeString(undefined, {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -940,13 +941,13 @@ const CheckinRebalancePage: React.FC = () => {
               )}
               <div className="space-y-1 max-h-28 overflow-auto rounded-md bg-white/70 border border-gray-100 px-3 py-2">
                 {googleLoading && (
-                  <div className="text-gray-500">Google ?쇱젙??遺덈윭?ㅻ뒗 以묅?</div>
+                  <div className="text-gray-500">Google 이벤트 불러오는 중...</div>
                 )}
                 {!googleLoading && googleEvents.length === 0 && (
                   <div className="text-gray-400">
                     {googleConnected
-                      ? "?대떦 ?좎쭨???깅줉??Google ?쇱젙???놁뒿?덈떎."
-                      : "?곕룞 ???닿납?먯꽌 Google ?쇱젙???④퍡 蹂????덉뒿?덈떎."}
+                      ? "이 날짜에 Google 이벤트가 없습니다."
+                      : "여기에서 함께 보려면 Google을 연결해 주세요."}
                   </div>
                 )}
                 {googleEvents.map((ev) => (
@@ -954,40 +955,40 @@ const CheckinRebalancePage: React.FC = () => {
                     key={ev.id}
                     className="flex items-center gap-2 text-gray-700"
                   >
-                    <span className="text-gray-400">??</span>
+                    <span className="text-gray-400">*</span>
                     <span className="truncate">
-                      {ev.start} ~ {ev.end} 쨌 {ev.displayTitle ?? ev.title}
+                      {ev.start} ~ {ev.end} - {ev.displayTitle ?? ev.title}
                     </span>
                   </div>
                 ))}
               </div>
               <p className="text-[11px] text-gray-500">
-                而⑤뵒???ъ“??寃곌낵媛, ?꾩쓽 Google ?쇱젙怨?異⑸룎?섏? ?딅뒗吏 ?쒓컖?곸쑝濡?
-                ?④퍡 ?뺤씤?????덉뒿?덈떎.
+                조정 결과가 기존 Google 이벤트와 충돌하지 않는지 빠르게 확인할 수 있습니다.
+                
               </p>
             </div>
           </SpecCard>
 
-          {/* 寃곌낵 諛?Diff 酉?*/}
+          {/* result + diff view */}
           {targetPlan && (
             <SpecCard glass className="p-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-gray-800">
-                      理쒖쥌 紐⑤뱶
+                      최종 모드
                     </span>
                     <ModeBadge mode={specMode} />
                     <span className="text-xs text-gray-600">
-                      (adapt_applied: {response?.adapt_applied ? "true" : "false"})
+                      (적용됨: {response?.adapt_applied ? "예" : "아니오"})
                     </span>
                   </div>
                   <div className="text-xs text-gray-600">
-                    ?섎㈃/?쇰줈/?듭쬆 ?좏샇濡??명빐 ?쒖옉 ?깃났瑜좎쓣 ?곗꽑?⑸땲??
+                    수면/피로/통증 신호를 반영해 시작 성공률을 우선했습니다.
                   </div>
                 </div>
 
-                {/* S7: ?섎룞 Adapt / S8: ?쒕??덉씠???ㅽ뻾 */}
+                {/* S7: manual adapt / S8: run simulation */}
                 {response?.google_calendar_sync_message ? (
                   <p
                     className={`text-xs ${
@@ -1006,7 +1007,7 @@ const CheckinRebalancePage: React.FC = () => {
                     onClick={handleAdaptClick}
                     disabled={adaptLoading || response?.condition_id == null}
                   >
-                    {adaptLoading ? "議곗젙 以?.." : "?섎룞?쇰줈 怨꾪쉷 議곗젙"}
+                    {adaptLoading ? "조정 중..." : "수동으로 계획 조정"}
                   </Button>
                   <Button
                     variant="outline"
@@ -1014,22 +1015,22 @@ const CheckinRebalancePage: React.FC = () => {
                     onClick={handleSimulateClick}
                     disabled={simulateLoading || !targetPlan}
                   >
-                    {simulateLoading ? "?쒖옉 以?.." : "?쒕??덉씠???ㅽ뻾"}
+                    {simulateLoading ? "시작 중..." : "시뮬레이션 실행"}
                   </Button>
                   {adaptError && (
                     <span className="text-xs text-red-600">{adaptError}</span>
                   )}
                 </div>
 
-                {/* S8: Job ?대쭅 ?곹깭 / 寃곌낵 / ?먮윭 */}
+                {/* S8: job status / result / error */}
                 {jobId != null && (
                   <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs">
                     <div className="font-semibold text-gray-800 mb-1">
-                      ?쒕??덉씠??Job #{jobId}
+                      시뮬레이션 작업 #{jobId}
                     </div>
                     {jobStatus === null && (
                       <p className="text-gray-600">
-                        泥섎━ 以묅?(4珥덈쭏???뺤씤?⑸땲?? ??쓣 蹂댁씠寃??섎㈃ 媛깆떊?⑸땲??)
+                        처리 중 (4초마다 확인, 탭이 숨김이면 일시정지).
                       </p>
                     )}
                     {jobStatus === "completed" && (
@@ -1038,7 +1039,7 @@ const CheckinRebalancePage: React.FC = () => {
                       </pre>
                     )}
                     {jobStatus === "failed" && (
-                      <p className="text-red-600 mt-1">{jobError ?? "?ㅽ뙣"}</p>
+                      <p className="text-red-600 mt-1">{jobError ?? "실패"}</p>
                     )}
                   </div>
                 )}
@@ -1049,7 +1050,7 @@ const CheckinRebalancePage: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div>
                     <div className="font-semibold text-gray-700 mb-2">
-                      湲곗〈 怨꾪쉷
+                      기존 계획
                     </div>
                     {(originalPlan?.items || []).map((item, idx) => (
                       <div
@@ -1058,30 +1059,27 @@ const CheckinRebalancePage: React.FC = () => {
                         style={{ animationDelay: `${idx * 50}ms` }}
                       >
                         <div className="font-medium text-gray-800">
-                          Task #{item.task_id ?? idx + 1}
+                          작업 #{item.task_id ?? idx + 1}
                         </div>
                         <div className="text-gray-600">
-                          釉붾줉: {item.planned_block_minutes ?? "-"}遺?
+                          블록: {item.planned_block_minutes ?? "-"}분
                         </div>
                       </div>
                     ))}
                     {(!originalPlan?.items || originalPlan.items.length === 0) && (
                       <div className="text-gray-500">
-                        湲곗〈 DayPlan ?뺣낫媛 ?놁뒿?덈떎 (?뚯뒪???꾩떆 紐⑤뱶).
+                        기존 DayPlan 데이터가 없습니다. (임시 테스트 모드)
                       </div>
                     )}
                   </div>
 
                   <div>
                     <div className="font-semibold text-gray-700 mb-2">
-                      議곗젙??怨꾪쉷
+                      조정된 계획
                     </div>
                     {(targetPlan.items || []).map((item, idx) => {
                       const hasFirstTwoMinStep =
-                        item.micro_steps?.some(
-                          (s) =>
-                            typeof s === "string" && s.includes("泥?2遺?李⑹닔")
-                        ) ?? false;
+                        item.micro_steps?.some((s) => isFirstTwoMinuteStep(s)) ?? false;
                       return (
                         <div
                           key={idx}
@@ -1090,22 +1088,22 @@ const CheckinRebalancePage: React.FC = () => {
                         >
                           <div className="flex items-center justify-between">
                             <div className="font-medium text-gray-800">
-                              Task #{item.task_id ?? idx + 1}
+                              작업 #{item.task_id ?? idx + 1}
                             </div>
                             {hasFirstTwoMinStep && (
                               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                                泥?2遺?李⑹닔
+                                첫 2분 시작
                               </span>
                             )}
                           </div>
                           <div className="text-gray-600">
-                            釉붾줉: {item.planned_block_minutes ?? "-"}遺?
+                            블록: {item.planned_block_minutes ?? "-"}분
                           </div>
                           {Array.isArray(item.micro_steps) &&
                             item.micro_steps.length > 0 && (
                               <div className="mt-1 text-gray-600">
                                 <div className="font-medium mb-0.5">
-                                  micro_steps
+                                  마이크로 스텝
                                 </div>
                                 <ul className="list-disc list-inside space-y-0.5">
                                   {item.micro_steps.map((m, i) => (
@@ -1119,42 +1117,42 @@ const CheckinRebalancePage: React.FC = () => {
                     })}
                     {(!targetPlan.items || targetPlan.items.length === 0) && (
                       <div className="text-gray-500">
-                        議곗젙??怨꾪쉷???놁뒿?덈떎. (蹂寃??놁쓬)
+                        조정된 계획이 없습니다. (변경 없음)
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* 蹂댄샇 釉붾줉 ?뺣낫 */}
+                {/* protected block info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div className="text-gray-700">
-                    <div className="font-semibold mb-1">蹂댄샇 釉붾줉(?댁쟾)</div>
+                    <div className="font-semibold mb-1">보호 블록 (이전)</div>
                     <div>
                       {diff.protectedBefore
                         ? `${diff.protectedBefore}분`
-                        : "설정 없음"}
+                        : "설정 안 됨"}
                     </div>
                   </div>
                   <div className="text-gray-700">
-                    <div className="font-semibold mb-1">蹂댄샇 釉붾줉(?댄썑)</div>
+                    <div className="font-semibold mb-1">보호 블록 (이후)</div>
                     <div>
                       {diff.protectedAfter
                         ? `${diff.protectedAfter}분`
-                        : "설정 없음"}
+                        : "설정 안 됨"}
                     </div>
                   </div>
                 </div>
 
-                {/* shrink???묒뾽 */}
+                {/* shrink items */}
                 {diff.shrunk.length > 0 && (
                   <div className="text-xs text-gray-700">
                     <div className="font-semibold mb-1">
-                      ?깍툘 異뺤냼??釉붾줉(shrink)
+                      시간 축소 블록
                     </div>
                     <ul className="list-disc list-inside space-y-0.5">
                       {diff.shrunk.map(({ before, after }, idx) => (
                         <li key={idx}>
-                          Task #{after.task_id ?? idx + 1}:{" "}
+                          작업 #{after.task_id ?? idx + 1}:{" "}
                           {before.planned_block_minutes ?? "-"}분{" "}
                           {after.planned_block_minutes ?? "-"}분
                         </li>
@@ -1163,16 +1161,16 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                 )}
 
-                {/* drop/delay ?뱀뀡 */}
+                      {/* 오늘 제외/지연 항목 */}
                 {diff.droppedOrDelayed.length > 0 && (
                   <div className="text-xs text-gray-700">
                     <div className="font-semibold mb-1">
-                      ?벀 ?ㅻ뒛 ?쒖쇅/?댁썡???묒뾽 (drop/delay)
+                      오늘 제외/지연된 작업
                     </div>
                     <ul className="list-disc list-inside space-y-0.5">
                       {diff.droppedOrDelayed.map((item, idx) => (
                         <li key={idx}>
-                          Task #{item.task_id ?? idx + 1}
+                          작업 #{item.task_id ?? idx + 1}
                           {item.planned_block_minutes != null &&
                             ` - ${item.planned_block_minutes}분`
                           }
@@ -1182,15 +1180,15 @@ const CheckinRebalancePage: React.FC = () => {
                   </div>
                 )}
 
-                {/* S7: ?섎룞 Adapt 寃곌낵 */}
+                {/* S7: manual adapt result */}
                 {adaptResult && (
                   <div className="border-t border-gray-200 pt-4 space-y-3 text-xs">
                     <div className="font-semibold text-gray-800">
-                      ?섎룞 議곗젙 寃곌낵
+                      수동 조정 결과
                     </div>
                     {adaptResult.actions_applied.length > 0 && (
                       <div className="text-gray-700">
-                        <span className="font-medium">?곸슜???≪뀡: </span>
+                        <span className="font-medium">적용된 액션: </span>
                         {adaptResult.actions_applied.join(", ")}
                       </div>
                     )}
@@ -1207,14 +1205,14 @@ const CheckinRebalancePage: React.FC = () => {
                     ) : null}
                     {adaptResult.soothe_requested && (
                       <div className="text-amber-700">
-                        soothe_requested: true (?먭레?꾟넃, 怨쇱젙 以묒떖 沅뚯옣)
+                        자기 진정 요청: 예 (작업 중단이 필요할 수 있음)
                       </div>
                     )}
                     {adaptResult.updated_plan?.items &&
                     adaptResult.updated_plan.items.length > 0 ? (
                       <div>
                         <div className="font-semibold text-gray-700 mb-2">
-                          ?섎룞 議곗젙 ??怨꾪쉷 (updated_plan)
+                          수동 조정 후 계획 (갱신된 계획)
                         </div>
                         <div className="space-y-2">
                           {adaptResult.updated_plan.items.map(
@@ -1225,10 +1223,10 @@ const CheckinRebalancePage: React.FC = () => {
                                 style={{ animationDelay: `${idx * 50}ms` }}
                               >
                                 <div className="font-medium text-gray-800">
-                                  Task #{item.task_id ?? idx + 1}
+                                  작업 #{item.task_id ?? idx + 1}
                                 </div>
                                 <div className="text-gray-600">
-                                  釉붾줉: {item.planned_block_minutes ?? "-"}遺?
+                                  블록: {item.planned_block_minutes ?? "-"}분
                                 </div>
                                 {Array.isArray(item.micro_steps) &&
                                   item.micro_steps.length > 0 && (
@@ -1246,7 +1244,7 @@ const CheckinRebalancePage: React.FC = () => {
                     ) : (
                       adaptResult.updated_plan && (
                         <div className="text-gray-500">
-                          議곗젙 ??怨꾪쉷??鍮꾩뼱 ?덉뒿?덈떎.
+                          조정 후 계획이 비어 있습니다.
                         </div>
                       )
                     )}
@@ -1258,12 +1256,12 @@ const CheckinRebalancePage: React.FC = () => {
         </div>
       </div>
 
-      {/* ?섎떒 CTA: 吏湲?2遺?李⑹닔 ??S3 洹몃씪?곗씠??+ ?꾩씠肄?*/}
+      {/* bottom CTA: 2-minute start now (S3 gradient + icon) */}
       <div className="fixed bottom-0 left-0 right-0 bg-[var(--spec-glass-bg)] dark:bg-[var(--spec-glass-bg-dark)] border-t border-[var(--spec-glass-border)] backdrop-blur-xl shadow-lg">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-              吏湲?諛붾줈 ?????덈뒗 ??嫄몄쓬
+              지금 할 수 있는 가장 작은 시작
             </div>
             <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
               {ctaLabel}
@@ -1273,11 +1271,11 @@ const CheckinRebalancePage: React.FC = () => {
             type="button"
             className="min-w-[160px] px-4 py-2.5 rounded-lg font-semibold text-white text-sm bg-gradient-to-r from-spec-100 to-spec-70 hover:from-emerald-500 hover:to-amber-500 transition-all duration-200 hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-spec-100 focus-visible:ring-offset-2 flex items-center justify-center gap-2"
             onClick={() => {
-              console.log("2遺?李⑹닔 ?쒖옉:", ctaLabel);
+              console.log("2분 블록 시작:", ctaLabel);
             }}
           >
-            <span aria-hidden>??</span>
-            吏湲?2遺꾨쭔 李⑹닔?섍린
+            <span aria-hidden>&gt;</span>
+            딱 2분만 시작
           </button>
         </div>
       </div>
