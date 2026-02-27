@@ -6,7 +6,11 @@ const getAppInstallUrl = () => {
     return "";
   }
 
-  return import.meta.env.VITE_APP_INSTALL_URL || window.location.origin;
+  return (
+    import.meta.env.VITE_APP_INSTALL_URL ||
+    import.meta.env.VITE_DIRECT_APK_URL ||
+    `${window.location.origin}/latest.apk`
+  );
 };
 
 const playStoreUrl = import.meta.env.VITE_PLAY_STORE_URL || "";

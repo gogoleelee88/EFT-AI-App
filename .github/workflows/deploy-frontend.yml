@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - "frontend/**"
+      - "mobile-agent-android/apk-share/latest.apk"
       - ".github/workflows/deploy-frontend.yml"
   workflow_dispatch:
 
@@ -19,6 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
+
+      - name: Prepare APK asset for frontend
+        run: |
+          set -euo pipefail
+          if [ ! -f "mobile-agent-android/apk-share/latest.apk" ]; then
+            echo "Missing mobile-agent-android/apk-share/latest.apk"
+            exit 1
+          fi
+          cp mobile-agent-android/apk-share/latest.apk frontend/public/latest.apk
+          ls -lh frontend/public/latest.apk
 
       - name: Print Node & npm info
         run: |
@@ -84,6 +95,7 @@ jobs:
         run: |
           echo "Checking build output..."
           ls -la frontend/dist/
+          ls -lh frontend/dist/latest.apk
           echo "Main files:"
           find frontend/dist -name "*.html" -o -name "*.js" -o -name "*.css" | head -10
 
