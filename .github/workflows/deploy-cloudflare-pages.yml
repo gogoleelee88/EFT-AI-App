@@ -1,11 +1,13 @@
 name: Deploy Frontend to Cloudflare Pages
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - "frontend/**"
-      - ".github/workflows/deploy-cloudflare-pages.yml"
+  # Manual-only mode (currently unused).
+  # Re-enable push trigger when moodtalk.app is served via Cloudflare Pages again.
+  # push:
+  #   branches: [ main ]
+  #   paths:
+  #     - "frontend/**"
+  #     - ".github/workflows/deploy-cloudflare-pages.yml"
   workflow_dispatch:
 
 jobs:

@@ -94,6 +94,13 @@ const PlanDayPage: React.FC = () => {
   const [bannerPatchResult, setBannerPatchResult] = useState<string | null>(null);
   const [showEmotionPrompt, setShowEmotionPrompt] = useState(false);
   const [showAlarmInstallGuide, setShowAlarmInstallGuide] = useState(false);
+  const appInstallUrl = (
+    import.meta.env.VITE_APP_INSTALL_URL ||
+    import.meta.env.VITE_DIRECT_APK_URL ||
+    (typeof window !== "undefined"
+      ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
+      : "")
+  ).trim();
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
     if (resistanceLevel == null) return "시작저항";
@@ -813,6 +820,7 @@ const PlanDayPage: React.FC = () => {
                   title="알람은 앱에서 푸시 연동이 안정적입니다"
                   description="일정 알림은 앱에서 푸시 권한을 받아야 정확하게 동작합니다. 앱을 설치해서 알람을 연결해 주세요."
                   className="mx-4"
+                  installUrl={appInstallUrl}
                   onDismiss={() => setShowAlarmInstallGuide(false)}
                   showDismiss
                 />

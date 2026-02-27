@@ -24,10 +24,7 @@ export default function AlarmInstallGuide({
   const [installing, setInstalling] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
 
-  const targetUrl = useMemo(
-    () => installUrl || (typeof window !== "undefined" ? window.location.origin : ""),
-    [installUrl]
-  );
+  const targetUrl = useMemo(() => (installUrl || "").trim(), [installUrl]);
 
   const qrUrl = useMemo(
     () =>
@@ -123,7 +120,7 @@ export default function AlarmInstallGuide({
         <div className="mt-3 flex items-center gap-3">
           <img src={qrUrl} alt="앱 설치 QR" className="h-28 w-28 rounded border bg-white" />
           <div className="text-xs text-gray-700">
-            휴대폰으로 QR을 찍어 현재 페이지를 열어주세요.
+            휴대폰으로 QR을 찍어 앱 설치 링크를 열어주세요.
             <br />
             홈 화면 추가(설치) 또는 앱 설치 버튼을 눌러 주세요.
           </div>
