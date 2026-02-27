@@ -123,7 +123,7 @@ class ReminderSyncClient(baseUrl: String) {
             Log.i(
                 TAG,
                 "mobile-sync alarm sync_key=$resolvedSyncKey mission_type=${missionType.value} " +
-                    "source_type=${sourceType.value} next_fire_at_utc=${fireAtRaw.ifBlank { \"(missing)\" }}",
+                    "source_type=${sourceType.value} next_fire_at_utc=${fireAtRaw.ifBlank { "(missing)" }}",
             )
 
             val parsedNextFireAt = runCatching {
@@ -135,7 +135,7 @@ class ReminderSyncClient(baseUrl: String) {
             }
 
             val triggerAtMillis = parsedNextFireAt.toEpochMilli()
-            val title = item.optString("title", "???뿺")
+            val title = item.optString("title", "Untitled")
             out += SyncedReminder(
                 syncKey = resolvedSyncKey,
                 title = title,

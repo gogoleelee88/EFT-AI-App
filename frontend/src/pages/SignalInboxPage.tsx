@@ -256,12 +256,15 @@ const SignalInboxPage: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Signal Inbox</h1>
+      <h1 className="text-2xl font-bold text-gray-900">행동 복구 체크인</h1>
+      <p className="text-sm text-gray-600">
+        작업 전환이 잘 안 맞는 순간에 부드럽게 도와주는 페이지입니다.
+      </p>
 
-      <section className="bg-white border rounded-lg p-4 space-y-3">
-        <h2 className="font-semibold">?ъ슜???곌껐</h2>
+      <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
+        <h2 className="font-semibold text-lg text-gray-900">사용자 연결</h2>
         <p className="text-sm text-gray-600">
-          ?깆뿉??濡쒓렇?명븳 ?대찓???먮뒗 user_id瑜??낅젰?섏꽭??
+          모바일 에이전트 앱에서 넘어온 user_id를 간단히 붙여서 확인해요.
         </p>
         <div className="flex flex-col md:flex-row gap-2">
           <input
@@ -274,18 +277,18 @@ const SignalInboxPage: React.FC = () => {
             type="button"
             onClick={resolveAndUseUser}
             disabled={connecting}
-            className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+            className="px-4 py-2 rounded bg-purple-600 text-white disabled:opacity-50"
           >
-            {connecting ? "?곌껐 以?.." : "?ъ슜???곌껐"}
+            {connecting ? "연결 중..." : "연결하기"}
           </button>
         </div>
         <p className="text-xs text-gray-500">
-          ?꾩옱 議고쉶 user_id: <span className="font-mono">{activeUserId}</span>
+          현재 표시 user_id: <span className="font-mono">{activeUserId}</span>
           {connectedUserEmail ? ` (${connectedUserEmail})` : ""}
         </p>
       </section>
 
-      <section className="bg-white border rounded-lg p-4 space-y-3">
+      <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <select
             className="border rounded px-3 py-2"
@@ -322,15 +325,15 @@ const SignalInboxPage: React.FC = () => {
           onChange={(e) => setUrl(e.target.value)}
           placeholder="洹쇨굅 留곹겕 URL (?좏깮)"
         />
-        <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={onSubmit}>
-          ?좏샇 ?깅줉
-        </button>
+          <button className="px-4 py-2 rounded bg-purple-600 text-white" onClick={onSubmit}>
+            시그널 남기기
+          </button>
       </section>
 
-      <section className="bg-white border rounded-lg p-4 space-y-3">
+      <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">?됰룞 ?꾨낫 ?뺤씤</h2>
-          <span className="text-xs text-gray-500">?대깽???낅젰 API ?곕룞 ?뺤씤</span>
+          <h2 className="font-semibold text-lg text-gray-900">대기 중인 질문</h2>
+          <span className="text-xs text-gray-500">가장 최근 1개만 표시</span>
         </div>
         {question ? (
           <div className="space-y-2">
@@ -339,25 +342,25 @@ const SignalInboxPage: React.FC = () => {
               type="button"
               disabled={busy}
               onClick={onDismissQuestion}
-              className="px-3 py-1.5 text-xs rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
+              className="px-3 py-1.5 text-xs rounded border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
             >
-              吏湲덉? 嫄대꼫?곌린
+              오늘은 괜찮아요
             </button>
           </div>
         ) : (
-          <p className="text-sm text-gray-500">?꾩옱 ?뺤씤???꾩슂??吏덈Ц???놁뒿?덈떎.</p>
+          <p className="text-sm text-gray-500">현재 처리할 질문이 없습니다.</p>
         )}
       </section>
 
-      <section className="bg-white border rounded-lg p-4 space-y-3">
+      <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">?됰룞 ??꾨씪</h2>
-          <button className="text-sm text-blue-700" onClick={() => loadTimeline()}>
+          <h2 className="font-semibold text-lg text-gray-900">행동 타임라인</h2>
+          <button className="text-sm text-purple-700" onClick={() => loadTimeline()}>
             ?덈줈怨좎묠
           </button>
         </div>
         {timelineItems.length === 0 ? (
-          <p className="text-sm text-gray-500">?꾩쭅 ??λ맂 ??꾨씪??援ш컙???놁뒿?덈떎.</p>
+          <p className="text-sm text-gray-500">아직 기록이 없어요.</p>
         ) : (
           <ul className="space-y-2">
             {timelineItems.map((item) => (
@@ -367,10 +370,10 @@ const SignalInboxPage: React.FC = () => {
         )}
       </section>
 
-      <section className="bg-white border rounded-lg p-4 space-y-3">
+      <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">?좏샇 由ъ뒪</h2>
-          <button className="text-sm text-blue-700" onClick={() => loadSignals()}>
+          <h2 className="font-semibold text-lg text-gray-900">로그 기록</h2>
+          <button className="text-sm text-purple-700" onClick={() => loadSignals()}>
             ?덈줈怨좎묠
           </button>
         </div>

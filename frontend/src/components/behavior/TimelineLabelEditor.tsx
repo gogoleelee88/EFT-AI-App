@@ -11,7 +11,7 @@ type Props = {
 
 const TimelineLabelEditor: React.FC<Props> = ({ segment, onPatch, busy = false }) => {
   return (
-    <li className="border rounded p-3 space-y-2">
+    <li className="border rounded-xl border-purple-100 bg-purple-50/40 p-4 space-y-2">
       <div className="text-xs text-gray-500">
         {new Date(segment.ts_start).toLocaleString()} - {new Date(segment.ts_end).toLocaleTimeString()}
       </div>
@@ -25,9 +25,9 @@ const TimelineLabelEditor: React.FC<Props> = ({ segment, onPatch, busy = false }
             type="button"
             disabled={busy}
             onClick={() => onPatch(segment.segment_id, label)}
-            className="px-2.5 py-1 text-xs rounded border bg-gray-50 hover:bg-gray-100 disabled:opacity-50"
+            className="px-2.5 py-1 text-xs rounded-full border border-purple-200 bg-white text-purple-900 hover:bg-purple-100/80 disabled:opacity-50"
           >
-            set {label}
+            {label}
           </button>
         ))}
       </div>
@@ -36,4 +36,3 @@ const TimelineLabelEditor: React.FC<Props> = ({ segment, onPatch, busy = false }
 };
 
 export default TimelineLabelEditor;
-
