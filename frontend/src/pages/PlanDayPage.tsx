@@ -1,4 +1,4 @@
-﻿// PlanDayPage - Google Calendar + Planner
+// PlanDayPage - Google Calendar + 플래너
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
@@ -64,7 +64,7 @@ const PlanDayPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
 
-  // Google Calendar 연결 상태
+  // Google Calendar connection state
   const {
     isConnected,
     googleEvents,
@@ -77,10 +77,10 @@ const PlanDayPage: React.FC = () => {
     updateGoogleEvent,
   } = useGoogleCalendar();
 
-  // 계획 위저드 상태
+  // Planner wizard state
   const wizard = usePlanWizard();
 
-  // ?곹깭
+  // State
   const [showGoogleSection, setShowGoogleSection] = useState(true);
   const [plannedGoogleSyncMode, setPlannedGoogleSyncMode] =
     useState<PrivacyMode>("NORMAL");
@@ -103,8 +103,8 @@ const PlanDayPage: React.FC = () => {
   ).trim();
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
-    if (resistanceLevel == null) return "시작저항";
-    return resistanceLevel >= 7 ? "업무시작했으나 막힘" : "시작저항";
+    if (resistanceLevel == null) return "시작 저항";
+    return resistanceLevel >= 7 ? "시작했지만 막힘" : "시작 저항";
 };
 
   const refreshAppOnlyEvents = useCallback(() => {
@@ -133,7 +133,7 @@ const PlanDayPage: React.FC = () => {
     return enabled?.type;
   }, [wizard.state.missions]);
 
-  // ?좎쭨 蹂寃???Google ?쇱젙 ?숆린??  useEffect(() => {
+  // Sync Google events when date changes
   useEffect(() => {
     if (isConnected && wizard.state.date) {
       fetchGoogleEvents(wizard.state.date);
@@ -204,14 +204,14 @@ const PlanDayPage: React.FC = () => {
       if (!res.ok) {
         throw new Error(data?.detail || `status ${res.status}`);
       }
-      setBannerPatchResult(data.message || "패치가 적용되었습니다.");
+      setBannerPatchResult(data.message || "패치를 적용했습니다.");
       await loadBanner();
       if (isConnected) {
         await fetchGoogleEvents(wizard.state.date);
       }
     } catch (e) {
       setBannerPatchError(
-        e instanceof Error ? e.message : "패치 적용 중 오류가 발생했습니다."
+        e instanceof Error ? e.message : "패치 적용에 실패했습니다."
       );
     } finally {
       setBannerPatchLoading(false);
@@ -230,7 +230,7 @@ const PlanDayPage: React.FC = () => {
     loadBanner();
   }, [loadBanner]);
 
-  // Google ?대깽????ScheduleItem 蹂??  const googleScheduleItems: ScheduleItem[] = useMemo(() => {
+  // Convert Google events to ScheduleItem
   const googleScheduleItems: ScheduleItem[] = useMemo(() => {
     return googleEvents.map((ev) => {
       const startTime = parseTimeLabel(ev.start);
@@ -273,7 +273,7 @@ const PlanDayPage: React.FC = () => {
     );
   }, [googleScheduleItems, appOnlyScheduleItems]);
 
-  // TimeTable?먯꽌 ?대깽???낅뜲?댄듃 ??Google Calendar API ?몄텧
+  // Call Google Calendar API when TimeTable event is updated
   const handleScheduleUpdate = useCallback(
     async (updatedEvent: ScheduleItem, previousEvent?: ScheduleItem) => {
       const startHour = Math.floor(updatedEvent.startTime);
@@ -302,7 +302,7 @@ const PlanDayPage: React.FC = () => {
           endIso,
         });
       } catch (err) {
-      console.error("Google 일정 수정 오류:", err);
+      console.error("Google 이벤트 업데이트 오류:", err);
         return;
       }
 
@@ -327,7 +327,7 @@ const PlanDayPage: React.FC = () => {
     [refreshAppOnlyEvents, updateGoogleEvent, wizard.state.date]
   );
 
-  // Google ?쇱젙 ?대낫?닿린 (?꾨즺 ??
+  // Google 이벤트 내보내기 설명 생성
   const buildExportDescription = useCallback(() => {
     const details: string[] = [];
 
@@ -335,7 +335,7 @@ const PlanDayPage: React.FC = () => {
       wizard.state.microAction?.description ||
       wizard.state.microAction?.name;
     if (microActionDescription) {
-      details.push(`Micro action: ${microActionDescription}`);
+      details.push(`마이크로 액션: ${microActionDescription}`);
     }
 
     wizard.state.missions
@@ -348,7 +348,7 @@ const PlanDayPage: React.FC = () => {
           };
           const requirement = config?.description || config?.requirement;
           details.push(
-            `Mission ${idx + 1} (Photo): ${requirement || "Proof required"}`
+            `미션 ${idx + 1}(사진): ${requirement || "증빙 필요"}`
           );
           return;
         }
@@ -361,7 +361,7 @@ const PlanDayPage: React.FC = () => {
           const placeName = config?.place_name;
           const address = config?.address || config?.road_address;
           const locationText = [placeName, address].filter(Boolean).join(" / ");
-          details.push(`Mission ${idx + 1} (Location): ${locationText || "Location check"}`);
+          details.push(`미션 ${idx + 1}(위치): ${locationText || "위치 확인"}`);
           return;
         }
         if (mission.type === "time_check") {
@@ -370,9 +370,9 @@ const PlanDayPage: React.FC = () => {
             time?: string;
           };
           const checkType =
-            config?.check_type?.join(", ") || "time check";
+            config?.check_type?.join(", ") || "시간 체크";
           const timeText = config?.time ? ` @ ${config.time}` : "";
-          details.push(`Mission ${idx + 1} (Time check): ${checkType}`);
+          details.push(`미션 ${idx + 1}(시간 체크): ${checkType}`);
           if (timeText) {
             details.push(`  - ${timeText}`);
           }
@@ -389,7 +389,7 @@ const PlanDayPage: React.FC = () => {
     const privacyMode = mode || wizard.state.privacy_mode;
 
     if (!isConnected && privacyMode !== "APP_ONLY") {
-      alert("Google 캘린더 연동이 필요합니다.");
+      alert("Google Calendar 연결이 필요합니다.");
       return;
     }
 
@@ -417,14 +417,14 @@ const PlanDayPage: React.FC = () => {
     const originalDescription = buildExportDescription();
 
     try {
-      // Task ID媛 ?덉쑝硫??ъ슜, ?놁쑝硫?savedPlan?먯꽌 媛?몄삤湲?(Google sync??
+      // Use task ID if present; otherwise fallback to saved plan task ID
       const taskId =
         task.task_id ||
         wizard.state.savedPlan?.items?.[0]?.task_id;
 
       if (privacyMode !== "APP_ONLY" && !taskId) {
       alert(
-        "Task ID를 찾을 수 없습니다. Google 연동을 위해 기존 계획 정보가 필요합니다."
+        "작업 ID를 찾지 못했습니다. Google 동기화를 위해 기존 계획 데이터가 필요합니다."
       );
         return;
       }
@@ -438,7 +438,7 @@ const PlanDayPage: React.FC = () => {
         });
         saveAppOnlyEvent(appOnlyEvent);
         refreshAppOnlyEvents();
-        alert("Saved in app only.");
+        alert("앱 전용으로 저장했습니다.");
         return;
       }
 
@@ -478,17 +478,17 @@ const PlanDayPage: React.FC = () => {
         });
       }
 
-      alert("Synced to Google Calendar.");
+      alert("Google Calendar에 동기화했습니다.");
       fetchGoogleEvents(wizard.state.date);
     } catch (err) {
-      console.error("Google 캘린더 동기화 오류:", err);
+      console.error("Google Calendar 동기화 오류:", err);
     }
   };
 
-  // ?ㅼ젣 濡쒓렇???ъ슜??ID ?ъ슜
+  // Use authenticated user ID
   const userId = user?.uid;
   const exportLabel =
-    wizard.state.privacy_mode === "APP_ONLY" ? "Save in app" : "Add to Google";
+    wizard.state.privacy_mode === "APP_ONLY" ? "앱에 저장" : "Google에 추가";
 
   const handleTaskCreate = (task: SelectedTask) => {
     wizard.setTask(task);
@@ -510,11 +510,11 @@ const PlanDayPage: React.FC = () => {
     });
   };
 
-  // 濡쒓렇???뺤씤
+  // Auth loading check
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-600">로딩 중...</div>
+        <div className="text-gray-600">불러오는 중...</div>
       </div>
     );
   }
@@ -524,7 +524,7 @@ const PlanDayPage: React.FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center space-y-4">
-          <div className="text-xl font-bold text-gray-800">로그인 후 이용 가능합니다.</div>
+          <div className="text-xl font-bold text-gray-800">로그인이 필요합니다.</div>
           <Button variant="primary" onClick={() => navigate("/login")} >
             로그인
           </Button>
@@ -537,13 +537,13 @@ const PlanDayPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50">
-      {/* ?ㅻ뜑 */}
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-800">일정 계획 입력</h1>
+          <h1 className="text-xl font-bold text-gray-800">플랜 설정</h1>
           {user && (
             <span className="text-xs text-gray-500">
-              님 {user.name || user.email}
+              사용자: {user.name || user.email}
             </span>
           )}
         </div>
@@ -554,7 +554,7 @@ const PlanDayPage: React.FC = () => {
             if (
               wizard.state.step > 1 &&
               wizard.state.step < 5 &&
-              !confirm("입력 중인 내용이 삭제될 수 있습니다. 이동하시겠습니까?")
+              !confirm("현재 입력 내용이 사라질 수 있습니다. 계속할까요?")
             ) {
               return;
             }
@@ -584,7 +584,7 @@ const PlanDayPage: React.FC = () => {
         </div>
       )}
 
-      {/* Google 罹섎┛???뱀뀡 (?묒뿀???쇱튂湲? */}
+      {/* Google Calendar section (collapsible) */}
       <div className="max-w-2xl mx-auto px-4 py-4">
         <Card>
           <div className="space-y-3">
@@ -597,16 +597,16 @@ const PlanDayPage: React.FC = () => {
                   {showGoogleSection ? "접기" : "펼치기"}
                 </button>
                 <h2 className="text-sm font-semibold text-gray-800">
-                  Google 캘린더              </h2>
+                  Google Calendar              </h2>
               </div>
               {!isConnected ? (
                 <Button size="sm" variant="outline" onClick={connectGoogle}>
-                  Google 캘린더 연동
+                  Google Calendar 연결
                 </Button>
               ) : (
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 border border-emerald-200">
-                    연동됨                  </span>
+                    연결됨                  </span>
                   {lastSync && (
                     <span>
                       마지막 동기화:{" "}
@@ -628,21 +628,21 @@ const PlanDayPage: React.FC = () => {
               </div>
             )}
 
-                {/* Google ?쇱젙 */}
+                {/* Google events */}
               {googleLoading && (
                   <div className="text-xs text-gray-500 py-2">
-                    Google 일정 불러오는 중...
+                    Google 이벤트 불러오는 중...
                   </div>
               )}
               {!googleLoading && googleEvents.length === 0 && (
                   <div className="text-xs text-gray-400 py-2">
                   {isConnected
-                      ? `${wizard.state.date}에 등록된 Google 일정이 없습니다.`
-                      : "Google 연동 후 오늘 일정을 이곳에서 함께 볼 수 있습니다."}
+                      ? `${wizard.state.date}: Google 이벤트가 없습니다.`
+                      : "이 영역에서 오늘 일정을 보려면 Google을 연결해 주세요."}
                 </div>
               )}
 
-                {/* TimeTable 而댄룷?뚰듃 (?쒕옒洹?& 由ъ궗?댁쫰) */}
+                {/* TimeTable component (drag & resize) */}
             {scheduleItems.length > 0 && (
                   <TimeTable
                     date={new Date(wizard.state.date)}
@@ -656,12 +656,12 @@ const PlanDayPage: React.FC = () => {
         </Card>
                   </div>
                   
-      {/* ?ㅽ뀦 ?꾨줈洹몃젅??諛?*/}
+      {/* Step progress bar */}
       {wizard.state.step < 5 && (
         <StepWizard currentStep={wizard.state.step} onStepClick={wizard.goToStep} />
       )}
 
-      {/* ?먮윭 硫붿떆吏 */}
+      {/* Error message */}
       {wizard.error && wizard.state.step < 5 && (
         <div className="max-w-2xl mx-auto px-4 mt-4">
           <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-4 py-3">
@@ -670,11 +670,11 @@ const PlanDayPage: React.FC = () => {
               </div>
             )}
 
-      {/* ?ㅽ뀦蹂?而댄룷?뚰듃 */}
+      {/* Step-specific components */}
       <div className="pb-8">
         {wizard.state.step === 1 && (
           <div className="space-y-4">
-            {/* ?좎쭨/紐⑤뱶 ?좏깮 */}
+            {/* Date / mode selection */}
             <div className="max-w-2xl mx-auto px-4">
               <Card>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -698,9 +698,9 @@ const PlanDayPage: React.FC = () => {
                       onChange={(e) => wizard.setMode(Number(e.target.value))}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value={100}>100 - 강도 높음</option>
-                  <option value={70}>70 - 강도 보통</option>
-                  <option value={40}>40 - 강도 낮음</option>
+                  <option value={100}>100 - 고강도</option>
+                  <option value={70}>70 - 중강도</option>
+                  <option value={40}>40 - 저강도</option>
                 </select>
               </div>
             </div>
@@ -769,26 +769,26 @@ const PlanDayPage: React.FC = () => {
                     await wizard.submit(userId, { alarm });
                     setShowEmotionPrompt(true);
                     setShowAlarmInstallGuide(true);
-                    // ?깃났 ???먮룞?쇰줈 step 5濡??대룞
+                    // Move to step 5 automatically after success
                   } catch (err) {
-                    console.error("????ㅽ뙣:", err);
+                    console.error("저장 실패:", err);
                   }
                 }}
                 onBack={wizard.prevStep}
               />
 
-              {/* Google 罹섎┛???대낫?닿린 踰꾪듉 */}
+              {/* Google Calendar export button */}
               {isConnected && wizard.state.alarm && (
                 <div className="max-w-2xl mx-auto px-4">
                   <Card className="bg-green-50 border-green-200">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-green-800">
-                          Google 캘린더에 일정 추가
+                          Google Calendar에 이벤트 추가
                     </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          입력한 시간({wizard.state.alarm.time})으로 Google
-                          일정에 등록하세요
+                          이 일정을 ({wizard.state.alarm.time})에 Google Calendar로 추가합니다.
+
                   </div>
                   </div>
                        <Button
@@ -817,8 +817,8 @@ const PlanDayPage: React.FC = () => {
             <div className="space-y-4">
               {showAlarmInstallGuide && (
                 <AlarmInstallGuide
-                  title="알람은 앱에서 푸시 연동이 안정적입니다"
-                  description="일정 알림은 앱에서 푸시 권한을 받아야 정확하게 동작합니다. 앱을 설치해서 알람을 연결해 주세요."
+                  title="알람 전달은 앱에서 더 안정적입니다"
+                  description="푸시 권한이 있는 앱에서 일정 알림이 가장 잘 동작합니다. 앱을 설치하고 알람을 연동해 주세요."
                   className="mx-4"
                   installUrl={appInstallUrl}
                   onDismiss={() => setShowAlarmInstallGuide(false)}
@@ -837,17 +837,17 @@ const PlanDayPage: React.FC = () => {
                 }}
               />
 
-              {/* Google 罹섎┛???대낫?닿린 (?꾨즺 ?꾩뿉??媛?? */}
+              {/* Google Calendar export (also available after completion) */}
               {isConnected && (
                 <div className="max-w-2xl mx-auto px-4">
                   <Card className="bg-blue-50 border-blue-200">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-blue-800">
-                          Google 캘린더로 동기화
+                          Google Calendar로 동기화
                           </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          현재 계획을 Google 일정으로 바로 동기화할 수 있습니다
+                          현재 계획을 바로 Google Calendar에 동기화할 수 있습니다.
                         </div>
                         </div>
                     <Button
@@ -870,7 +870,7 @@ const PlanDayPage: React.FC = () => {
                 )}
                       </div>
 
-      {/* 濡쒕뵫 ?ㅻ쾭?덉씠 */}
+      {/* Loading overlay */}
       {showEmotionPrompt && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4"
@@ -881,17 +881,17 @@ const PlanDayPage: React.FC = () => {
             onClick={(event) => event.stopPropagation()}
           >
             <h2 className="text-base font-bold text-gray-900">
-              일정에 대한 저항감이 있나요?
+              이 계획을 시작하기 어렵게 느껴지나요?
             </h2>
             <p className="mt-2 text-sm text-gray-600">
-              하기 싫은 마음이 든다면, 감정을 먼저 다뤄보세요.
+              저항감이 느껴지면 감정 정리부터 해보세요.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleEmotionPromptClose}>
                 닫기
               </Button>
               <Button size="sm" onClick={navigateToEmotionInput}>
-                감정 입력하기              </Button>
+                감정 입력              </Button>
             </div>
           </div>
         </div>
@@ -901,7 +901,7 @@ const PlanDayPage: React.FC = () => {
           <div className="bg-white rounded-lg shadow-xl px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-              <span className="text-gray-700 font-medium">로딩 중...</span>
+              <span className="text-gray-700 font-medium">불러오는 중...</span>
                             </div>
                     </div>
                   </div>

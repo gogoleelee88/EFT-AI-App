@@ -172,7 +172,7 @@ def suggest_plan_patch(
         suggestions.append(
             {
                 "patch_type": "SPLIT_DEEP_WORK",
-                "reason": "嶺?????嶺??욕퐲????? 嶺?瑗룡↔낀??瑜곸톭??嶺?瑗룡?????嶺뚯쉸?앲굜?嶺?????嶺뚯쉸裕뉓굜?쎌?獄??꾩엺????嶺?瑗?勇??嶺???嶺?瑗룟퐲??嶺??꾩엺???嶺?瑗?勇?嶺뚯쉧?됭굜??",
+                "reason": "긴 집중 작업은 중간 회복 블록을 넣어 분할하면 집중 유지와 피로 관리에 도움이 됩니다.",
                 "allowed": True,
                 "blocked_reason": None,
                 "preview": {"target_task_id": deep_item.get("task_id"), "from": split_min, "to": split_segments},
@@ -190,13 +190,13 @@ def suggest_plan_patch(
         suggestions.append(
             {
                 "patch_type": "DECISION_DELAY",
-                "reason": "嶺?????춯?瑗???嶺????됥럷??猷됬춯?뚯굣????뜯뫀?ｈ굜? ?勇싲８?녻굜?쇈렎??嶺뚯쉸?앲굜??뜯뫀?ｈ굜醫묒??嶺?瑗??뚣뀋??고맰嶺뚯쉸??戮녈럷??猷믥춯?뚯굣??嶺?瑗룡〓쨪??瑜곹맯勇싲８??瑜끹럷?瑜곸톭 ?嶺?嶺뚯쉧?됭굜??",
+                "reason": "의사결정 성격의 일정은 다음 날 오전으로 미루면 현재 컨디션 변동 구간을 피하고 판단 품질을 높일 수 있습니다.",
                 "allowed": not blocked,
-                "blocked_reason": "confidence=low?嶺???勇싲８?녻굜?嶺??욘?彛???嶺???嶺??욘?嶺??욕퐲醫묒?筌뤾쑴??툣猷몃뾼?꾩쥜彛??嶺????嶺? ?嶺??욘?嶺?瑗룟퐲?" if blocked else None,
+                "blocked_reason": "confidence=low에서는 일정 이동/취소 계열 패치를 제한합니다." if blocked else None,
                 "preview": {
                     "target_task_id": decision_item.get("task_id"),
                     "defer_to": (target_date + timedelta(days=1)).isoformat(),
-                    "fallback_template": "?嶺뚯쉸?앲굜? ?嶺??꾟댙彛??뱁맯勇싲８?녻굜?뚣뀋?嶺?瑗룟퐲?嶺???勇싲８留⑵굜?嶺??? 嶺???猷됬춯?뚯굣?? ?勇싲８?녻굜?쇈렎??嶺뚯쉸?앲굜???嶺?嶺???猷?勇싲８留⑵굜??",
+                    "fallback_template": "오늘은 판단을 보류하고, 내일 오전 첫 블록에서 다시 검토합니다.",
                 },
             }
         )
@@ -311,7 +311,7 @@ def _apply_buffer_block(
     after_minutes = int(buffer_cfg.get("after_minutes", 15))
 
     if not items:
-        return False, "?嶺????嶺?????嶺뚯쉸裕뉓굜???뜯뫀?ｈ굜???嶺??욘?嶺?瑗룟퐲?", None
+        return False, "패치할 일정 항목이 없어 적용하지 못했습니다.", None
 
     target = None
     for it in items:
@@ -328,7 +328,11 @@ def _apply_buffer_block(
     plan.items = items
     plan.protected_block_minutes = max(int(plan.protected_block_minutes or 0), after_minutes)
     task_id = target.get("task_id") if isinstance(target.get("task_id"), int) else None
-    return True, f"嶺??욕퐲?????뜯뫀?ｈ굜??嶺?瑗룟퐲???嶺??욘?彛?嶺?瑗룡↔낀??瑜곸톭({before_minutes}/{after_minutes}嶺?瑗룡????嶺????嶺??욘?嶺?瑗룟퐲?", task_id
+    return (
+        True,
+        f"중요 일정에 버퍼 블록을 추가했습니다(전 {before_minutes}분 / 후 {after_minutes}분).",
+        task_id,
+    )
 
 
 def _apply_split_deep_work(plan: DayPlan, items: list[dict[str, Any]]) -> tuple[bool, str, int | None]:
@@ -348,17 +352,21 @@ def _apply_split_deep_work(plan: DayPlan, items: list[dict[str, Any]]) -> tuple[
         recovery = {
             "item_id": uuid4().hex,
             "task_id": None,
-            "title": f"?댁떇 {r}遺??뚮났 釉붾줉",
+            "title": f"회복 {r}분 블록",
             "planned_block_minutes": r,
-            "micro_steps": ["媛踰쇱슫 ?명씉怨??뺣━濡?由ъ뀑?⑸땲??"],
+            "micro_steps": ["가벼운 호흡 후 정리로 리셋합니다."],
             "patch_tag": "SPLIT_DEEP_WORK_RECOVERY",
         }
         second = {**it, "item_id": uuid4().hex, "planned_block_minutes": b, "patch_tag": "SPLIT_DEEP_WORK_B"}
         items[idx : idx + 1] = [first, recovery, second]
         plan.items = items
         task_id = it.get("task_id") if isinstance(it.get("task_id"), int) else None
-        return True, f"Split deep-work task into {a}+{r}+{b} minutes for total {split_min} minutes.", task_id
-        return False, f"Deep-work split requires at least {split_min} minutes to apply.", None
+        return (
+            True,
+            f"딥워크를 {a}+{r}+{b}분으로 분할해 적용했습니다(기준 {split_min}분 이상).",
+            task_id,
+        )
+    return False, f"딥워크 분할은 최소 {split_min}분 블록이 있어야 적용할 수 있습니다.", None
 
 
 def _apply_decision_delay(
@@ -376,8 +384,13 @@ def _apply_decision_delay(
         delay_to = (target_date + timedelta(days=1)).isoformat()
         task_id = removed.get("task_id") if isinstance(removed.get("task_id"), int) else None
         planned_minutes = int(removed.get("planned_block_minutes") or 30)
-        return True, f"?嶺????됥럷??猷됬춯?뚯굣????嶺??{delay_to} ?嶺뚯쉸?앲굜??뜯뫀?ｈ굜醫묒???勇싲８?녻굜??嶺?嶺??욘?嶺?瑗룟퐲?", task_id, max(15, planned_minutes)
-    return False, "?勇싲８?녻굜???嶺????됥럷??猷됬춯?뚯굣?????뜯뫀?ｈ굜???嶺??욘?嶺?瑗룟퐲?", None, 30
+        return (
+            True,
+            f"의사결정 일정을 {delay_to} 오전 블록으로 이동했습니다.",
+            task_id,
+            max(15, planned_minutes),
+        )
+    return False, "이동할 의사결정 성격의 일정을 찾지 못했습니다.", None, 30
 
 
 def _apply_google_buffer(
@@ -401,12 +414,12 @@ def _apply_google_buffer(
         target_task_id=target_task_id,
     )
     if selected is None:
-        return "嶺??욘≪눦??瑜?嶺??嶺?瑗??뚣뀋??곗댅嶺??????勇싲８?녻굜醫묒??源????嶺? DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+        return "Google 캘린더에서 대상 이벤트를 찾지 못해 DayPlan만 반영했습니다."
 
     start_at = _parse_event_datetime(selected.get("start"))
     end_at = _parse_event_datetime(selected.get("end"))
     if start_at is None or end_at is None:
-        return "嶺??욘≪눦??瑜?嶺???勇싲８?녻굜醫묒??源????嶺??????嶺?????嶺뚯쉸?앲굜?彛? DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+        return "Google 이벤트 시간 파싱에 실패해 DayPlan만 반영했습니다."
 
     before_start = start_at - timedelta(minutes=before_minutes)
     before_summary = _safe_summary_for_privacy("Buffer before important event", mapping)
@@ -428,7 +441,7 @@ def _apply_google_buffer(
         summary=after_summary,
         calendar_id=(mapping.calendar_id if mapping else "primary"),
     )
-    return "Google Calendar???嶺??욘?彛??勇싲８?녻굜醫묒??源???2嶺?????춯? 嶺??욘????嶺??욘?嶺?瑗룟퐲?"
+    return "Google Calendar에 버퍼 이벤트 2개를 생성했습니다."
 
 
 def _apply_google_split(
@@ -453,15 +466,15 @@ def _apply_google_split(
         target_task_id=target_task_id,
     )
     if selected is None:
-        return "嶺??욘≪눦??瑜?嶺??嶺?瑗??뚣뀋??곗댅嶺??????勇싲８?녻굜醫묒??源????嶺? DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+        return "Google 캘린더에서 대상 이벤트를 찾지 못해 DayPlan만 반영했습니다."
 
     event_start = _parse_event_datetime(selected.get("start"))
     if event_start is None:
-        return "嶺??욘≪눦??瑜?嶺???勇싲８?녻굜醫묒??源????嶺??????嶺?????嶺뚯쉸?앲굜?彛? DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+        return "Google 이벤트 시작 시간 파싱에 실패해 DayPlan만 반영했습니다."
 
     selected_event_id = str(selected.get("id") or "")
     if not selected_event_id:
-        return "嶺??욘≪눦??瑜?嶺???勇싲８?녻굜醫묒??源???ID嶺?瑗룟퐲?嶺???琉룔렎???? 嶺?瑗?節끹뀋?諭?ч툣?DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+        return "Google 이벤트 ID를 확인할 수 없어 DayPlan만 반영했습니다."
 
     calendar_id = mapping.calendar_id if mapping else "primary"
     split_a_end = event_start + timedelta(minutes=a)
@@ -494,7 +507,7 @@ def _apply_google_split(
         summary=_safe_summary_for_privacy("Deep work (part 2)", mapping),
         calendar_id=calendar_id,
     )
-    return "Google Calendar ?勇싲８?녻굜醫묒??源??勇싲８??굜? 嶺?瑗룡???45+?嶺?瑗?勇?45) 嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+    return f"Google Calendar 이벤트를 {a}+{r}+{b}분 구조로 분할 반영했습니다."
 
 
 def _apply_google_decision_delay(
@@ -528,7 +541,7 @@ def _apply_google_decision_delay(
             target_task_id=target_task_id,
         )
         if selected is None:
-            return "嶺??욘≪눦??瑜?嶺??嶺?瑗??뚣뀋??곗댅嶺??????勇싲８?녻굜醫묒??源????嶺? DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+            return "Google 캘린더에서 대상 이벤트를 찾지 못해 DayPlan만 반영했습니다."
         chosen_event_id = str(selected.get("id") or "")
         mapping = selected_mapping
         event_start = _parse_event_datetime(selected.get("start"))
@@ -537,7 +550,7 @@ def _apply_google_decision_delay(
             duration_minutes = max(15, int((event_end - event_start).total_seconds() // 60))
 
     if not chosen_event_id:
-        return "嶺??욘≪눦??瑜?嶺???勇싲８?녻굜醫묒??源???ID嶺?瑗룟퐲?嶺???琉룔렎???? 嶺?瑗?節끹뀋?諭?ч툣?DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+        return "Google 이벤트 ID를 확인할 수 없어 DayPlan만 반영했습니다."
 
     start_at = datetime.combine(target_date + timedelta(days=1), time(defer_hour, defer_min)).replace(
         tzinfo=timezone.utc
@@ -552,7 +565,7 @@ def _apply_google_decision_delay(
         summary=None,
         calendar_id=(mapping.calendar_id if mapping else "primary"),
     )
-    return "Google Calendar ?勇싲８?녻굜醫묒??源??勇싲８??굜? ?勇싲８?녻굜?쇈렎??嶺뚯쉸?앲굜??뜯뫀?ｈ굜醫묒???勇싲８?녻굜?嶺??욘?嶺?瑗룟퐲?"
+    return "Google Calendar 이벤트를 다음 날 오전으로 이동했습니다."
 
 
 def apply_plan_patch(
@@ -568,7 +581,7 @@ def apply_plan_patch(
         return {
             "applied": False,
             "patch_type": patch_type,
-            "message": "?勇싲８?녻굜議얇뀋??嶺??욕퐲?DayPlan??嶺???琉룔렎???? 嶺?瑗?節끹뀋?諭??勇싲８留⑵굜??",
+            "message": "대상 DayPlan을 찾지 못해 패치를 적용하지 못했습니다.",
             "blocked_reason": None,
             "updated_plan": None,
             "calendar_synced": False,
@@ -585,8 +598,8 @@ def apply_plan_patch(
         return {
             "applied": False,
             "patch_type": patch_type,
-            "message": "?嶺??욕퐲?嶺???猷됬춯??욘?勇싲８??굜醫묒???嶺????嶺? ?嶺?勇싲８留⑵굜??",
-            "blocked_reason": "confidence=low?嶺???勇싲８?녻굜?嶺??욘?彛???嶺???嶺??욘?嶺??욕퐲醫묒?筌뤾쑴??툣猷몃뾼?꾩쥜彛?嶺????嶺??嶺뚯쉧?됭굜??",
+            "message": "현재 confidence가 낮아 의사결정 일정 이동 패치를 적용하지 않았습니다.",
+            "blocked_reason": "confidence=low에서는 일정 이동/취소 계열 패치를 제한합니다.",
             "updated_plan": None,
             "calendar_synced": False,
             "calendar_message": None,
@@ -595,7 +608,7 @@ def apply_plan_patch(
     items = list(plan.items or [])
     tasks = _load_task_map(db, items)
     applied = False
-    message = "?嶺?????嶺?瑗?嶺???猷됧넼?ㅼ뵰?꾟뼹???嶺??욘?嶺?瑗룟퐲?"
+    message = "패치를 적용하지 못했습니다."
     target_task_id: int | None = None
     planned_minutes = 30
 
@@ -622,7 +635,7 @@ def apply_plan_patch(
     calendar_message: str | None = None
     if applied:
         if not user_id:
-            calendar_message = "嶺??욘≪눦??瑜?嶺??嶺?瑗??뚣뀋??곗댅嶺?? DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+            calendar_message = "user_id가 없어 Google 동기화를 건너뛰고 DayPlan만 반영했습니다."
         else:
             try:
                 if patch_type == "BUFFER_BLOCK":
@@ -653,7 +666,7 @@ def apply_plan_patch(
                 calendar_synced = bool(calendar_message and "DayPlan" not in calendar_message)
             except Exception as exc:
                 calendar_synced = False
-                calendar_message = f"嶺??욘≪눦??瑜?嶺???嶺?????嶺뚯쉸?앲굜?彛?{exc}): DayPlan嶺?瑗룟퐲?嶺?瑗?瑜끹럷?嶺??욘?嶺?瑗룟퐲?"
+                calendar_message = f"Google 동기화 중 오류({exc})가 발생해 DayPlan만 반영했습니다."
 
     full_message = message
     if calendar_message:
@@ -668,7 +681,6 @@ def apply_plan_patch(
         "calendar_synced": calendar_synced,
         "calendar_message": calendar_message,
     }
-
 
 
 

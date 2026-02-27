@@ -43,7 +43,7 @@ const CONFIDENCE_LABEL: Record<ConfidenceLevel, string> = {
 };
 
 const DRIVER_LABEL: Record<string, string> = {
-  MENSTRUAL_SYMPTOM_LOAD: "생리 관련 증상 부담",
+  MENSTRUAL_SYMPTOM_LOAD: "생리 증상 부담",
   SLEEP_DEBT_LOAD: "수면 부족 신호",
   STRESS_LOAD: "스트레스 부담",
   POST_MEAL_DIP: "식후 에너지 저하",
@@ -93,7 +93,7 @@ const TodayConditionBanner: React.FC<TodayConditionBannerProps> = ({
         <div>
           <div className="text-sm font-semibold text-gray-800">오늘 컨디션 요약</div>
           <div className="text-xs text-gray-600 mt-1">
-            주요 원인 Top-2 / 신뢰도:{" "}
+            주요 요인 Top-2 / 신뢰도:{" "}
             <span className="font-medium">{CONFIDENCE_LABEL[confidence]}</span>
           </div>
         </div>
