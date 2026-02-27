@@ -13,16 +13,21 @@ data class BehaviorAgentConfig(
 
 class BehaviorAgentConfigStore(private val context: android.content.Context) {
     private val prefs = context.getSharedPreferences(SYNC_PREF_NAME, android.content.Context.MODE_PRIVATE)
+    private val legacyPrefs = context.getSharedPreferences(LEGACY_SYNC_PREF_NAME, android.content.Context.MODE_PRIVATE)
 
     fun load(): BehaviorAgentConfig {
-        val rawUrl = prefs.getString(KEY_SYNC_BASE_URL, BuildConfig.BACKEND_BASE_URL).orEmpty().trim()
+        val rawUrl = prefs.getString(KEY_SYNC_BASE_URL, null)?.trim()?.ifBlank { null }
+            ?: legacyPrefs.getString(KEY_SYNC_BASE_URL, null)?.trim()?.ifBlank { null }
+            ?: BuildConfig.BACKEND_BASE_URL
         val normalized = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
             rawUrl.removeSuffix("/")
         } else {
             "http://${rawUrl.removeSuffix("/")}"
         }
         val uid = prefs.getString(KEY_SYNC_USER_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: legacyPrefs.getString(KEY_SYNC_USER_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
         val token = prefs.getString(KEY_BEHAVIOR_ACCESS_TOKEN, null)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: legacyPrefs.getString(KEY_BEHAVIOR_ACCESS_TOKEN, null)?.trim()?.takeIf { it.isNotEmpty() }
         return BehaviorAgentConfig(
             backendBaseUrl = normalized,
             userId = uid,
@@ -41,10 +46,11 @@ class BehaviorAgentConfigStore(private val context: android.content.Context) {
 
     companion object {
         // Reuse existing MainActivity sync prefs to avoid duplicate setup UI.
-        private const val SYNC_PREF_NAME = "alarm_agent_sync"
+        private const val SYNC_PREF_NAME = "mobile_agent_sync"
         private const val KEY_SYNC_BASE_URL = "backend_base_url"
         private const val KEY_SYNC_USER_ID = "sync_user_id"
         private const val KEY_BEHAVIOR_ACCESS_TOKEN = "behavior_access_token"
+        private const val LEGACY_SYNC_PREF_NAME = "alarm_agent_sync"
     }
 }
 

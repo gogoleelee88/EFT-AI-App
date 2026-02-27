@@ -22,9 +22,12 @@ class MissingSyncConfigException : IllegalStateException("missing_sync_config")
 
 object ReminderSyncManager {
     private const val TAG = "ReminderSyncManager"
-    private const val PREFS_NAME = "reminder_sync_manager"
-    private const val KEY_BASE_URL = "base_url"
-    private const val KEY_USER_ID = "user_id"
+    private const val PREFS_NAME = "mobile_agent_sync"
+    private const val KEY_BASE_URL = "backend_base_url"
+    private const val KEY_USER_ID = "sync_user_id"
+    private const val LEGACY_PREFS_NAME = "reminder_sync_manager"
+    private const val LEGACY_KEY_BASE_URL = "base_url"
+    private const val LEGACY_KEY_USER_ID = "user_id"
 
     private const val SCHEDULE_DECISION_CONDITION =
         "if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL || " +
@@ -50,8 +53,27 @@ object ReminderSyncManager {
 
     fun loadConfig(context: Context): ReminderSyncConfig? {
         val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val baseUrl = normalizeBaseUrl(prefs.getString(KEY_BASE_URL, "").orEmpty()) ?: return null
-        val userId = prefs.getString(KEY_USER_ID, "").orEmpty().trim()
+        readConfigFrom(prefs)?.let { return it }
+
+        val legacyConfig = readConfigFrom(
+            prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE),
+            baseUrlKey = LEGACY_KEY_BASE_URL,
+            userIdKey = LEGACY_KEY_USER_ID,
+        ) ?: return null
+
+        saveConfig(context, legacyConfig.baseUrl, legacyConfig.userId)
+        context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove(LEGACY_KEY_BASE_URL).remove(LEGACY_KEY_USER_ID).apply()
+        return legacyConfig
+    }
+
+    private fun readConfigFrom(
+        prefs: SharedPreferences,
+        baseUrlKey: String = KEY_BASE_URL,
+        userIdKey: String = KEY_USER_ID,
+    ): ReminderSyncConfig? {
+        val baseUrl = normalizeBaseUrl(prefs.getString(baseUrlKey, "").orEmpty()) ?: return null
+        val userId = prefs.getString(userIdKey, "").orEmpty().trim()
         if (userId.isBlank()) return null
         return ReminderSyncConfig(baseUrl = baseUrl, userId = userId)
     }

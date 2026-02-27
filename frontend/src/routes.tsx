@@ -51,6 +51,8 @@ export default function AppRoutes() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/plan/day" element={<PlanDayPage />} />
       <Route path="/profile-setup" element={<ProfileSetupPage />} />
+      <Route path="/my-page" element={<ProfileSetupPage />} />
+      <Route path="/add-alarm" element={<PlanDayPage />} />
       <Route path="/signal-inbox" element={<SignalInboxPage />} />
       <Route path="/morning-brief" element={<MorningBriefPage />} />
       <Route path="/execute-board" element={<ExecuteBoardPage />} />

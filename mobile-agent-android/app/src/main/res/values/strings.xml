@@ -83,4 +83,6 @@
     <string name="notif_permission_settings">설정 열기</string>
     <string name="notif_permission_denied_body">알림이 꺼져 있습니다. 설정에서 알림을 켜주세요.</string>
     <string name="notif_permission_granted">알림 허용 완료</string>
+    <string name="app_version_info">앱 정보: %1$s</string>
+    <string name="app_version_dev_mode_hint">개발자 설정은 앱 정보 텍스트를 5회 탭하세요.</string>
 </resources>

@@ -1,6 +1,7 @@
 ﻿package com.eft.mobileagent
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
@@ -20,6 +21,8 @@ import android.widget.TextView
 import android.widget.TimePicker
 import android.widget.Toast
 import android.view.View
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import android.view.LayoutInflater
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.NotificationManagerCompat
@@ -86,7 +89,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var behaviorAnswerExerciseButton: Button
     private lateinit var behaviorAnswerOtherButton: Button
     private lateinit var behaviorDismissQuestionButton: Button
+    private lateinit var appVersionInfoText: TextView
+    private lateinit var developerModeHintText: TextView
     private lateinit var alarmLabelInput: EditText
+    private lateinit var tabHomeButton: Button
+    private lateinit var tabAddAlarmButton: Button
+    private lateinit var tabMyPageButton: Button
+    private lateinit var homeTabContainer: View
+    private lateinit var addAlarmTabContainer: View
+    private lateinit var myPageTabContainer: View
     private lateinit var sourceTypeGroup: RadioGroup
     private lateinit var sourceServiceRadio: RadioButton
     private lateinit var sourceGoogleRadio: RadioButton
@@ -101,6 +112,18 @@ class MainActivity : AppCompatActivity() {
     private var sourceChangedByUser = false
     private var behaviorQuestionPollingActive = false
     private var behaviorQuestionPollRunnable: Runnable? = null
+    private var isDeveloperModeEnabled = false
+    private var developerModeTapCount = 0
+    private var developerModeTapStartAt = 0L
+    private var behaviorQuestionSheet: BottomSheetDialog? = null
+    private var behaviorQuestionSheetView: View? = null
+    private var activeMainTab = MainTab.HOME
+
+    private enum class MainTab {
+        HOME,
+        ADD_ALARM,
+        MY_PAGE,
+    }
     private val behaviorQuestionPollHandler = Handler(Looper.getMainLooper())
     private val koreaZoneId: ZoneId = ZoneId.of("Asia/Seoul")
 
@@ -129,6 +152,9 @@ class MainActivity : AppCompatActivity() {
         val RECOVERY_WEB_PORT_CANDIDATES = listOf("8787", "4173", "5173", "80", "443")
         const val PREFS_NAME = "mobile_agent_prefs"
         const val PREF_KEY_NOTIFICATION_PROMPTED = "notification_prompted"
+        const val PREF_KEY_DEVELOPER_MODE = "developer_mode_enabled"
+        const val DEV_MODE_TAP_TARGET = 5
+        const val DEV_MODE_TAP_WINDOW_MS = 2_500L
     }
 
     private val requestLocationPermissionLauncher =
@@ -181,6 +207,14 @@ class MainActivity : AppCompatActivity() {
         behaviorAnswerExerciseButton = findViewById(R.id.behaviorAnswerExerciseButton)
         behaviorAnswerOtherButton = findViewById(R.id.behaviorAnswerOtherButton)
         behaviorDismissQuestionButton = findViewById(R.id.behaviorDismissQuestionButton)
+        appVersionInfoText = findViewById(R.id.appVersionInfoText)
+        developerModeHintText = findViewById(R.id.developerModeHintText)
+        tabHomeButton = findViewById(R.id.tabHomeButton)
+        tabAddAlarmButton = findViewById(R.id.tabAddAlarmButton)
+        tabMyPageButton = findViewById(R.id.tabMyPageButton)
+        homeTabContainer = findViewById(R.id.homeTabContainer)
+        addAlarmTabContainer = findViewById(R.id.addAlarmTabContainer)
+        myPageTabContainer = findViewById(R.id.myPageTabContainer)
         alarmLabelInput = findViewById(R.id.alarmLabelInput)
         sourceTypeGroup = findViewById(R.id.sourceTypeGroup)
         sourceServiceRadio = findViewById(R.id.sourceServiceRadio)
@@ -191,6 +225,17 @@ class MainActivity : AppCompatActivity() {
         locationSectionContainer = findViewById(R.id.locationSectionContainer)
         targetLocationView = findViewById(R.id.targetLocationView)
         alarmSummaryView = findViewById(R.id.alarmSummaryView)
+
+        appVersionInfoText.text = getString(R.string.app_version_info, BuildConfig.VERSION_NAME)
+        developerModeHintText.text = getString(R.string.app_version_dev_mode_hint)
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        isDeveloperModeEnabled = prefs.getBoolean(PREF_KEY_DEVELOPER_MODE, false)
+        refreshDeveloperModeUi()
+        appVersionInfoText.setOnClickListener { onDeveloperModeTapped() }
+        tabHomeButton.setOnClickListener { switchMainTab(MainTab.HOME) }
+        tabAddAlarmButton.setOnClickListener { switchMainTab(MainTab.ADD_ALARM) }
+        tabMyPageButton.setOnClickListener { switchMainTab(MainTab.MY_PAGE) }
+        switchMainTab(activeMainTab)
 
         initializeDefaults()
         sourceTypeGroup.setOnCheckedChangeListener { _, _ ->
@@ -280,16 +325,19 @@ class MainActivity : AppCompatActivity() {
         refreshBehaviorStatusUi()
         refreshPendingBehaviorQuestion(manual = false)
         startBehaviorQuestionPolling()
+        showBehaviorQuestionSheet(currentBehaviorQuestion)
     }
 
     override fun onPause() {
         super.onPause()
         stopBehaviorQuestionPolling()
+        behaviorQuestionSheet?.dismiss()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopBehaviorQuestionPolling()
+        behaviorQuestionSheet?.dismiss()
     }
 
     private fun startBehaviorQuestionPolling() {
@@ -308,6 +356,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         behaviorQuestionPollRunnable?.let { behaviorQuestionPollHandler.post(it) }
+    }
+
+    private fun switchMainTab(tab: MainTab) {
+        activeMainTab = tab
+
+        homeTabContainer.visibility = if (tab == MainTab.HOME) View.VISIBLE else View.GONE
+        addAlarmTabContainer.visibility = if (tab == MainTab.ADD_ALARM) View.VISIBLE else View.GONE
+        myPageTabContainer.visibility = if (tab == MainTab.MY_PAGE) View.VISIBLE else View.GONE
+
+        tabHomeButton.isEnabled = tab != MainTab.HOME
+        tabAddAlarmButton.isEnabled = tab != MainTab.ADD_ALARM
+        tabMyPageButton.isEnabled = tab != MainTab.MY_PAGE
     }
 
     private fun stopBehaviorQuestionPolling() {
@@ -401,11 +461,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureLocationPermissionThenSaveTarget() {
-        val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-        if (hasFine || hasCoarse) {
+        if (hasLocationPermission()) {
             saveCurrentLocationAsTarget()
             return
         }
@@ -418,7 +474,13 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    @SuppressLint("MissingPermission")
     private fun saveCurrentLocationAsTarget() {
+        if (!hasLocationPermission()) {
+            toast(getString(R.string.msg_location_permission_required))
+            return
+        }
+
         val request = CurrentLocationRequest.Builder()
             .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
             .setDurationMillis(5_000L)
@@ -445,6 +507,14 @@ class MainActivity : AppCompatActivity() {
                 val reason = it.message ?: getString(R.string.msg_location_measure_failed)
                 toast(getString(R.string.msg_target_save_failed, reason))
             }
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        return hasFine || hasCoarse
     }
 
     private fun scheduleAlarm() {
@@ -626,7 +696,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateLoginFormVisibility(isLoggedIn: Boolean) {
+    private fun applyDeveloperModeVisibility(isLoggedIn: Boolean) {
+        if (!isDeveloperModeEnabled) {
+            loginFormContainer.visibility = View.GONE
+            editLoginButton.visibility = View.GONE
+            return
+        }
+
+        behaviorAccessTokenInput.visibility = View.VISIBLE
+        syncServerAlarmsButton.visibility = View.VISIBLE
+        loggedInUserStatusView.visibility = View.VISIBLE
         loginFormContainer.visibility = if (isLoggedIn) View.GONE else View.VISIBLE
         editLoginButton.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
     }
@@ -635,13 +714,11 @@ class MainActivity : AppCompatActivity() {
         val trimmed = userId?.trim().orEmpty()
         if (trimmed.isBlank()) {
             loggedInUserStatusView.text = getString(R.string.login_status_not_logged_in)
-            syncServerAlarmsButton.visibility = View.VISIBLE
-            updateLoginFormVisibility(false)
+            applyDeveloperModeVisibility(false)
             return
         }
         loggedInUserStatusView.text = getString(R.string.login_status_logged_in_auto_sync, trimmed)
-        syncServerAlarmsButton.visibility = View.VISIBLE
-        updateLoginFormVisibility(true)
+        applyDeveloperModeVisibility(true)
     }
 
     private fun syncServerReminders() {
@@ -963,6 +1040,98 @@ class MainActivity : AppCompatActivity() {
         return "$url$sep$query"
     }
 
+    private fun ensureBehaviorQuestionSheet(): BottomSheetDialog {
+        behaviorQuestionSheet?.let { return it }
+
+        val inflater = LayoutInflater.from(this)
+        val view = inflater.inflate(R.layout.behavior_question_bottom_sheet, null)
+        behaviorQuestionSheetView = view
+
+        val dialog = BottomSheetDialog(this)
+        dialog.setContentView(view)
+        dialog.setOnDismissListener {
+            behaviorQuestionSheet = null
+            behaviorQuestionSheetView = null
+        }
+        behaviorQuestionSheet = dialog
+        return dialog
+    }
+
+    private fun showBehaviorQuestionSheet(question: BehaviorQuestionUi?) {
+        if (question == null) {
+            behaviorQuestionSheet?.dismiss()
+            return
+        }
+
+        val dialog = ensureBehaviorQuestionSheet()
+        val sheetView = behaviorQuestionSheetView ?: return
+
+        val questionText = sheetView.findViewById<TextView>(R.id.behaviorSheetQuestionText)
+        val reasonText = sheetView.findViewById<TextView>(R.id.behaviorSheetReasonText)
+        val workButton = sheetView.findViewById<Button>(R.id.behaviorSheetWorkButton)
+        val restButton = sheetView.findViewById<Button>(R.id.behaviorSheetRestButton)
+        val moveButton = sheetView.findViewById<Button>(R.id.behaviorSheetMoveButton)
+        val exerciseButton = sheetView.findViewById<Button>(R.id.behaviorSheetExerciseButton)
+        val otherButton = sheetView.findViewById<Button>(R.id.behaviorSheetOtherButton)
+        val dismissButton = sheetView.findViewById<Button>(R.id.behaviorSheetDismissButton)
+
+        questionText.text = question.questionText
+        if (question.triggerReasons.isEmpty()) {
+            reasonText.visibility = View.GONE
+        } else {
+            reasonText.visibility = View.VISIBLE
+            reasonText.text = "근거: ${question.triggerReasons.joinToString(", ")}"
+        }
+
+        val isBusy = behaviorQuestionBusy
+        val buttons = listOf(workButton, restButton, moveButton, exerciseButton, otherButton, dismissButton)
+        buttons.forEach { it.isEnabled = !isBusy }
+
+        if (question.isSoftNudge) {
+            workButton.text = "괜찮아요, 오늘은 이렇게"
+            restButton.text = "잠깐 멈추고 회복할게요"
+            moveButton.visibility = View.GONE
+            exerciseButton.visibility = View.GONE
+            otherButton.visibility = View.GONE
+            dismissButton.visibility = View.GONE
+            workButton.setOnClickListener {
+                dismissPendingBehaviorQuestion()
+            }
+            restButton.setOnClickListener {
+                handleSoftNudgeNeedRecovery()
+            }
+        } else {
+            workButton.text = "괜찮아요, 계속"
+            restButton.text = "지금은 휴식"
+            moveButton.visibility = View.VISIBLE
+            exerciseButton.visibility = View.VISIBLE
+            otherButton.visibility = View.VISIBLE
+            dismissButton.visibility = View.VISIBLE
+            workButton.setOnClickListener {
+                answerPendingBehaviorQuestion("work")
+            }
+            restButton.setOnClickListener {
+                answerPendingBehaviorQuestion("rest")
+            }
+            moveButton.setOnClickListener {
+                answerPendingBehaviorQuestion("move")
+            }
+            exerciseButton.setOnClickListener {
+                answerPendingBehaviorQuestion("exercise")
+            }
+            otherButton.setOnClickListener {
+                answerPendingBehaviorQuestion("other")
+            }
+            dismissButton.setOnClickListener {
+                dismissPendingBehaviorQuestion()
+            }
+        }
+
+        if (!dialog.isShowing) {
+            dialog.show()
+        }
+    }
+
     private fun buildRecoveryBaseCandidates(baseApiUrl: String): List<String> {
         val uri = runCatching { java.net.URI(baseApiUrl) }.getOrNull() ?: return emptyList()
         val scheme = uri.scheme ?: return emptyList()
@@ -1024,6 +1193,7 @@ class MainActivity : AppCompatActivity() {
                 behaviorQuestionBusy = false
                 result.onSuccess { question ->
                     currentBehaviorQuestion = question
+                    showBehaviorQuestionSheet(question)
                     refreshBehaviorQuestionUi()
                     if (manual) {
                         val msg = if (question == null) "No pending question" else "Pending question loaded"
@@ -1031,6 +1201,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }.onFailure { err ->
                     refreshBehaviorQuestionUi()
+                    showBehaviorQuestionSheet(null)
                     if (manual) {
                         toast("Question refresh failed: ${err.message ?: "unknown"}")
                     }
@@ -1077,10 +1248,12 @@ class MainActivity : AppCompatActivity() {
                 behaviorQuestionBusy = false
                 result.onSuccess { nextQuestion ->
                     currentBehaviorQuestion = nextQuestion
+                    showBehaviorQuestionSheet(nextQuestion)
                     refreshBehaviorQuestionUi()
                     toast("Question answered: $label")
                 }.onFailure { err ->
                     refreshBehaviorQuestionUi()
+                    showBehaviorQuestionSheet(currentBehaviorQuestion)
                     toast("Answer failed: ${err.message ?: "unknown"}")
                 }
             }
@@ -1121,10 +1294,12 @@ class MainActivity : AppCompatActivity() {
                 behaviorQuestionBusy = false
                 result.onSuccess { nextQuestion ->
                     currentBehaviorQuestion = nextQuestion
+                    showBehaviorQuestionSheet(nextQuestion)
                     refreshBehaviorQuestionUi()
                     toast("Question dismissed")
                 }.onFailure { err ->
                     refreshBehaviorQuestionUi()
+                    showBehaviorQuestionSheet(currentBehaviorQuestion)
                     toast("Dismiss failed: ${err.message ?: "unknown"}")
                 }
             }
@@ -1192,16 +1367,53 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun onDeveloperModeTapped() {
+        val now = System.currentTimeMillis()
+        if (now - developerModeTapStartAt > DEV_MODE_TAP_WINDOW_MS) {
+            developerModeTapCount = 1
+            developerModeTapStartAt = now
+        } else {
+            developerModeTapCount++
+        }
+
+        if (developerModeTapCount == DEV_MODE_TAP_TARGET - 1) {
+            val remain = DEV_MODE_TAP_TARGET - developerModeTapCount
+            toast("개발자 모드까지 ${remain}회 남았어요.")
+            return
+        }
+
+        if (developerModeTapCount >= DEV_MODE_TAP_TARGET) {
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (!isDeveloperModeEnabled) {
+                isDeveloperModeEnabled = true
+                prefs.edit().putBoolean(PREF_KEY_DEVELOPER_MODE, true).apply()
+                refreshDeveloperModeUi()
+                toast("개발자 모드가 활성화되었어요.")
+            }
+            developerModeTapCount = DEV_MODE_TAP_TARGET
+        }
+    }
+
+    private fun refreshDeveloperModeUi() {
+        if (!isDeveloperModeEnabled) {
+            loginFormContainer.visibility = View.GONE
+            behaviorAccessTokenInput.visibility = View.GONE
+            syncServerAlarmsButton.visibility = View.GONE
+            loggedInUserStatusView.visibility = View.GONE
+            editLoginButton.visibility = View.GONE
+        } else {
+            val hasUserId = syncUserIdInput.text?.toString()?.trim()?.isNotBlank() == true
+            applyDeveloperModeVisibility(hasUserId)
+        }
+        if (isDeveloperModeEnabled) {
+            developerModeHintText.visibility = View.GONE
+        } else {
+            developerModeHintText.visibility = View.VISIBLE
+        }
+    }
+
     private fun toast(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
 }
-
-
-
-
-
-
-
-

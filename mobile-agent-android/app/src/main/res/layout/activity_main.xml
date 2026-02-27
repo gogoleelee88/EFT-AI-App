@@ -6,10 +6,62 @@
     tools:context=".MainActivity">
 
     <LinearLayout
+        android:id="@+id/homeTabContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="20dp">
+
+        <LinearLayout
+            android:id="@+id/tabBarContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:orientation="horizontal"
+            android:weightSum="3">
+
+            <Button
+                android:id="@+id/tabHomeButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Home" />
+
+            <Button
+                android:id="@+id/tabAddAlarmButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="Add Alarm" />
+
+            <Button
+                android:id="@+id/tabMyPageButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="My Page" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/appVersionInfoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:gravity="end"
+            android:paddingVertical="8dp"
+            android:textAppearance="?attr/textAppearanceLabelSmall"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/developerModeHintText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/app_version_dev_mode_hint"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorPrimary" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -152,86 +204,95 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:text="Behavior queue pending: 0" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Behavior Question"
-            android:textAppearance="?attr/textAppearanceTitleMedium" />
-
-        <Button
-            android:id="@+id/behaviorRefreshQuestionButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Refresh Question" />
-
-        <TextView
-            android:id="@+id/behaviorQuestionTextView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:text="No pending behavior question" />
-
         <LinearLayout
+            android:id="@+id/behaviorQuestionSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Behavior Question"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
 
             <Button
-                android:id="@+id/behaviorAnswerWorkButton"
-                android:layout_width="0dp"
+                android:id="@+id/behaviorRefreshQuestionButton"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="work" />
+                android:layout_marginTop="8dp"
+                android:text="Refresh Question" />
 
-            <Button
-                android:id="@+id/behaviorAnswerRestButton"
-                android:layout_width="0dp"
+            <TextView
+                android:id="@+id/behaviorQuestionTextView"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="rest" />
+                android:layout_marginTop="8dp"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:text="No pending behavior question" />
 
-            <Button
-                android:id="@+id/behaviorAnswerMoveButton"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="move" />
-        </LinearLayout>
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
+                <Button
+                    android:id="@+id/behaviorAnswerWorkButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="work" />
 
-            <Button
-                android:id="@+id/behaviorAnswerExerciseButton"
-                android:layout_width="0dp"
+                <Button
+                    android:id="@+id/behaviorAnswerRestButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="rest" />
+
+                <Button
+                    android:id="@+id/behaviorAnswerMoveButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="move" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="exercise" />
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/behaviorAnswerOtherButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="other" />
+                <Button
+                    android:id="@+id/behaviorAnswerExerciseButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="exercise" />
 
-            <Button
-                android:id="@+id/behaviorDismissQuestionButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_weight="1"
-                android:text="Dismiss" />
+                <Button
+                    android:id="@+id/behaviorAnswerOtherButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="other" />
+
+                <Button
+                    android:id="@+id/behaviorDismissQuestionButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:text="Dismiss" />
+            </LinearLayout>
         </LinearLayout>
 
         <TextView
@@ -354,5 +415,49 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <LinearLayout
+            android:id="@+id/addAlarmTabContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:orientation="vertical"
+            android:paddingTop="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="알람 추가"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="홈 화면에서 알람과 동작 체크를 빠르게 설정할 수 있어요."
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/myPageTabContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:orientation="vertical"
+            android:paddingTop="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="마이페이지"
+                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="알림/권한/동기화 상태를 확인하고 설정할 수 있어요."
+                android:textAppearance="?attr/textAppearanceBodyMedium" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>
