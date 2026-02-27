@@ -16,6 +16,7 @@ import PlanSummary from "../components/plan/PlanSummary";
 import { TimeTable } from "../components/schedule/TimeTable";
 import type { ScheduleItem } from "../components/schedule/TimeTable";
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
+import { buildApkDownloadUrl } from "../utils/apkDownload";
 import {
   type AppOnlyEvent,
   buildPrivacyKey,
@@ -94,13 +95,13 @@ const PlanDayPage: React.FC = () => {
   const [bannerPatchResult, setBannerPatchResult] = useState<string | null>(null);
   const [showEmotionPrompt, setShowEmotionPrompt] = useState(false);
   const [showAlarmInstallGuide, setShowAlarmInstallGuide] = useState(false);
-  const appInstallUrl = (
+  const appInstallUrl = buildApkDownloadUrl(
     import.meta.env.VITE_APP_INSTALL_URL ||
     import.meta.env.VITE_DIRECT_APK_URL ||
     (typeof window !== "undefined"
       ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
       : "")
-  ).trim();
+  );
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
     if (resistanceLevel == null) return "시작 저항";

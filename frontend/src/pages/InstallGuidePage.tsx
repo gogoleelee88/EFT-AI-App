@@ -1,16 +1,18 @@
 import { Link } from "react-router-dom";
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
+import { buildApkDownloadUrl } from "../utils/apkDownload";
 
 const getAppInstallUrl = () => {
   if (typeof window === "undefined") {
     return "";
   }
 
-  return (
+  const raw = (
     import.meta.env.VITE_APP_INSTALL_URL ||
     import.meta.env.VITE_DIRECT_APK_URL ||
     `${window.location.origin}/latest.apk`
   );
+  return buildApkDownloadUrl(raw);
 };
 
 const playStoreUrl = import.meta.env.VITE_PLAY_STORE_URL || "";
@@ -26,9 +28,9 @@ const SectionTitle = ({ title }: { title: string }) => (
 
 const InstallGuidePage = () => {
   const appInstallUrl = getAppInstallUrl();
-  const fallbackApkUrl =
-    directApkUrl ||
-    (typeof window !== "undefined" ? `${window.location.origin}/latest.apk` : "");
+  const fallbackApkUrl = buildApkDownloadUrl(
+    directApkUrl || (typeof window !== "undefined" ? `${window.location.origin}/latest.apk` : "")
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">

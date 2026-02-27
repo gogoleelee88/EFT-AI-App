@@ -13,7 +13,7 @@
   (function () {
     const host = window.location.hostname || 'localhost';
     const proto = window.location.protocol || 'http:';
-    const apkUrl = `${proto}//${host}:8787/latest.apk`;
+    const apkUrl = `${proto}//${host}:8787/latest.apk?v=${Date.now()}`;
     const link = document.getElementById('apk-link');
     const code = document.getElementById('apk-code');
     if (link) {
