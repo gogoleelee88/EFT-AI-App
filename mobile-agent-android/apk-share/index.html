@@ -1,29 +1,40 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EFT Agent APK Install</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EFT Agent APK Install</title>
+</head>
 <body style="font-family:Arial,sans-serif;max-width:560px;margin:30px auto;padding:0 16px;line-height:1.5;">
-<h2>EFT Local Alarm Agent (Android)</h2>
-<p>¾Æ·¡ ¹öÆ°À¸·Î APK¸¦ ´Ù¿î·Îµå/¼³Ä¡ÇÏ¼¼¿ä.</p>
-<p><a id="apk-link" href="#" style="display:inline-block;padding:12px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;">APK ´Ù¿î·Îµå (latest)</a></p>
-<p>Á÷Á¢ ¸µÅ©: <code id="apk-code"></code></p>
-<p>¾÷µ¥ÀÌÆ® ½Ã: <code>sync_and_serve.bat</code> ½ÇÇà(ÃÖ½Å APK ÀÚµ¿ ¹İ¿µ)</p>
-<p>Ã³À½ ¼³Ä¡ ½Ã: ¼³Á¤ > º¸¾È > ¾Ë ¼ö ¾ø´Â ¾Û ¼³Ä¡ Çã¿ë(ºê¶ó¿ìÀú/ÆÄÀÏ°ü¸®ÀÚ)</p>
-<img src="qr.png" alt="apk qr" style="width:260px;height:260px;border:1px solid #ddd;" />
-<script>
-  (function () {
-    const host = window.location.hostname || 'localhost';
-    const proto = window.location.protocol || 'http:';
-    const apkUrl = `${proto}//${host}:8787/latest.apk?v=${Date.now()}`;
-    const link = document.getElementById('apk-link');
-    const code = document.getElementById('apk-code');
-    if (link) {
-      link.href = apkUrl;
-      link.textContent = `APK ´Ù¿î·Îµå (latest)`;
-    }
-    if (code) {
-      code.textContent = apkUrl;
-    }
-  })();
-</script>
+  <h2>EFT Local Alarm Agent (Android)</h2>
+  <p>ì•„ë˜ ë²„íŠ¼ìœ¼ë¡œ APKë¥¼ ë‹¤ìš´ë¡œë“œ/ì„¤ì¹˜í•˜ì„¸ìš”.</p>
+  <p><a id="apk-link" href="#" style="display:inline-block;padding:12px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;">APK ë‹¤ìš´ë¡œë“œ (latest)</a></p>
+  <p>ì§ì ‘ ë§í¬: <code id="apk-code"></code></p>
+  <p>ì—…ë°ì´íŠ¸ ì‹œ: <code>sync_and_serve.bat</code> ì‹¤í–‰(ìµœì‹  APK ìë™ ë°˜ì˜)</p>
+  <p>ì²˜ìŒ ì„¤ì¹˜ ì‹œ: ì„¤ì • > ë³´ì•ˆ > ì•Œ ìˆ˜ ì—†ëŠ” ì•± ì„¤ì¹˜ í—ˆìš©(ë¸Œë¼ìš°ì €/íŒŒì¼ê´€ë¦¬ì)</p>
+  <p>QR ë‹¤ìš´ë¡œë“œ ë§í¬:</p>
+  <img id="apk-qr" src="" alt="apk qr" style="width:260px;height:260px;border:1px solid #ddd;" />
+  <script>
+    (function () {
+      const origin = window.location.origin || 'http://localhost:8787';
+      const apkUrl = `${origin}/latest.apk?v=${Date.now()}`;
+      const qrApi =
+        'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=1&data=' +
+        encodeURIComponent(apkUrl);
+      const qrImg = document.getElementById('apk-qr');
+      const link = document.getElementById('apk-link');
+      const code = document.getElementById('apk-code');
+      if (link) {
+        link.href = apkUrl;
+        link.textContent = `APK ë‹¤ìš´ë¡œë“œ (latest)`;
+      }
+      if (code) {
+        code.textContent = apkUrl;
+      }
+      if (qrImg) {
+        qrImg.src = qrApi;
+      }
+    })();
+  </script>
 </body>
 </html>
