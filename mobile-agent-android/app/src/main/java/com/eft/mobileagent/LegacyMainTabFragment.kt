@@ -1405,4 +1405,5 @@ abstract class LegacyMainTabFragment : Fragment() {
         if (!isAdded) return
         Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
     }
-}`r`n
+}
+
