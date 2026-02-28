@@ -124,7 +124,7 @@ def _resolve_openchat_client(settings) -> tuple[Any, Literal["openai", "azure"],
     if AsyncOpenAI is None:
         raise HTTPException(status_code=503, detail="OpenAI SDK is unavailable on the server.")
 
-    model = (settings.OPENAI_MODEL or "gpt-5.2").strip()
+    model = (settings.OPENAI_MODEL or "gpt-5.2pro").strip()
     client = AsyncOpenAI(api_key=api_key, timeout=45.0)
     return client, "openai", model
 

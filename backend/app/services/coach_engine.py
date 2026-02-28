@@ -43,23 +43,21 @@ class CoachEngine:
     ) -> CoachAnalyzeResponse:
         text = (request.message.my_draft or "").strip()
         merged_extra_context = extra_context or {}
-        counterparty_context = self._build_counterparty_context(merged_extra_context)
+        counterparty_context = self._build_counterparty_context(extra_context=merged_extra_context)
 
         analysis = self._build_analysis(text=text, banned_tones=request.context.banned_tones or [])
         simulations = self._build_simulations(analysis=analysis, counterparty_context=counterparty_context)
-        replies = self._build_replies(request=request, analysis=analysis, counterparty_context=counterparty_context)
+        replies = self._build_replies(request=request, analysis=analysis)
         followups = self._build_followups()
         action = self._build_action(
             request=request,
             analysis=analysis,
             replies=replies,
-            counterparty_context=counterparty_context,
         )
         romance_insights = self._build_romance_insights(request=request, analysis=analysis)
         evidence_items = self._build_evidence_items(
             extra_context=merged_extra_context,
             fallback_text=text,
-            counterparty_context=counterparty_context,
         )
         confidence = self._score_confidence(analysis=analysis)
 
@@ -181,6 +179,11 @@ class CoachEngine:
             "Never diagnose people or claim hidden unconscious facts.\n"
             "Never provide manipulation or psychological warfare tactics.\n"
             "If manipulation_risk is detected, action.type must be pause_thread or ask_clarifying.\n"
+            "Do step-by-step analysis internally, then run a consistency check before final output.\n"
+            "Consistency check rule: no contradiction between analysis.risks, simulations, action, and replies.\n"
+            "User draft may be rough. Rewrite into polished Korean messages aligned with context and persona intent.\n"
+            "Persona alignment rule: reflect context.relationship, context.goal, context.image_goal, and default_send_policy.\n"
+            "Generate exactly 3 reply suggestions in replies.\n"
             "Keep output keys exactly aligned with the baseline schema skeleton.\n"
             f"room_id={request.room_id}\n"
             f"context={json.dumps(request.context.model_dump(), ensure_ascii=False)}\n"
@@ -193,9 +196,30 @@ class CoachEngine:
             payload = self.provider.generate_structured(prompt)
             if not isinstance(payload, dict) or not payload:
                 return baseline
-            return CoachAnalyzeResponse.model_validate(payload)
+            candidate = CoachAnalyzeResponse.model_validate(payload)
+            return self._normalize_provider_response(candidate=candidate, baseline=baseline)
         except Exception:
             return baseline
+
+    def _normalize_provider_response(
+        self,
+        *,
+        candidate: CoachAnalyzeResponse,
+        baseline: CoachAnalyzeResponse,
+    ) -> CoachAnalyzeResponse:
+        # Guarantee exactly three reply suggestions for UI consistency.
+        replies = list(candidate.replies or [])
+        fallback_replies = list(baseline.replies or [])
+
+        if len(replies) < 3:
+            replies.extend(fallback_replies[: max(0, 3 - len(replies))])
+        if len(replies) > 3:
+            replies = replies[:3]
+
+        if not replies and fallback_replies:
+            replies = fallback_replies[:3]
+
+        return candidate.model_copy(update={"replies": replies})
 
     def _build_analysis(self, *, text: str, banned_tones: list[str]) -> CoachAnalysis:
         politeness = self._score_politeness(text)

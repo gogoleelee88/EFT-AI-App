@@ -248,7 +248,7 @@ class OpenAIPlatformProvider(BaseLLMProvider):
 
     def __init__(self) -> None:
         self.api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
-        self.model = (os.getenv("OPENAI_MODEL") or "gpt-5.2").strip()
+        self.model = (os.getenv("OPENAI_MODEL") or "gpt-5.2pro").strip()
         self.embed_model = (os.getenv("OPENAI_EMBED_MODEL") or "text-embedding-3-small").strip()
         self.mock_mode = _is_truthy_env(os.getenv("MOCK_MODE"))
 

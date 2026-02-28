@@ -113,9 +113,9 @@ class Settings(BaseSettings):
 
     HUGGINGFACE_TOKEN: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
-    OPENAI_MODEL: str = Field("gpt-5.2", env="OPENAI_MODEL")
+    OPENAI_MODEL: str = Field("gpt-5.2pro", env="OPENAI_MODEL")
     PROPOSAL_LLM_PROVIDER: str = Field("auto", env="PROPOSAL_LLM_PROVIDER")
-    PROPOSAL_OPENAI_MODEL: str = Field("gpt-5.2", env="PROPOSAL_OPENAI_MODEL")
+    PROPOSAL_OPENAI_MODEL: str = Field("gpt-5.2pro", env="PROPOSAL_OPENAI_MODEL")
     PROPOSAL_VLLM_BASE_URL: str = Field("http://127.0.0.1:8001", env="PROPOSAL_VLLM_BASE_URL")
     PROPOSAL_VLLM_MODEL: str = Field(
         "meta-llama/Llama-3.1-8B-Instruct",
