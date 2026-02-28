@@ -138,12 +138,19 @@ async def openchat(payload: OpenChatRequest):
     messages = _build_openchat_messages(payload)
 
     try:
-        completion = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=payload.temperature,
-            max_tokens=payload.max_tokens,
-        )
+        completion_kwargs: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": payload.temperature,
+        }
+        token_field = (
+            "max_completion_tokens"
+            if provider_label == "openai" and model.startswith("gpt-5")
+            else "max_tokens"
+        )
+        completion_kwargs[token_field] = payload.max_tokens
+
+        completion = await client.chat.completions.create(**completion_kwargs)
 
         assistant_message = ""
         if completion.choices:
