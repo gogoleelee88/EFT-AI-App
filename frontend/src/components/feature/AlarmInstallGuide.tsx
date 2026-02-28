@@ -25,15 +25,19 @@ export default function AlarmInstallGuide({
   const [isInstalled, setIsInstalled] = useState(false);
 
   const targetUrl = useMemo(() => (installUrl || "").trim(), [installUrl]);
+  const isApkLikeUrl = useMemo(
+    () => /(?:\/latest\.apk(?:$|\?)|\.apk(?:$|\?))/i.test(targetUrl),
+    [targetUrl]
+  );
 
   const qrUrl = useMemo(
     () =>
-      targetUrl
+      isApkLikeUrl && targetUrl
         ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=1&format=png&data=${encodeURIComponent(
             targetUrl
           )}`
         : "",
-    [targetUrl]
+    [isApkLikeUrl, targetUrl]
   );
 
   useEffect(() => {
@@ -90,14 +94,19 @@ export default function AlarmInstallGuide({
       )}
       <h4 className="text-sm font-bold text-gray-900">{title}</h4>
       <p className="mt-1 text-xs leading-relaxed text-gray-700">{description}</p>
+      {targetUrl && !isApkLikeUrl && (
+        <p className="mt-2 text-xs text-red-700">
+          설치 URL이 APK 경로가 아닙니다. (/latest.apk 또는 .apk URL 필요)
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-2">
         {supported && (
           <Button size="sm" onClick={handleInstall} className="bg-amber-600 hover:bg-amber-700" disabled={installing}>
-            {installing ? "설치 시도 중..." : "지금 앱으로 설치"}
+            {installing ? "설치 시도 중..." : "지금 웹앱(PWA) 설치"}
           </Button>
         )}
-        {!supported && targetUrl && (
+        {!supported && targetUrl && isApkLikeUrl && (
           <a
             href={targetUrl}
             target="_blank"
