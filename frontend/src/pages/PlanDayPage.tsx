@@ -817,6 +817,7 @@ const PlanDayPage: React.FC = () => {
           wizard.state.alarm && (
             <div className="space-y-4">
               {showAlarmInstallGuide && (
+                <>
                 <AlarmInstallGuide
                   title="알람 전달은 앱에서 더 안정적입니다"
                   description="푸시 권한이 있는 앱에서 일정 알림이 가장 잘 동작합니다. 앱을 설치하고 알람을 연동해 주세요."
@@ -825,6 +826,22 @@ const PlanDayPage: React.FC = () => {
                   onDismiss={() => setShowAlarmInstallGuide(false)}
                   showDismiss
                 />
+                {appInstallUrl ? (
+                  <p className="mx-4 -mt-2 break-all text-[11px] text-gray-600">
+                    설치 링크:{" "}
+                    <a
+                      href={appInstallUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {appInstallUrl}
+                    </a>
+                  </p>
+                ) : (
+                  <p className="mx-4 -mt-2 text-[11px] text-red-600">설치 링크 생성 실패</p>
+                )}
+                </>
               )}
               <PlanSummary
                 task={wizard.state.task}

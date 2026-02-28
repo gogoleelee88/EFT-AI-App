@@ -92,6 +92,9 @@ const InstallGuidePage = () => {
 
         <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
           <SectionTitle title="대체 APK QR 다운로드" />
+          <p className="mt-3 break-all text-xs text-gray-600">
+            현재 QR 대상 URL: <code>{qrApkUrl || "(없음)"}</code>
+          </p>
           {qrApkUrl ? (
             <div className="mt-3 space-y-3">
               <p className="text-sm text-gray-700">APK 링크가 유효한 경우 QR로도 바로 설치할 수 있습니다.</p>
