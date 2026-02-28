@@ -86,9 +86,13 @@ jobs:
       - name: Copy _redirects to dist
         run: |
           echo "Copying _redirects file to dist..."
-          cp frontend/public/_redirects frontend/dist/_redirects
-          echo "✅ _redirects copied successfully"
-          ls -lh frontend/dist/_redirects
+          if [ -f frontend/public/_redirects ]; then
+            cp frontend/public/_redirects frontend/dist/_redirects
+            echo "✅ _redirects copied successfully"
+            ls -lh frontend/dist/_redirects
+          else
+            echo "ℹ️ frontend/public/_redirects not found. Skipping copy."
+          fi
 
 
       - name: Build sanity check
