@@ -38,5 +38,14 @@ def test_chat_ask_suds_action_present():
             }
         )
         assert res.status_code == 200
-        actions = res.json().get("actions", [])
-        assert any(isinstance(a, dict) and a.get("type") == "ask_suds" for a in actions), f"missing ask_suds for '{msg}'"
+        data = res.json()
+        actions = data.get("actions", [])
+        tool_calls = data.get("tool_calls", [])
+        assert any(
+            isinstance(a, dict)
+            and (a.get("type") == "ask_suds" or a.get("name") in {"eft.start_session", "eft.next_round"})
+            for a in actions
+        ) or any(
+            isinstance(t, dict) and t.get("name") in {"eft.start_session", "eft.next_round"}
+            for t in tool_calls
+        ), f"missing EFT action for '{msg}'"

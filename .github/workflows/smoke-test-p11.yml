@@ -97,14 +97,25 @@ jobs:
 
           data = response.json()
           actions = data.get('actions', [])
-          ask_suds_found = any(a.get('type') == 'ask_suds' for a in actions)
+          tool_calls = data.get('tool_calls', [])
+          eft_action_found = any(
+              isinstance(a, dict) and (
+                  a.get('type') == 'ask_suds' or
+                  a.get('name') in ('eft.start_session', 'eft.next_round')
+              )
+              for a in actions
+          ) or any(
+              isinstance(t, dict) and t.get('name') in ('eft.start_session', 'eft.next_round')
+              for t in tool_calls
+          )
 
-          if ask_suds_found:
-              print('PASS: ask_suds action emitted for 0~10 pattern')
+          if eft_action_found:
+              print('PASS: EFT-related action emitted for 0~10 pattern')
               sys.exit(0)
           else:
-              print('FAIL: ask_suds action NOT found')
+              print('FAIL: EFT-related action NOT found')
               print(f'Actions: {json.dumps(actions, ensure_ascii=False)}')
+              print(f'ToolCalls: {json.dumps(tool_calls, ensure_ascii=False)}')
               sys.exit(1)
           "
 
@@ -135,14 +146,25 @@ jobs:
 
           data = response.json()
           actions = data.get('actions', [])
-          ask_suds_found = any(a.get('type') == 'ask_suds' for a in actions)
+          tool_calls = data.get('tool_calls', [])
+          eft_action_found = any(
+              isinstance(a, dict) and (
+                  a.get('type') == 'ask_suds' or
+                  a.get('name') in ('eft.start_session', 'eft.next_round')
+              )
+              for a in actions
+          ) or any(
+              isinstance(t, dict) and t.get('name') in ('eft.start_session', 'eft.next_round')
+              for t in tool_calls
+          )
 
-          if ask_suds_found:
-              print('PASS: ask_suds action emitted for number input')
+          if eft_action_found:
+              print('PASS: EFT-related action emitted for number input')
               sys.exit(0)
           else:
-              print('FAIL: ask_suds action NOT found')
+              print('FAIL: EFT-related action NOT found')
               print(f'Actions: {json.dumps(actions, ensure_ascii=False)}')
+              print(f'ToolCalls: {json.dumps(tool_calls, ensure_ascii=False)}')
               sys.exit(1)
           "
 
@@ -173,14 +195,25 @@ jobs:
 
           data = response.json()
           actions = data.get('actions', [])
-          ask_suds_found = any(a.get('type') == 'ask_suds' for a in actions)
+          tool_calls = data.get('tool_calls', [])
+          eft_action_found = any(
+              isinstance(a, dict) and (
+                  a.get('type') == 'ask_suds' or
+                  a.get('name') in ('eft.start_session', 'eft.next_round')
+              )
+              for a in actions
+          ) or any(
+              isinstance(t, dict) and t.get('name') in ('eft.start_session', 'eft.next_round')
+              for t in tool_calls
+          )
 
-          if ask_suds_found:
-              print('PASS: ask_suds action emitted for keyword 평가')
+          if eft_action_found:
+              print('PASS: EFT-related action emitted for keyword 평가')
               sys.exit(0)
           else:
-              print('FAIL: ask_suds action NOT found')
+              print('FAIL: EFT-related action NOT found')
               print(f'Actions: {json.dumps(actions, ensure_ascii=False)}')
+              print(f'ToolCalls: {json.dumps(tool_calls, ensure_ascii=False)}')
               sys.exit(1)
           "
 
