@@ -36,9 +36,16 @@ const HYPOTHESIS_LABEL: Record<string, string> = {
   low_investment: '관심 낮음 신호',
 };
 
-const buildFallbackCoachResponse = (draft: string): CoachAnalyzeResponse => {
+const buildFallbackCoachResponse = (
+  draft: string,
+  relationship: RoomDefaults['relationship'],
+): CoachAnalyzeResponse => {
   const preview = draft.trim().slice(0, 80);
-  return {
+  const useFormalFallback = relationship === 'boss' || relationship === 'client' || relationship === 'stranger';
+  const relationshipAwareReply = useFormalFallback
+    ? '말씀 주신 내용 확인했습니다. 핵심 요청과 기한을 한 문장으로 정리해 전달하겠습니다.'
+    : '메시지 확인했어. 핵심 요청과 기한을 한 문장으로 정리해 전달할게.';
+  const fallback: CoachAnalyzeResponse = {
     action: {
       type: 'wait_and_send',
       recommended_time: 'in 5 minutes',
@@ -99,6 +106,10 @@ const buildFallbackCoachResponse = (draft: string): CoachAnalyzeResponse => {
     evidence_items: [preview || '초안 기반 기본 추천'],
     confidence: 0.35,
   };
+  if (fallback.replies.length > 0) {
+    fallback.replies[0].text = relationshipAwareReply;
+  }
+  return fallback;
 };
 
 export default function CopilotPanel({
@@ -165,10 +176,10 @@ export default function CopilotPanel({
           setData(response);
           setError(null);
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setError(null);
-          setData(buildFallbackCoachResponse(trimmed));
+          setError(err instanceof Error ? err.message : '코치 분석 요청에 실패했습니다.');
+          setData(buildFallbackCoachResponse(trimmed, defaults.relationship));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -218,7 +229,9 @@ export default function CopilotPanel({
       </div>
 
       {loading && <div className="text-sm text-gray-500">추천 생성 중...</div>}
-      {!loading && error && !data && <div className="text-sm text-red-600">{error}</div>}
+      {!loading && error && (
+        <div className="text-xs text-amber-700">AI 연결 실패로 임시 추천을 표시 중입니다: {error}</div>
+      )}
       {!loading && !error && !data && (
         <div className="text-sm text-gray-500">입력 중인 메시지로 추천을 만들어요.</div>
       )}

@@ -19,11 +19,13 @@ from backend.app.services.profile_cache_service import get_or_build_profile_cach
 from backend.app.services.rag_context_service import retrieve_context_bundle
 from backend.database import get_db
 from backend.models.proposal_os import AspirationProfile, CapabilityProfile, Signal
-from backend.models.user import User
+from backend.models.user import User
+from backend.utils.logger import get_logger
 
 
 router = APIRouter(tags=["coach"])
-engine = CoachEngine(provider=OpenAICoachProvider())
+engine = CoachEngine(provider=OpenAICoachProvider())
+logger = get_logger(__name__)
 
 
 def _merge_context(request_context: CoachContext, room) -> CoachContext:
@@ -356,21 +358,34 @@ def post_coach_analyze(
 
     try:
         result = engine.analyze(merged_request, extra_context=extra_context)
-    except Exception:
-        result = engine.analyze(merged_request)
+    except Exception as exc:
+        logger.exception(
+            "coach analyze failed room_id=%s user_id=%s",
+            body.room_id,
+            current_user.id,
+        )
+        raise HTTPException(status_code=500, detail="Coach analysis failed") from exc
     if not result.evidence_items:
         result.evidence_items = [str(item) for item in extra_context.get("evidence_items", []) if str(item).strip()][:3]
 
     if room is not None:
-        snapshot = CoachSnapshot(
-            room_id=room.id,
-            user_id=current_user.id,
-            message_id=None,
-            request_payload=merged_request.model_dump(),
-            result_payload=result.model_dump(),
-        )
-        db.add(snapshot)
-        db.commit()
+        try:
+            snapshot = CoachSnapshot(
+                room_id=room.id,
+                user_id=current_user.id,
+                message_id=None,
+                request_payload=merged_request.model_dump(),
+                result_payload=result.model_dump(),
+            )
+            db.add(snapshot)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "coach snapshot save failed room_id=%s user_id=%s",
+                room.id,
+                current_user.id,
+            )
 
     return result
 
