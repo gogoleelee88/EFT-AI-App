@@ -95,11 +95,19 @@ const PlanDayPage: React.FC = () => {
   const [bannerPatchResult, setBannerPatchResult] = useState<string | null>(null);
   const [showEmotionPrompt, setShowEmotionPrompt] = useState(false);
   const [showAlarmInstallGuide, setShowAlarmInstallGuide] = useState(false);
-  const appInstallUrl = buildApkDownloadUrl(
-    typeof window !== "undefined"
+  const directApkSource = (
+    import.meta.env.VITE_APP_INSTALL_URL ??
+    import.meta.env.VITE_DIRECT_APK_URL ??
+    (typeof window !== "undefined"
       ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
-      : "/latest.apk"
-  );
+      : "")
+  ).trim();
+  const normalizedDirectApkUrl = !directApkSource
+    ? ""
+    : /(?:\/latest\.apk(?:$|\?)|\.apk(?:$|\?))/i.test(directApkSource)
+      ? directApkSource
+      : `${directApkSource.replace(/\/+$/, "")}/latest.apk`;
+  const appInstallUrl = buildApkDownloadUrl(normalizedDirectApkUrl);
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
     if (resistanceLevel == null) return "시작 저항";
