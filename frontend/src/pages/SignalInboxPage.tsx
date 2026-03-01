@@ -1,16 +1,34 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import ClarificationCard from "../components/behavior/ClarificationCard";
 import TimelineLabelEditor from "../components/behavior/TimelineLabelEditor";
 import { useAuth } from "../hooks/useAuth";
 import {
   answerBehaviorQuestion,
   dismissBehaviorQuestion,
+  getRecoveryJournal,
   listBehaviorTimeline,
   listPendingBehaviorQuestions,
   patchBehaviorTimelineSegment,
 } from "../services/behaviorService";
 import { ingestSignal, listSignals } from "../services/proposalService";
-import type { BehaviorLabel, ClarificationQuestionOut, TimelineSegmentOut } from "../types/behavior";
+import type {
+  BehaviorLabel,
+  ClarificationQuestionOut,
+  RecoveryJournalOut,
+  TimelineSegmentOut,
+} from "../types/behavior";
 import type { SignalType } from "../types/proposalOS";
 
 type SignalItem = {
@@ -34,6 +52,21 @@ type MobileLoginResponse = {
   };
 };
 
+const ENTRY_POINT_KEYS = ["schedule_start", "progress_blocked", "distraction_detected"] as const;
+const ENTRY_POINT_COLORS: Record<(typeof ENTRY_POINT_KEYS)[number], string> = {
+  schedule_start: "#f59e0b",
+  progress_blocked: "#ef4444",
+  distraction_detected: "#3b82f6",
+};
+const TREND_COLORS = ["#7c3aed", "#2563eb", "#059669", "#ea580c", "#dc2626"];
+
+const pad2 = (n: number): string => String(n).padStart(2, "0");
+
+const toDayTokenLocal = (date: Date): string =>
+  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+const toDayLabel = (date: Date): string => `${date.getMonth() + 1}/${date.getDate()}`;
+
 const SignalInboxPage: React.FC = () => {
   const { user } = useAuth();
   const defaultUserId = useMemo(() => user?.uid || "demo-user", [user?.uid]);
@@ -50,11 +83,74 @@ const SignalInboxPage: React.FC = () => {
   const [items, setItems] = useState<SignalItem[]>([]);
   const [timelineItems, setTimelineItems] = useState<TimelineSegmentOut[]>([]);
   const [question, setQuestion] = useState<ClarificationQuestionOut | null>(null);
+  const [journal, setJournal] = useState<RecoveryJournalOut | null>(null);
+  const [journalLoading, setJournalLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [result, setResult] = useState("");
   const autoLoginAttempted = useRef(false);
+  const chartDays = useMemo(() => {
+    const now = new Date();
+    const days: Date[] = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      days.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i));
+    }
+    return days;
+  }, []);
+  const topSchedules = useMemo(() => {
+    const counter = new Map<string, number>();
+    for (const event of journal?.events ?? []) {
+      const name = (event.schedule_name || "미지정 일정").trim() || "미지정 일정";
+      counter.set(name, (counter.get(name) || 0) + 1);
+    }
+    return [...counter.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name]) => name);
+  }, [journal?.events]);
+  const entryPointTrend = useMemo(() => {
+    const rows = chartDays.map((day) => ({
+      dayToken: toDayTokenLocal(day),
+      day: toDayLabel(day),
+      schedule_start: 0,
+      progress_blocked: 0,
+      distraction_detected: 0,
+    }));
+    const indexByDay = new Map(rows.map((row, idx) => [row.dayToken, idx]));
+    for (const event of journal?.events ?? []) {
+      const dayToken = toDayTokenLocal(new Date(event.created_at));
+      const idx = indexByDay.get(dayToken);
+      if (idx == null) continue;
+      if (ENTRY_POINT_KEYS.includes(event.entry_point)) {
+        rows[idx][event.entry_point] += 1;
+      }
+    }
+    return rows;
+  }, [chartDays, journal?.events]);
+  const scheduleTrend = useMemo(() => {
+    const rows = chartDays.map((day) => {
+      const base: Record<string, number | string> = {
+        dayToken: toDayTokenLocal(day),
+        day: toDayLabel(day),
+      };
+      for (const scheduleName of topSchedules) {
+        base[scheduleName] = 0;
+      }
+      return base;
+    });
+    const indexByDay = new Map(rows.map((row, idx) => [String(row.dayToken), idx]));
+    for (const event of journal?.events ?? []) {
+      const scheduleName = (event.schedule_name || "미지정 일정").trim() || "미지정 일정";
+      if (!topSchedules.includes(scheduleName)) continue;
+      const dayToken = toDayTokenLocal(new Date(event.created_at));
+      const idx = indexByDay.get(dayToken);
+      if (idx == null) continue;
+      const prev = Number(rows[idx][scheduleName] || 0);
+      rows[idx][scheduleName] = prev + 1;
+    }
+    return rows;
+  }, [chartDays, journal?.events, topSchedules]);
 
   useEffect(() => {
     if (!userIdentifier.trim()) {
@@ -95,10 +191,28 @@ const SignalInboxPage: React.FC = () => {
     }
   };
 
+  const loadRecoveryJournal = async (targetUserId: string = activeUserId) => {
+    setJournalLoading(true);
+    try {
+      const result = await getRecoveryJournal({
+        userId: targetUserId,
+        days: 7,
+        limit: 100,
+        includeEvents: true,
+      });
+      setJournal(result);
+    } catch {
+      setJournal(null);
+    } finally {
+      setJournalLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadSignals(activeUserId);
     void loadTimeline(activeUserId);
     void loadPendingQuestion(activeUserId);
+    void loadRecoveryJournal(activeUserId);
   }, [activeUserId]);
 
   const performMobileLogin = async (identifier: string, options: { silent?: boolean } = {}) => {
@@ -139,6 +253,7 @@ const SignalInboxPage: React.FC = () => {
         loadSignals(resolvedUserId),
         loadTimeline(resolvedUserId),
         loadPendingQuestion(resolvedUserId),
+        loadRecoveryJournal(resolvedUserId),
       ]);
       if (!options.silent) {
         setResult(
@@ -332,6 +447,107 @@ const SignalInboxPage: React.FC = () => {
 
       <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-lg text-gray-900">Recovery Journal (최근 7일)</h2>
+          <button className="text-sm text-purple-700" onClick={() => loadRecoveryJournal()}>
+            새로고침
+          </button>
+        </div>
+        {journalLoading && <p className="text-sm text-gray-500">로딩 중...</p>}
+        {!journalLoading && !journal && (
+          <p className="text-sm text-gray-500">요약 데이터를 불러오지 못했습니다.</p>
+        )}
+        {!journalLoading && journal && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                총 이벤트: <span className="font-semibold">{journal.total_events}</span>
+              </div>
+              <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm">
+                웹 개입: <span className="font-semibold">{journal.open_web_count}</span>
+              </div>
+              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                억제됨: <span className="font-semibold">{journal.ignored_count}</span>
+              </div>
+            </div>
+            <ul className="space-y-1 text-sm text-gray-700">
+              {journal.summary_lines.map((line, idx) => (
+                <li key={`${line}_${idx}`} className="rounded border border-gray-100 bg-white px-3 py-2">
+                  {line}
+                </li>
+              ))}
+            </ul>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="rounded border border-gray-200 bg-white p-3">
+                <p className="text-xs font-semibold text-gray-500 mb-2">entry_point 주간 추이</p>
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={entryPointTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="day" />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Legend />
+                      {ENTRY_POINT_KEYS.map((key) => (
+                        <Bar
+                          key={key}
+                          dataKey={key}
+                          stackId="entry"
+                          fill={ENTRY_POINT_COLORS[key]}
+                          name={key}
+                        />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              <div className="rounded border border-gray-200 bg-white p-3">
+                <p className="text-xs font-semibold text-gray-500 mb-2">schedule 주간 추이 (상위 3개)</p>
+                <div className="h-56">
+                  {topSchedules.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={scheduleTrend}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="day" />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip />
+                        <Legend />
+                        {topSchedules.map((scheduleName, idx) => (
+                          <Line
+                            key={scheduleName}
+                            type="monotone"
+                            dataKey={scheduleName}
+                            stroke={TREND_COLORS[idx % TREND_COLORS.length]}
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-sm text-gray-500">
+                      스케줄별 데이터가 없습니다.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-500">최근 이벤트</p>
+              {journal.events.slice(0, 5).map((event) => (
+                <div key={event.event_id} className="rounded border border-gray-200 px-3 py-2 text-sm">
+                  <div className="text-xs text-gray-500">
+                    {new Date(event.created_at).toLocaleString()} | {event.entry_point} | {event.action}
+                  </div>
+                  <div className="text-gray-800">{event.entry_sentence}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white border rounded-xl p-4 md:p-5 space-y-3 shadow-sm">
+        <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg text-gray-900">대기 중인 질문</h2>
           <span className="text-xs text-gray-500">가장 최근 1개만 표시</span>
         </div>
@@ -398,4 +614,5 @@ const SignalInboxPage: React.FC = () => {
 };
 
 export default SignalInboxPage;
+
 

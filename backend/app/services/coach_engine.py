@@ -684,56 +684,103 @@ class CoachEngine:
         relationship = request.context.relationship or "peer"
         goal = request.context.goal or "maintain"
 
-        greeting_map = {
-            "boss": "말씀 주신 내용 확인했습니다.",
-            "client": "요청 주신 내용 확인했습니다.",
-            "peer": "내용 확인했습니다.",
-            "friend": "메시지 확인했어.",
-            "family": "말해준 내용 확인했어.",
-            "stranger": "문의 내용 확인했습니다.",
-            "romance_interest": "메시지 고마워요. 내용 차분히 봤어요.",
-        }
-        goal_map = {
-            "request": "가능한 범위와 일정을 맞춰보겠습니다.",
-            "refuse": "현재 조건에서는 진행이 어렵습니다.",
-            "negotiate": "서로 가능한 대안을 조율해보겠습니다.",
-            "maintain": "관계를 해치지 않게 핵심만 정리해 전달하겠습니다.",
-            "deescalate": "감정이 커지지 않게 사실 중심으로 정리하겠습니다.",
-        }
+        draft = (request.message.my_draft or "").strip()
+        their_last = (request.message.their_last_message or "").strip()
+        combined = f"{draft}\n{their_last}".strip()
 
-        opening = greeting_map.get(relationship, greeting_map["peer"])
+        # --- 1) Quick intent routing: invite / meal / coffee / meetup ---
+        invite_keywords = [
+            "배고프", "밥", "식사", "점심", "저녁", "같이", "먹자", "먹을래", "먹어요",
+            "커피", "한잔", "차", "카페", "만나", "볼래", "시간돼", "시간 되", "어때",
+        ]
+        is_invite = any(k in combined for k in invite_keywords)
+
+        # relationship-based opening (keep short & natural)
+        greeting_map = {
+            "boss": "메일 확인했습니다.",
+            "client": "메일 확인했습니다.",
+            "peer": "확인했습니다.",
+            "friend": "메시지 확인했어!",
+            "family": "응 확인했어.",
+            "stranger": "문의 확인했습니다.",
+            "romance_interest": "메시지 잘 봤어 🙂",
+        }
+        opening = greeting_map.get(relationship, "확인했습니다.")
+
+        # --- 2) Invite templates (override goal) ---
+        if is_invite:
+            # formality for boss/client/stranger
+            formal = relationship in ("boss", "client", "stranger")
+            if formal:
+                soft_text = f"{opening} 저 배고픈데요—시간 되시면 오늘/내일 같이 식사하실래요?"
+                neutral_text = f"{opening} 오늘이나 내일 편하신 시간에 식사 한 번 하실 수 있을까요?"
+                firm_text = f"{opening} 저는 {('오늘' if analysis.boundary_strength >= 50 else '이번 주 중')}에 시간 맞으면 좋겠습니다. 가능하신 시간대 알려주시면 맞추겠습니다."
+            else:
+                soft_text = f"{opening} 나 배고픈데 오늘/내일 시간 되면 같이 밥 먹을래?"
+                neutral_text = f"{opening} 오늘 점심/저녁 중에 뭐가 편해? 근처에서 간단히 먹자."
+                firm_text = f"{opening} 나는 {('오늘' if analysis.boundary_strength >= 50 else '이번 주')} 중에 한번 먹고 싶어. 가능하면 시간 하나만 골라줘!"
+
+            soft = CoachReply(
+                tone="soft",
+                text=soft_text,
+                expected_outcome="자연스럽게 약속 제안으로 이어질 가능성이 있습니다.",
+                tradeoffs=["상대 일정이 바쁘면 미뤄질 수 있습니다."],
+                confidence=0.76,
+            )
+            neutral = CoachReply(
+                tone="neutral",
+                text=neutral_text,
+                expected_outcome="부담을 줄이면서 선택지를 줘서 응답을 유도할 수 있습니다.",
+                tradeoffs=["다소 평이하게 느껴질 수 있습니다."],
+                confidence=0.78,
+            )
+            firm = CoachReply(
+                tone="firm",
+                text=firm_text,
+                expected_outcome="구체적으로 일정 조율을 시작하기 쉬워집니다.",
+                tradeoffs=["상대가 상황에 따라 약간 부담을 느낄 수 있습니다."],
+                confidence=0.72,
+            )
+            return [soft, neutral, firm]
+
+        # --- 3) Non-invite goals: remove report-y meta phrases ---
+        goal_map = {
+            "request": "가능한 범위와 일정부터 맞춰볼게요.",
+            "refuse": "현재는 진행이 어렵습니다.",
+            "negotiate": "서로 가능한 대안을 조율해보겠습니다.",
+            # ✅ FIX: remove '관계를 해치지 않게 핵심만 정리...' (report tone)
+            "maintain": "정리해서 짧게 답드릴게요.",
+            # ✅ FIX: also remove '감정이 커지지 않게 사실 중심으로...' (meta)
+            "deescalate": "오해 없게 요점부터 말씀드릴게요.",
+        }
         intent_line = goal_map.get(goal, goal_map["maintain"])
 
+        # --- 4) Replies (keep short, sendable) ---
         soft = CoachReply(
             tone="soft",
-            text=(
-                f"{opening} {intent_line} "
-                "제가 이해한 내용을 먼저 짧게 공유드리고, 필요한 부분만 확인 부탁드려도 될까요?"
-            ),
-            expected_outcome="방어감을 낮추고 대화를 이어갈 가능성이 있습니다.",
-            tradeoffs=["결론 전달 속도는 다소 느릴 수 있습니다.", "주도성이 약해 보일 수 있습니다."],
+            text=f"{opening} {intent_line} 필요한 부분만 확인해주실 수 있을까요?",
+            expected_outcome="부드럽게 대화를 이어갈 가능성이 있습니다.",
+            tradeoffs=["결론 전달 속도는 다소 느릴 수 있습니다."],
             confidence=0.74,
         )
 
         neutral = CoachReply(
             tone="neutral",
-            text=(
-                f"{opening} 전달드릴 핵심은 다음과 같습니다. {intent_line} "
-                "추가로 필요한 기준이 있으면 알려주시면 그에 맞춰 정리하겠습니다."
-            ),
-            expected_outcome="업무형 응답으로 안정적으로 이어질 가능성이 있습니다.",
+            text=f"{opening} {intent_line} 추가로 확인할 기준(기한/범위/우선순위)이 있으면 알려주세요.",
+            expected_outcome="업무형 톤으로 안정적으로 이어질 가능성이 있습니다.",
             tradeoffs=["정서적 공감이 적어 차갑게 읽힐 수 있습니다."],
             confidence=0.78,
         )
 
-        boundary_line = "우선순위와 기한을 맞추기 위해 이번 요청은 가능한 범위 내에서만 진행하겠습니다."
-        if analysis.boundary_strength < 50:
-            boundary_line = "현재 일정과 우선순위를 기준으로 이번 요청은 지금 가능한 범위에서만 진행하겠습니다."
+        # boundary line
+        boundary_line = "가능한 범위부터 진행하겠습니다."
+        if analysis.boundary_strength >= 50:
+            boundary_line = "우선 가능한 범위부터 진행하고, 필요한 대안을 함께 제안드리겠습니다."
 
         firm = CoachReply(
             tone="firm",
-            text=f"{opening} {boundary_line} 필요하시면 대안 1~2가지를 바로 제안드리겠습니다.",
-            expected_outcome="경계선을 분명히 하면서도 협업 흐름을 유지할 수 있습니다.",
+            text=f"{opening} {boundary_line}",
+            expected_outcome="경계를 유지하면서도 협업 흐름을 유지할 수 있습니다.",
             tradeoffs=["상대가 단기적으로는 단호하게 느낄 수 있습니다."],
             confidence=0.72,
         )

@@ -91,3 +91,71 @@ export interface TimelineSegmentListOut {
   items: TimelineSegmentOut[];
 }
 
+export type RecoveryEntryPoint = "schedule_start" | "progress_blocked" | "distraction_detected";
+export type RecoverySessionState = "start" | "in_progress";
+export type RecoveryAction = "open_web" | "ignore";
+
+export interface RecoveryEventIn {
+  user_id?: string;
+  focus_session_id?: string;
+  schedule_id?: string;
+  schedule_name?: string;
+  session_state?: RecoverySessionState;
+  entry_point: RecoveryEntryPoint;
+  blocked_min?: number;
+  distraction_type?: string;
+  confidence?: number;
+  source?: string;
+  timestamp?: string;
+  cooldown_minutes?: number;
+}
+
+export interface RecoveryEventOut {
+  event_id: string;
+  action: RecoveryAction;
+  entry_sentence: string;
+  recovery_url?: string | null;
+  suppressed_reason?: string | null;
+  focus_session_id?: string | null;
+  schedule_id?: string | null;
+  entry_point: RecoveryEntryPoint;
+  created_at: string;
+}
+
+export interface IosSignalIn {
+  user_id?: string;
+  focus_session_id?: string;
+  schedule_id?: string;
+  schedule_name?: string;
+  signal_type: "background" | "screen_off";
+  confidence?: number;
+  timestamp?: string;
+  cooldown_minutes?: number;
+}
+
+export interface RecoveryJournalEventItem {
+  event_id: string;
+  created_at: string;
+  entry_point: RecoveryEntryPoint;
+  session_state: RecoverySessionState;
+  schedule_id?: string | null;
+  schedule_name?: string | null;
+  distraction_type?: string | null;
+  blocked_min?: number | null;
+  action: RecoveryAction;
+  entry_sentence: string;
+}
+
+export interface RecoveryJournalOut {
+  user_id: string;
+  from_ts: string;
+  to_ts: string;
+  total_events: number;
+  open_web_count: number;
+  ignored_count: number;
+  entry_point_counts: Record<string, number>;
+  distraction_type_counts: Record<string, number>;
+  schedule_counts: Record<string, number>;
+  summary_lines: string[];
+  events: RecoveryJournalEventItem[];
+}

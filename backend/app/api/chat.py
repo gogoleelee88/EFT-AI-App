@@ -124,7 +124,7 @@ def _resolve_openchat_client(settings) -> tuple[Any, Literal["openai", "azure"],
     if AsyncOpenAI is None:
         raise HTTPException(status_code=503, detail="OpenAI SDK is unavailable on the server.")
 
-    model = (settings.OPENAI_MODEL or "gpt-5.2pro").strip()
+    model = (settings.OPENAI_MODEL or "gpt-5.2").strip()
     client = AsyncOpenAI(api_key=api_key, timeout=45.0)
     return client, "openai", model
 
@@ -138,19 +138,12 @@ async def openchat(payload: OpenChatRequest):
     messages = _build_openchat_messages(payload)
 
     try:
-        completion_kwargs: Dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": payload.temperature,
-        }
-        token_field = (
-            "max_completion_tokens"
-            if provider_label == "openai" and model.startswith("gpt-5")
-            else "max_tokens"
-        )
-        completion_kwargs[token_field] = payload.max_tokens
-
-        completion = await client.chat.completions.create(**completion_kwargs)
+        completion = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+        )
 
         assistant_message = ""
         if completion.choices:

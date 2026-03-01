@@ -93,6 +93,13 @@ export const EFTStrictPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isDummyModeReady, setIsDummyModeReady] = useState(false);
   const [postChoice, setPostChoice] = useState<PostIntakeChoice | null>(null);
+  const entrySentence = parseText(
+    searchParams.get("sentence") || searchParams.get("entry_sentence"),
+    "",
+  );
+  const entryPoint = parseText(searchParams.get("entry_point"), "");
+  const scheduleId = parseText(searchParams.get("schedule_id"), "");
+  const [entryGateOpen, setEntryGateOpen] = useState(entrySentence.length === 0);
   const planStartResistance = (location.state as { planStartResistance?: string } | undefined)?.planStartResistance;
 
   const handleSubmit = async (data: StrictIntakeInput) => {
@@ -100,12 +107,17 @@ export const EFTStrictPage: React.FC = () => {
     setStrictIntakeData(data);
 
     try {
+      const strictIntakePayload: Record<string, unknown> = { ...data };
+      if (entryPoint) strictIntakePayload.entry_point = entryPoint;
+      if (entrySentence) strictIntakePayload.entry_sentence = entrySentence;
+      if (scheduleId) strictIntakePayload.schedule_id = scheduleId;
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "EFT STRICT 입력",
-          strict_intake: data,
+          strict_intake: strictIntakePayload,
         }),
       });
 
@@ -238,6 +250,26 @@ export const EFTStrictPage: React.FC = () => {
     );
   }
 
+  if (!entryGateOpen) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 p-4">
+        <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-lg">
+          <h1 className="text-lg font-bold text-gray-900">현재 상태</h1>
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-base leading-relaxed text-amber-900">
+            {entrySentence}
+          </p>
+          <button
+            type="button"
+            onClick={() => setEntryGateOpen(true)}
+            className="mt-6 w-full rounded-xl bg-amber-500 py-3 text-center font-medium text-white transition hover:bg-amber-600"
+          >
+            복귀 개입 시작
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen w-full items-start justify-center bg-gray-50 p-4">
       <div className="flex w-full max-w-md flex-col md:max-w-2xl lg:max-w-4xl">
@@ -255,4 +287,3 @@ export const EFTStrictPage: React.FC = () => {
     </div>
   );
 };
-
