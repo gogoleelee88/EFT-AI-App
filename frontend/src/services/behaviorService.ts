@@ -5,6 +5,10 @@ import type {
   ClarificationAnswerOut,
   ClarificationQuestionIn,
   ClarificationQuestionOut,
+  IosSignalIn,
+  RecoveryEventIn,
+  RecoveryEventOut,
+  RecoveryJournalOut,
   TimelineSegmentListOut,
   TimelineSegmentOut,
 } from "../types/behavior";
@@ -81,4 +85,40 @@ export function patchBehaviorTimelineSegment(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export function postRecoveryEvent(payload: RecoveryEventIn, userId?: string) {
+  const q = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  return requestJson<RecoveryEventOut>(`/api/spec/recovery/events${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function postIosSignal(payload: IosSignalIn, userId?: string) {
+  const q = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  return requestJson<RecoveryEventOut>(`/api/spec/recovery/ios-signals${q}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getRecoveryJournal(input: {
+  userId: string;
+  days?: number;
+  limit?: number;
+  fromTs?: string;
+  toTs?: string;
+  includeEvents?: boolean;
+}) {
+  const params = new URLSearchParams();
+  params.set("user_id", input.userId);
+  if (input.days != null) params.set("days", String(input.days));
+  if (input.limit != null) params.set("limit", String(input.limit));
+  if (input.fromTs) params.set("from_ts", input.fromTs);
+  if (input.toTs) params.set("to_ts", input.toTs);
+  if (input.includeEvents != null) params.set("include_events", String(input.includeEvents));
+  return requestJson<RecoveryJournalOut>(`/api/spec/recovery/journal?${params.toString()}`);
 }

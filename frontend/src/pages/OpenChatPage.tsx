@@ -1,5 +1,5 @@
 ﻿import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 type OpenChatRole = "user" | "assistant";
 
@@ -13,6 +13,8 @@ type OpenChatApiResponse = {
   session_id?: string;
   assistant_message?: string;
   response?: string;
+  entry_point?: "schedule_start" | "progress_blocked" | "distraction_detected";
+  entry_sentence?: string;
 };
 
 const SOOGYEONG_ROOM_ID = "7465e17d-a496-40f1-b682-1a2d4b382c23";
@@ -40,12 +42,18 @@ async function parseError(response: Response): Promise<string> {
 
 export default function OpenChatPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<OpenChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement | null>(null);
+  const entrySentence = (searchParams.get("sentence") || searchParams.get("entry_sentence") || "").trim();
+  const entryPoint = (searchParams.get("entry_point") || "").trim();
+  const sessionState = (searchParams.get("session_state") || "").trim();
+  const scheduleId = (searchParams.get("schedule_id") || "").trim();
+  const scheduleName = (searchParams.get("schedule_name") || "").trim();
 
   const historyPayload = useMemo(
     () =>
@@ -83,6 +91,11 @@ export default function OpenChatPage() {
           message: text,
           session_id: sessionId ?? undefined,
           history: historyPayload,
+          entry_point: entryPoint || undefined,
+          entry_sentence: entrySentence || undefined,
+          session_state: sessionState || undefined,
+          schedule_id: scheduleId || undefined,
+          schedule_name: scheduleName || undefined,
         }),
       });
 
@@ -238,6 +251,11 @@ export default function OpenChatPage() {
 
         <div className="h-[62vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="space-y-3">
+            {entrySentence && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {entrySentence}
+              </div>
+            )}
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -296,7 +314,3 @@ export default function OpenChatPage() {
     </div>
   );
 }
-
-
-
-

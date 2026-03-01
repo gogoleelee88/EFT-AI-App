@@ -31,9 +31,9 @@ def get_openai_client():
 
 
 def _resolve_openai_model_candidates() -> list[str]:
-    primary = os.getenv("OPENAI_MODEL", "gpt-5.2pro").strip()
+    primary = os.getenv("OPENAI_MODEL", "gpt-5.2").strip()
     candidates = [primary] if primary else []
-    fallback = os.getenv("OPENAI_FALLBACK_MODELS", "gpt-5.2pro").split(",")
+    fallback = os.getenv("OPENAI_FALLBACK_MODELS", "gpt-5.2").split(",")
     for model in fallback:
         model = model.strip()
         if model and model not in candidates:
