@@ -72,7 +72,7 @@ export interface CoachFollowup {
 
 export interface CoachAction {
   type: ActionType;
-  recommended_time: string;
+  recommended_time?: string | null;
   rationale: string[];
   execution_steps: string[];
   fallback_if_user_insists_send_now: {
@@ -81,7 +81,40 @@ export interface CoachAction {
   };
 }
 
+export interface RomanceInsights {
+  interest_hypotheses: Array<{
+    label: InterestHypothesisLabel;
+    likelihood: Likelihood;
+    evidence_quotes: string[];
+    alternative_explanations: string[];
+    what_to_do: string[];
+  }>;
+  compatibility_notes: {
+    my_strengths: string[];
+    my_risks: string[];
+    watchouts: string[];
+  };
+  safe_clarifying_questions: string[];
+}
+
+export interface CoachSuggestedMessage {
+  label: string;
+  text: string;
+}
+
+export interface CoachInternal {
+  notes: string[];
+  banned_sections_detected: string[];
+  rewrite_applied: boolean;
+}
+
+export interface CoachPolicy {
+  rewrite_applied: boolean;
+  banned_patterns_detected: string[];
+}
+
 export interface CoachAnalyzeResponse {
+  messages: CoachSuggestedMessage[];
   action: CoachAction;
   analysis: {
     politeness_score: number;
@@ -93,21 +126,9 @@ export interface CoachAnalyzeResponse {
   simulations: CoachSimulation[];
   replies: CoachReply[];
   followups: CoachFollowup[];
-  romance_insights: {
-    interest_hypotheses: Array<{
-      label: InterestHypothesisLabel;
-      likelihood: Likelihood;
-      evidence_quotes: string[];
-      alternative_explanations: string[];
-      what_to_do: string[];
-    }>;
-    compatibility_notes: {
-      my_strengths: string[];
-      my_risks: string[];
-      watchouts: string[];
-    };
-    safe_clarifying_questions: string[];
-  };
+  romance_insights?: RomanceInsights | null;
   evidence_items: string[];
   confidence: number;
+  internal?: CoachInternal;
+  policy?: CoachPolicy;
 }

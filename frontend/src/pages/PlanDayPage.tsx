@@ -96,11 +96,9 @@ const PlanDayPage: React.FC = () => {
   const [showEmotionPrompt, setShowEmotionPrompt] = useState(false);
   const [showAlarmInstallGuide, setShowAlarmInstallGuide] = useState(false);
   const appInstallUrl = buildApkDownloadUrl(
-    import.meta.env.VITE_APP_INSTALL_URL ||
-    import.meta.env.VITE_DIRECT_APK_URL ||
-    (typeof window !== "undefined"
+    typeof window !== "undefined"
       ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
-      : "")
+      : "/latest.apk"
   );
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
@@ -819,7 +817,7 @@ const PlanDayPage: React.FC = () => {
               {showAlarmInstallGuide && (
                 <>
                 <AlarmInstallGuide
-                  title="알람 전달은 앱에서 더 안정적입니다"
+                  title="알람 전달은 앱에서 더 안정적입니다 (안드로이드용)"
                   description="푸시 권한이 있는 앱에서 일정 알림이 가장 잘 동작합니다. 앱을 설치하고 알람을 연동해 주세요."
                   className="mx-4"
                   installUrl={appInstallUrl}
@@ -828,7 +826,7 @@ const PlanDayPage: React.FC = () => {
                 />
                 {appInstallUrl ? (
                   <p className="mx-4 -mt-2 break-all text-[11px] text-gray-600">
-                    설치 링크:{" "}
+                    설치 링크(안드로이드용):{" "}
                     <a
                       href={appInstallUrl}
                       target="_blank"
