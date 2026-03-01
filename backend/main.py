@@ -70,9 +70,10 @@ from backend.spec_loop.plan_patch.router import router as spec_plan_patch_router
 from backend.spec_loop.planner.router import router as spec_plan_router
 from backend.spec_loop.scheduler.router import router as spec_jobs_router
 from backend.spec_loop.simulator.router import router as spec_simulate_router
-from backend.spec_loop.behavior.router import router as spec_behavior_router
-from backend.spec_loop.focus_session.router import router as spec_focus_session_router
-from backend.spec_loop.reminder.router import router as spec_reminder_router
+from backend.spec_loop.behavior.router import router as spec_behavior_router
+from backend.spec_loop.focus_session.router import router as spec_focus_session_router
+from backend.spec_loop.recovery.router import router as spec_recovery_router
+from backend.spec_loop.reminder.router import router as spec_reminder_router
 from backend.spec_loop.reminder.runtime import start_reminder_ticker_if_enabled, stop_reminder_ticker
 from backend.focus.router import router as focus_router
 
@@ -682,10 +683,11 @@ app.include_router(spec_cycle_router, prefix="/api/spec")
 app.include_router(spec_plan_patch_router, prefix="/api/spec")
 app.include_router(spec_mission_router, prefix="/api")
 app.include_router(spec_mission_verify_router, prefix="/api")
-app.include_router(spec_behavior_router, prefix="/api/spec")
-app.include_router(spec_focus_session_router, prefix="/api/spec")
-app.include_router(spec_reminder_router, prefix="/api")
-app.include_router(focus_router, prefix="/api")
+app.include_router(spec_behavior_router, prefix="/api/spec")
+app.include_router(spec_focus_session_router, prefix="/api/spec")
+app.include_router(spec_recovery_router, prefix="/api/spec")
+app.include_router(spec_reminder_router, prefix="/api")
+app.include_router(focus_router, prefix="/api")
 
 
 # Optional SPA catch-all

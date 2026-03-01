@@ -23,6 +23,7 @@ from backend.spec_loop.models.alarm_job import AlarmJob
 from backend.spec_loop.models.reminder_job import ReminderJob
 from backend.spec_loop.models.reminder_delivery import ReminderDelivery
 from backend.spec_loop.models.push_subscription import PushSubscription
+from backend.spec_loop.models.recovery_event import RecoveryEvent
 
 __all__ = [
     "Task",
@@ -49,5 +50,5 @@ __all__ = [
     "ReminderJob",
     "ReminderDelivery",
     "PushSubscription",
+    "RecoveryEvent",
 ]
-
