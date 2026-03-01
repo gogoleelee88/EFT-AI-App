@@ -85,4 +85,21 @@
     <string name="notif_permission_granted">알림 허용 완료</string>
     <string name="app_version_info">앱 정보: %1$s</string>
     <string name="app_version_dev_mode_hint">개발자 설정은 앱 정보 텍스트를 5회 탭하세요.</string>
+    <string name="usage_access_section_title">Behavior Detection (Optional)</string>
+    <string name="usage_access_section_desc">When enabled, only category-level app usage summaries are used for recovery nudges and session summaries. Raw package names and exact per-app timelines are not sent to server.</string>
+    <string name="usage_access_switch_label">Enable app-switch detection (Usage Access required)</string>
+    <string name="usage_access_open_settings">Open Usage Access Settings</string>
+    <string name="usage_access_view_policy">View Data Policy</string>
+    <string name="usage_access_status_unknown">Status: Checking…</string>
+    <string name="usage_access_status_on">Status: Usage Access granted</string>
+    <string name="usage_access_status_off">Status: Usage Access not granted (enable in Android Settings)</string>
+    <string name="usage_access_status_disabled">Status: Feature disabled</string>
+    <string name="usage_access_dialog_title">Data Usage Notice</string>
+    <string name="usage_access_dialog_body">This feature summarizes app category transitions during focus sessions (for example WorkTool, Browser, SNS, YouTube).\n\nSent to server: category summary totals and mismatch score.\nNot sent to server: raw package names, exact per-app timestamps, full device timeline.\n\nNo ads, no sale of personal data, no cross-app marketing tracking.\n\nYou can disable this feature anytime in app settings and revoke Usage Access in Android Settings.</string>
+    <string name="usage_access_dialog_ok">OK</string>
+    <string name="usage_access_prompt_title">Enable Usage Access</string>
+    <string name="usage_access_prompt_body">To use app-switch detection, Usage Access must be granted in Android Settings. Open settings now?</string>
+    <string name="usage_access_required_for_start_body">To start focus with app-switch detection, Usage Access must be granted in Android Settings. Open settings now?</string>
+    <string name="usage_access_prompt_open">Open</string>
+    <string name="usage_access_prompt_later">Later</string>
 </resources>

@@ -85,6 +85,18 @@ abstract class LegacyMainTabFragment : Fragment() {
     private lateinit var behaviorStopButton: Button
     private lateinit var behaviorFlushButton: Button
     private lateinit var behaviorStatusView: TextView
+    private lateinit var recoveryTimerSection: View
+    private lateinit var recoverySensitivityGroup: RadioGroup
+    private lateinit var recoverySensitivitySensitive: RadioButton
+    private lateinit var recoverySensitivityNormal: RadioButton
+    private lateinit var recoverySensitivityRelaxed: RadioButton
+    private lateinit var scheduleStartDelayMinInput: EditText
+    private lateinit var progressBlockedMinInput: EditText
+    private lateinit var usageAccessSection: View
+    private lateinit var usageStatsEnabledSwitch: com.google.android.material.switchmaterial.SwitchMaterial
+    private lateinit var openUsageAccessSettingsButton: Button
+    private lateinit var viewDataPolicyButton: Button
+    private lateinit var usageAccessStatusText: TextView
     private lateinit var behaviorRefreshQuestionButton: Button
     private lateinit var behaviorQuestionTextView: TextView
     private lateinit var behaviorAnswerWorkButton: Button
@@ -139,18 +151,56 @@ abstract class LegacyMainTabFragment : Fragment() {
         val recoveryUrl: String?,
     )
 
+    private data class RecoveryInterventionUi(
+        val action: String,
+        val recoveryUrl: String?,
+        val entrySentence: String?,
+    )
+
+    private data class RecoveryTimerConfig(
+        val sensitivity: String,
+        val scheduleStartDelayMinutes: Int,
+        val progressBlockedMinutes: Int,
+    )
+
     private var currentBehaviorQuestion: BehaviorQuestionUi? = null
     private var behaviorQuestionBusy: Boolean = false
+    private var lastLifecycleRecoveryEventAt = 0L
+    private var activeFocusSessionId: String? = null
+    private var focusSessionStartedAt = 0L
+    private var usageAccessDialogShowing: Boolean = false
+    private var hasMeaningfulProgress = false
+    private var lastMeaningfulProgressAt = 0L
+    private var scheduleStartEventSent = false
+    private var lastProgressBlockedEventAt = 0L
+    private var usageTracker: com.eft.mobileagent.behavior.usage.UsageSessionTracker? = null
+    private var usagePoller: com.eft.mobileagent.behavior.usage.UsageStatsPoller? = null
+    private val recoveryTimerHandler = Handler(Looper.getMainLooper())
+    private var recoveryTimerRunnable: Runnable? = null
+    private var recoveryTimerConfig = RecoveryTimerConfig(
+        sensitivity = "normal",
+        scheduleStartDelayMinutes = 3,
+        progressBlockedMinutes = 8,
+    )
 
     private companion object {
         const val SOFT_NUDGE_TRIGGER_REASON = "focus_soft_nudge"
         const val SOFT_NUDGE_QUESTION_TEXT = "�ڸ����� �̵��ϼ̾��. �������Ű���?"
-        const val RECOVERY_PAGE_PATH = "/signal-inbox"
+        const val RECOVERY_PAGE_PATH = "/eft-strict"
+        const val RECOVERY_EVENT_PATH = "/api/spec/recovery/events"
+        const val LIFECYCLE_RECOVERY_DEBOUNCE_MS = 60_000L
+        const val RECOVERY_TIMER_TICK_MS = 60_000L
+        const val PROGRESS_BLOCKED_REPEAT_MS = 10 * 60_000L
         const val SOFT_NUDGE_POLL_INTERVAL_MS = 7_000L
         val RECOVERY_WEB_PORT_CANDIDATES = listOf("8787", "4173", "5173", "80", "443")
         const val PREFS_NAME = "mobile_agent_prefs"
         const val PREF_KEY_NOTIFICATION_PROMPTED = "notification_prompted"
         const val PREF_KEY_DEVELOPER_MODE = "developer_mode_enabled"
+        const val PREF_KEY_RECOVERY_SENSITIVITY = "recovery_sensitivity"
+        const val PREF_KEY_SCHEDULE_START_DELAY_MIN = "schedule_start_delay_min"
+        const val PREF_KEY_PROGRESS_BLOCKED_MIN = "progress_blocked_min"
+        const val PREF_KEY_USAGE_STATS_ENABLED = "usage_stats_enabled"
+        const val PREF_KEY_USAGE_ACCESS_PROMPTED = "usage_access_prompted"
         const val DEV_MODE_TAP_TARGET = 5
         const val DEV_MODE_TAP_WINDOW_MS = 2_500L
     }
@@ -204,6 +254,18 @@ abstract class LegacyMainTabFragment : Fragment() {
         behaviorStopButton = view.findViewById(R.id.behaviorStopButton)
         behaviorFlushButton = view.findViewById(R.id.behaviorFlushButton)
         behaviorStatusView = view.findViewById(R.id.behaviorStatusView)
+        recoveryTimerSection = view.findViewById(R.id.recoveryTimerSection)
+        recoverySensitivityGroup = view.findViewById(R.id.recoverySensitivityGroup)
+        recoverySensitivitySensitive = view.findViewById(R.id.recoverySensitivitySensitive)
+        recoverySensitivityNormal = view.findViewById(R.id.recoverySensitivityNormal)
+        recoverySensitivityRelaxed = view.findViewById(R.id.recoverySensitivityRelaxed)
+        scheduleStartDelayMinInput = view.findViewById(R.id.scheduleStartDelayMinInput)
+        progressBlockedMinInput = view.findViewById(R.id.progressBlockedMinInput)
+        usageAccessSection = view.findViewById(R.id.usageAccessSection)
+        usageStatsEnabledSwitch = view.findViewById(R.id.usageStatsEnabledSwitch)
+        openUsageAccessSettingsButton = view.findViewById(R.id.openUsageAccessSettingsButton)
+        viewDataPolicyButton = view.findViewById(R.id.viewDataPolicyButton)
+        usageAccessStatusText = view.findViewById(R.id.usageAccessStatusText)
         behaviorRefreshQuestionButton = view.findViewById(R.id.behaviorRefreshQuestionButton)
         behaviorQuestionTextView = view.findViewById(R.id.behaviorQuestionTextView)
         behaviorAnswerWorkButton = view.findViewById(R.id.behaviorAnswerWorkButton)
@@ -229,8 +291,19 @@ abstract class LegacyMainTabFragment : Fragment() {
         appVersionInfoText.text = getString(R.string.app_version_info, BuildConfig.VERSION_NAME)
         developerModeHintText.text = getString(R.string.app_version_dev_mode_hint)
         val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val usageEnabled = prefs.getBoolean(PREF_KEY_USAGE_STATS_ENABLED, false)
+        usageStatsEnabledSwitch.isChecked = usageEnabled
+        usageStatsEnabledSwitch.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(PREF_KEY_USAGE_STATS_ENABLED, isChecked).apply()
+            refreshUsageAccessStatusUi()
+            if (isChecked) maybePromptUsageAccessOnce()
+        }
+        openUsageAccessSettingsButton.setOnClickListener { openUsageAccessSettings() }
+        viewDataPolicyButton.setOnClickListener { showUsageAccessPolicyDialog() }
+        refreshUsageAccessStatusUi()
         isDeveloperModeEnabled = prefs.getBoolean(PREF_KEY_DEVELOPER_MODE, false)
         refreshDeveloperModeUi()
+        refreshGeneralSettingsVisibility()
         appVersionInfoText.setOnClickListener { onDeveloperModeTapped() }
 
         initializeDefaults()
@@ -260,10 +333,13 @@ abstract class LegacyMainTabFragment : Fragment() {
             editLoginButton.visibility = View.GONE
         }
         behaviorStartButton.setOnClickListener {
+            if (!ensureUsageAccessForFocusStart()) return@setOnClickListener
             startBehaviorAgent()
         }
         behaviorStopButton.setOnClickListener {
             BehaviorAgentController.stop(requireContext())
+            stopFocusSession()
+            clearRecoveryTrackingState()
             refreshBehaviorStatusUi()
             toast("Behavior agent stopped")
         }
@@ -317,22 +393,26 @@ abstract class LegacyMainTabFragment : Fragment() {
     }
     override fun onResume() {
         super.onResume()
+        refreshGeneralSettingsVisibility()
         refreshBehaviorStatusUi()
         refreshPendingBehaviorQuestion(manual = false)
         startBehaviorQuestionPolling()
         showBehaviorQuestionSheet(currentBehaviorQuestion)
+        startRecoveryTimerIfNeeded()
     }
 
     override fun onPause() {
         super.onPause()
         stopBehaviorQuestionPolling()
         behaviorQuestionSheet?.dismiss()
+        triggerDistractionRecoveryFromLifecycle()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         stopBehaviorQuestionPolling()
         behaviorQuestionSheet?.dismiss()
+        stopRecoveryTimer()
     }
 
     private fun startBehaviorQuestionPolling() {
@@ -671,12 +751,73 @@ abstract class LegacyMainTabFragment : Fragment() {
         backendBaseUrlInput.setText(baseUrl)
         syncUserIdInput.setText(userId)
         behaviorAccessTokenInput.setText(token)
+        restoreRecoveryTimerConfig()
         refreshLoginStatusUi(config?.userId)
         if (config != null) {
             // Auto-sync when config exists to avoid manual login each time.
             ReminderSyncWorkScheduler.ensurePeriodicSync(requireContext())
             ReminderSyncWorkScheduler.triggerImmediateSync(requireContext())
         }
+    }
+
+    private fun restoreRecoveryTimerConfig() {
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val sensitivity = prefs.getString(PREF_KEY_RECOVERY_SENSITIVITY, "normal")
+            ?.trim()
+            ?.ifBlank { "normal" }
+            ?: "normal"
+        val scheduleStartDelayMin = prefs.getInt(PREF_KEY_SCHEDULE_START_DELAY_MIN, 3).coerceIn(1, 60)
+        val progressBlockedMin = prefs.getInt(PREF_KEY_PROGRESS_BLOCKED_MIN, 8).coerceIn(1, 120)
+        val config = RecoveryTimerConfig(
+            sensitivity = sensitivity,
+            scheduleStartDelayMinutes = scheduleStartDelayMin,
+            progressBlockedMinutes = progressBlockedMin,
+        )
+        recoveryTimerConfig = config
+        applyRecoveryTimerConfigToUi(config)
+    }
+
+    private fun applyRecoveryTimerConfigToUi(config: RecoveryTimerConfig) {
+        when (config.sensitivity) {
+            "sensitive" -> recoverySensitivitySensitive.isChecked = true
+            "relaxed" -> recoverySensitivityRelaxed.isChecked = true
+            else -> recoverySensitivityNormal.isChecked = true
+        }
+        scheduleStartDelayMinInput.setText(config.scheduleStartDelayMinutes.toString())
+        progressBlockedMinInput.setText(config.progressBlockedMinutes.toString())
+    }
+
+    private fun selectedRecoverySensitivity(): String {
+        return when (recoverySensitivityGroup.checkedRadioButtonId) {
+            R.id.recoverySensitivitySensitive -> "sensitive"
+            R.id.recoverySensitivityRelaxed -> "relaxed"
+            else -> "normal"
+        }
+    }
+
+    private fun collectRecoveryTimerConfig(silent: Boolean): RecoveryTimerConfig? {
+        val scheduleStartDelayMin = scheduleStartDelayMinInput.text?.toString()?.trim()?.toIntOrNull()
+        val progressBlockedMin = progressBlockedMinInput.text?.toString()?.trim()?.toIntOrNull()
+        if (scheduleStartDelayMin == null || scheduleStartDelayMin !in 1..60) {
+            if (!silent) toast("시작 지연 시간은 1~60분으로 입력해주세요.")
+            return null
+        }
+        if (progressBlockedMin == null || progressBlockedMin !in 1..120) {
+            if (!silent) toast("진행 막힘 시간은 1~120분으로 입력해주세요.")
+            return null
+        }
+        val config = RecoveryTimerConfig(
+            sensitivity = selectedRecoverySensitivity(),
+            scheduleStartDelayMinutes = scheduleStartDelayMin,
+            progressBlockedMinutes = progressBlockedMin,
+        )
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString(PREF_KEY_RECOVERY_SENSITIVITY, config.sensitivity)
+            .putInt(PREF_KEY_SCHEDULE_START_DELAY_MIN, config.scheduleStartDelayMinutes)
+            .putInt(PREF_KEY_PROGRESS_BLOCKED_MIN, config.progressBlockedMinutes)
+            .apply()
+        return config
     }
 
     private fun applyDeveloperModeVisibility(isLoggedIn: Boolean) {
@@ -820,11 +961,15 @@ abstract class LegacyMainTabFragment : Fragment() {
     }
 
     private fun startBehaviorAgent() {
+        if (!ensureUsageAccessForFocusStart()) return
         val inputs = collectBehaviorStartInputs(silent = false) ?: return
+        val timerConfig = collectRecoveryTimerConfig(silent = false) ?: return
+        recoveryTimerConfig = timerConfig
         ReminderSyncManager.saveConfig(requireContext(), inputs.baseUrl, inputs.userId)
         behaviorConfigStore.saveAccessToken(inputs.accessToken)
         ReminderSyncWorkScheduler.ensurePeriodicSync(requireContext())
         BehaviorAgentController.start(requireContext())
+        clearRecoveryTrackingState()
         startFocusSession(inputs)
         refreshBehaviorStatusUi()
         refreshPendingBehaviorQuestion(manual = false)
@@ -846,11 +991,187 @@ abstract class LegacyMainTabFragment : Fragment() {
                 if (resp.statusCode !in 200..299) {
                     throw IllegalStateException("HTTP ${resp.statusCode}: ${resp.body}")
                 }
+                parseFocusSessionId(resp.body)
             }
             runOnUiThreadSafe {
+                result.onSuccess { focusSessionId ->
+                    beginRecoveryTracking(focusSessionId)
+                }
                 result.onFailure { err ->
                     toast("Focus session start failed: ${err.message ?: "unknown"}")
                 }
+            }
+        }.start()
+    }
+
+    private fun parseFocusSessionId(body: String): String? {
+        val obj = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        return obj.optString("focus_session_id").orEmpty().ifBlank { null }
+    }
+
+    private fun beginRecoveryTracking(focusSessionId: String?) {
+        activeFocusSessionId = focusSessionId
+        focusSessionStartedAt = System.currentTimeMillis()
+        hasMeaningfulProgress = false
+        lastMeaningfulProgressAt = focusSessionStartedAt
+        scheduleStartEventSent = false
+        lastProgressBlockedEventAt = 0L
+        val prefs = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val enabled = prefs.getBoolean(PREF_KEY_USAGE_STATS_ENABLED, false)
+        if (!enabled) {
+            runCatching { usagePoller?.stop() }
+            usagePoller = null
+            usageTracker = null
+        } else {
+            usageTracker = com.eft.mobileagent.behavior.usage.UsageSessionTracker().apply {
+                reset(focusSessionStartedAt)
+            }
+            usagePoller = com.eft.mobileagent.behavior.usage.UsageStatsPoller(requireContext(), usageTracker!!)
+            runCatching { usagePoller?.start() }
+        }
+
+        startRecoveryTimerIfNeeded()
+    }
+
+    private fun clearRecoveryTrackingState() {
+        stopRecoveryTimer()
+        activeFocusSessionId = null
+        focusSessionStartedAt = 0L
+        hasMeaningfulProgress = false
+        lastMeaningfulProgressAt = 0L
+        scheduleStartEventSent = false
+        lastProgressBlockedEventAt = 0L
+
+        runCatching { usagePoller?.stop() }
+        usagePoller = null
+        usageTracker = null
+    }
+
+    private fun markMeaningfulProgress() {
+        val now = System.currentTimeMillis()
+        hasMeaningfulProgress = true
+        lastMeaningfulProgressAt = now
+    }
+
+    private fun startRecoveryTimerIfNeeded() {
+        if (focusSessionStartedAt <= 0L) return
+        if (recoveryTimerRunnable != null) return
+        recoveryTimerRunnable = object : Runnable {
+            override fun run() {
+                if (!isAdded || focusSessionStartedAt <= 0L) {
+                    recoveryTimerRunnable = null
+                    return
+                }
+                evaluateRecoveryTimerTick()
+                recoveryTimerHandler.postDelayed(this, RECOVERY_TIMER_TICK_MS)
+            }
+        }
+        recoveryTimerRunnable?.let { recoveryTimerHandler.postDelayed(it, RECOVERY_TIMER_TICK_MS) }
+    }
+
+    private fun stopRecoveryTimer() {
+        recoveryTimerRunnable?.let { recoveryTimerHandler.removeCallbacks(it) }
+        recoveryTimerRunnable = null
+    }
+
+    private fun evaluateRecoveryTimerTick() {
+        val startedAt = focusSessionStartedAt
+        if (startedAt <= 0L) return
+        val now = System.currentTimeMillis()
+        val elapsed = now - startedAt
+        val scheduleStartDelayMs = recoveryTimerConfig.scheduleStartDelayMinutes * 60_000L
+        val progressBlockedDelayMs = recoveryTimerConfig.progressBlockedMinutes * 60_000L
+        if (!scheduleStartEventSent && !hasMeaningfulProgress && elapsed >= scheduleStartDelayMs) {
+            scheduleStartEventSent = true
+            val blockedMin = (elapsed / 60_000L).toInt().coerceAtLeast(1)
+            sendRecoveryEvent(
+                entryPoint = "schedule_start",
+                sessionState = "start",
+                blockedMin = blockedMin,
+                distractionType = null,
+                confidence = 0.66,
+                source = "android_timer_start",
+                openWeb = true,
+            )
+        }
+
+        if (!hasMeaningfulProgress) return
+        val blockedMs = now - lastMeaningfulProgressAt
+        if (blockedMs < progressBlockedDelayMs) return
+        if (now - lastProgressBlockedEventAt < PROGRESS_BLOCKED_REPEAT_MS) return
+        lastProgressBlockedEventAt = now
+        val blockedMin = (blockedMs / 60_000L).toInt().coerceAtLeast(1)
+        sendRecoveryEvent(
+            entryPoint = "progress_blocked",
+            sessionState = "in_progress",
+            blockedMin = blockedMin,
+            distractionType = null,
+            confidence = 0.68,
+            source = "android_timer_progress",
+            openWeb = true,
+        )
+    }
+
+    private fun stopFocusSession() {
+        val focusSessionId = activeFocusSessionId ?: return
+        val inputs = collectBehaviorStartInputs(silent = true) ?: return
+
+        runCatching {
+            usagePoller?.forcePollNow()
+            usagePoller?.stop()
+
+            val now = System.currentTimeMillis()
+            usageTracker?.finalizeTo(now)
+
+            val summary = usageTracker?.buildSummarySorted().orEmpty()
+            if (summary.isNotEmpty()) {
+                val mismatch = com.eft.mobileagent.behavior.usage.AdvancedMismatch.evaluate(
+                    focusSessionStartedAt = focusSessionStartedAt,
+                    focusSessionEndedAt = now,
+                    observed = summary,
+                    switchCount = usageTracker?.getSwitchCount() ?: 0,
+                    hasMeaningfulProgress = hasMeaningfulProgress,
+                    lastMeaningfulProgressAt = lastMeaningfulProgressAt,
+                )
+
+                val observedJson = JSONArray()
+                for (s in summary.take(10)) {
+                    observedJson.put(
+                        JSONObject()
+                            .put("category", s.category)
+                            .put("seconds", s.seconds)
+                            .put("count", s.count),
+                    )
+                }
+
+                val topDistraction = summary.firstOrNull {
+                    it.category != "WorkTool" && it.category != "System"
+                }?.category
+                val totalSeconds = summary.sumOf { it.seconds }.coerceAtLeast(1)
+                val externalSeconds = summary.filter { it.category != "WorkTool" }.sumOf { it.seconds }
+                val durationRatio = (externalSeconds.toDouble() / totalSeconds.toDouble()).coerceIn(0.0, 1.0)
+
+                sendRecoveryEventSessionSummary(
+                    mismatchScore = mismatch,
+                    observedApps = observedJson,
+                    distractionAppCategory = topDistraction,
+                    durationRatio = durationRatio,
+                    switchCount = usageTracker?.getSwitchCount() ?: 0,
+                )
+            }
+        }.onFailure {
+            // Swallow usage stats failures to avoid breaking focus stop.
+        }
+
+        Thread {
+            runCatching {
+                val client = BehaviorApiClient(
+                    baseUrl = inputs.baseUrl,
+                    accessToken = inputs.accessToken,
+                )
+                val encodedUserId = URLEncoder.encode(inputs.userId, Charsets.UTF_8.name())
+                val path = "/api/spec/focus-sessions/$focusSessionId/stop?user_id=$encodedUserId"
+                client.post(path, "{}")
             }
         }.start()
     }
@@ -938,13 +1259,175 @@ abstract class LegacyMainTabFragment : Fragment() {
         dismissPendingBehaviorQuestion()
     }
 
+    private fun triggerDistractionRecoveryFromLifecycle() {
+        if (focusSessionStartedAt <= 0L) return
+        val now = System.currentTimeMillis()
+        if (now - lastLifecycleRecoveryEventAt < LIFECYCLE_RECOVERY_DEBOUNCE_MS) return
+        lastLifecycleRecoveryEventAt = now
+        sendRecoveryEvent(
+            entryPoint = "distraction_detected",
+            sessionState = "in_progress",
+            blockedMin = null,
+            distractionType = "AppBackground",
+            confidence = 0.72,
+            source = "android_lifecycle",
+            openWeb = true,
+        )
+    }
+
+    private fun adjustedConfidence(base: Double): Double {
+        return when (recoveryTimerConfig.sensitivity) {
+            "sensitive" -> (base - 0.12).coerceAtLeast(0.40)
+            "relaxed" -> (base + 0.10).coerceAtMost(0.95)
+            else -> base
+        }
+    }
+
+    private fun recoveryCooldownMinutes(): Int {
+        return when (recoveryTimerConfig.sensitivity) {
+            "sensitive" -> 5
+            "relaxed" -> 12
+            else -> 8
+        }
+    }
+
+    private fun sendRecoveryEvent(
+        entryPoint: String,
+        sessionState: String,
+        blockedMin: Int?,
+        distractionType: String?,
+        confidence: Double,
+        source: String,
+        openWeb: Boolean,
+    ) {
+        val inputs = collectBehaviorStartInputs(silent = true) ?: return
+        Thread {
+            val intervention = runCatching {
+                val client = BehaviorApiClient(
+                    baseUrl = inputs.baseUrl,
+                    accessToken = inputs.accessToken,
+                )
+                val payload = JSONObject()
+                    .put("user_id", inputs.userId)
+                    .put("session_state", sessionState)
+                    .put("entry_point", entryPoint)
+                    .put("confidence", adjustedConfidence(confidence))
+                    .put("cooldown_minutes", recoveryCooldownMinutes())
+                    .put("source", source)
+                activeFocusSessionId?.let { payload.put("focus_session_id", it) }
+                if (blockedMin != null) payload.put("blocked_min", blockedMin)
+                if (!distractionType.isNullOrBlank()) payload.put("distraction_type", distractionType)
+                val response = client.post(RECOVERY_EVENT_PATH, payload.toString())
+                if (response.statusCode !in 200..299) {
+                    null
+                } else {
+                    parseRecoveryIntervention(response.body)
+                }
+            }.getOrNull()
+
+            runOnUiThreadSafe {
+                val url = intervention?.recoveryUrl
+                if (openWeb && intervention?.action == "open_web" && !url.isNullOrBlank()) {
+                    openRecoveryUrl(url)
+                }
+            }
+        }.start()
+    }
+
+    private fun sendRecoveryEventSessionSummary(
+        mismatchScore: Double,
+        observedApps: JSONArray,
+        distractionAppCategory: String?,
+        durationRatio: Double,
+        switchCount: Int,
+    ) {
+        val inputs = collectBehaviorStartInputs(silent = true) ?: return
+        val focusSessionId = activeFocusSessionId ?: return
+
+        Thread {
+            runCatching {
+                val client = BehaviorApiClient(
+                    baseUrl = inputs.baseUrl,
+                    accessToken = inputs.accessToken,
+                )
+
+                val payload = JSONObject()
+                    .put("user_id", inputs.userId)
+                    .put("focus_session_id", focusSessionId)
+                    .put("session_state", "in_progress")
+                    .put("entry_point", "session_summary")
+                    .put("confidence", adjustedConfidence(mismatchScore))
+                    .put("cooldown_minutes", recoveryCooldownMinutes())
+                    .put("source", "android_usage_stats")
+
+                    // enrichment
+                    .put("mismatch_score", mismatchScore.coerceIn(0.0, 1.0))
+                    .put("observed_apps", observedApps)
+                    .put("context_version", "v2")
+                    .put("source_detail", "usage_events_pair")
+                    .put("summary_reason", "focus_session_end")
+                    .put("duration_ratio", durationRatio)
+                    .put("switch_count", switchCount)
+
+                var unknownSec = 0
+                var systemSec = 0
+                var totalSec = 0
+                for (i in 0 until observedApps.length()) {
+                    val o = observedApps.getJSONObject(i)
+                    val cat = o.optString("category")
+                    val sec = o.optInt("seconds", 0).coerceAtLeast(0)
+                    totalSec += sec
+                    if (cat == "Unknown") unknownSec += sec
+                    if (cat == "System") systemSec += sec
+                }
+                val unknownRatio = if (totalSec > 0) unknownSec.toDouble() / totalSec.toDouble() else 0.0
+                val systemRatio = if (totalSec > 0) systemSec.toDouble() / totalSec.toDouble() else 0.0
+
+                payload
+                    .put("unknown_ratio", unknownRatio)
+                    .put("system_ratio", systemRatio)
+                    .put("top_categories", JSONArray().apply {
+                        val tops = mutableListOf<String>()
+                        for (i in 0 until observedApps.length()) {
+                            val o = observedApps.getJSONObject(i)
+                            val cat = o.optString("category")
+                            if (cat == "WorkTool" || cat == "System") continue
+                            if (!tops.contains(cat)) tops.add(cat)
+                            if (tops.size >= 3) break
+                        }
+                        tops.forEach { put(it) }
+                    })
+
+                if (!distractionAppCategory.isNullOrBlank()) {
+                    payload.put("distraction_app_category", distractionAppCategory)
+                }
+
+                client.post(RECOVERY_EVENT_PATH, payload.toString())
+            }
+        }.start()
+    }
+
+    private fun parseRecoveryIntervention(body: String): RecoveryInterventionUi? {
+        val obj = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val action = obj.optString("action", "ignore").ifBlank { "ignore" }
+        val recoveryUrl = obj.optString("recovery_url").orEmpty().ifBlank { null }
+        val entrySentence = obj.optString("entry_sentence").orEmpty().ifBlank { null }
+        return RecoveryInterventionUi(
+            action = action,
+            recoveryUrl = recoveryUrl,
+            entrySentence = entrySentence,
+        )
+    }
+
     private fun openRecoveryRoutineInWeb() {
         val question = currentBehaviorQuestion ?: return
         if (!question.isSoftNudge) return
 
         val inputs = collectBehaviorStartInputs(silent = true) ?: return
         val encodedUserId = URLEncoder.encode(inputs.userId, Charsets.UTF_8.name())
-        val query = "question_id=${question.questionId}&user_id=$encodedUserId"
+        val encodedSentence = URLEncoder.encode(question.questionText, Charsets.UTF_8.name())
+        val query =
+            "question_id=${question.questionId}&user_id=$encodedUserId&entry_point=distraction_detected&sentence=$encodedSentence"
         val candidates = buildRecoveryUrls(
             baseApiUrl = inputs.baseUrl,
             recoveryHintUrl = question.recoveryUrl,
@@ -1228,6 +1711,7 @@ abstract class LegacyMainTabFragment : Fragment() {
             runOnUiThreadSafe {
                 behaviorQuestionBusy = false
                 result.onSuccess { nextQuestion ->
+                    markMeaningfulProgress()
                     currentBehaviorQuestion = nextQuestion
                     showBehaviorQuestionSheet(nextQuestion)
                     refreshBehaviorQuestionUi()
@@ -1274,6 +1758,7 @@ abstract class LegacyMainTabFragment : Fragment() {
             runOnUiThreadSafe {
                 behaviorQuestionBusy = false
                 result.onSuccess { nextQuestion ->
+                    markMeaningfulProgress()
                     currentBehaviorQuestion = nextQuestion
                     showBehaviorQuestionSheet(nextQuestion)
                     refreshBehaviorQuestionUi()
@@ -1393,6 +1878,130 @@ abstract class LegacyMainTabFragment : Fragment() {
         }
     }
 
+    private fun refreshGeneralSettingsVisibility() {
+        recoveryTimerSection.visibility = if (tabMode == MainTab.MY_PAGE) View.VISIBLE else View.GONE
+        usageAccessSection.visibility = View.VISIBLE
+        refreshUsageAccessStatusUi()
+    }
+
+    private fun getPrefs() =
+        requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun isUsageStatsEnabled(): Boolean =
+        getPrefs().getBoolean(PREF_KEY_USAGE_STATS_ENABLED, false)
+
+    private fun ensureUsageAccessForFocusStart(): Boolean {
+        if (!isUsageStatsEnabled()) return true
+        if (isUsageAccessGranted()) return true
+
+        showUsageAccessRequiredForFocusStartDialog()
+        return false
+    }
+
+    private fun isUsageAccessGranted(): Boolean {
+        val appOps = requireContext().getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                requireContext().packageName,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(
+                android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                requireContext().packageName,
+            )
+        }
+        return mode == android.app.AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun refreshUsageAccessStatusUi() {
+        if (!::usageAccessStatusText.isInitialized) return
+        val enabled = isUsageStatsEnabled()
+        if (!enabled) {
+            usageAccessStatusText.text = getString(R.string.usage_access_status_disabled)
+            return
+        }
+        val granted = isUsageAccessGranted()
+        usageAccessStatusText.text = if (granted) {
+            getString(R.string.usage_access_status_on)
+        } else {
+            getString(R.string.usage_access_status_off)
+        }
+    }
+
+    private fun openUsageAccessSettings() {
+        openUsageAccessSettingsSafe()
+    }
+
+    private fun openUsageAccessSettingsSafe() {
+        if (!isAdded) return
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.onFailure {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure {
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:" + requireContext().packageName)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun showUsageAccessPolicyDialog() {
+        if (!isAdded) return
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.usage_access_dialog_title))
+            .setMessage(getString(R.string.usage_access_dialog_body))
+            .setPositiveButton(getString(R.string.usage_access_dialog_ok), null)
+            .show()
+    }
+
+    private fun maybePromptUsageAccessOnce() {
+        val prefs = getPrefs()
+        if (prefs.getBoolean(PREF_KEY_USAGE_ACCESS_PROMPTED, false)) return
+        prefs.edit().putBoolean(PREF_KEY_USAGE_ACCESS_PROMPTED, true).apply()
+
+        if (isUsageAccessGranted()) return
+        if (!isAdded) return
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.usage_access_prompt_title))
+            .setMessage(getString(R.string.usage_access_prompt_body))
+            .setPositiveButton(getString(R.string.usage_access_prompt_open)) { _, _ ->
+                openUsageAccessSettingsSafe()
+            }
+            .setNegativeButton(getString(R.string.usage_access_prompt_later), null)
+            .show()
+    }
+
+    private fun showUsageAccessRequiredForFocusStartDialog() {
+        if (!isAdded) return
+        if (usageAccessDialogShowing) return
+        usageAccessDialogShowing = true
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.usage_access_prompt_title))
+            .setMessage(getString(R.string.usage_access_required_for_start_body))
+            .setPositiveButton(getString(R.string.usage_access_prompt_open)) { _, _ ->
+                openUsageAccessSettingsSafe()
+            }
+            .setNegativeButton(getString(R.string.usage_access_prompt_later), null)
+            .setOnDismissListener { usageAccessDialogShowing = false }
+            .show()
+    }
+
     private fun runOnUiThreadSafe(action: () -> Unit) {
         if (!isAdded) return
         requireActivity().runOnUiThread {
@@ -1406,4 +2015,3 @@ abstract class LegacyMainTabFragment : Fragment() {
         Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
     }
 }
-
