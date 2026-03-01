@@ -28,6 +28,14 @@ const CACHE_STRATEGIES = {
   pages: ['/']
 };
 
+// IMPORTANT: Workbox NavigationRoute tests against (pathname + search),
+// so we must include optional query strings, otherwise /latest.apk?v=... will be treated as SPA navigation.
+const denylist = [
+  /^\/eft-guide(\/.*)?$/,
+  /^\/latest\.apk(?:\?.*)?$/,
+  /\.apk(?:\?.*)?$/
+];
+
 // 설치 이벤트 - 정적 리소스 캐시
 self.addEventListener('install', (event) => {
   console.log('🚀 EFT AI Service Worker 설치 중...');
@@ -114,6 +122,12 @@ self.addEventListener('fetch', (event) => {
   }
   
   // 적절한 캐시 전략 선택
+  // Keep APK downloads out of SPA/navigation routing.
+  const pathnameAndSearch = `${url.pathname}${url.search}`;
+  if (denylist.some((pattern) => pattern.test(pathnameAndSearch))) {
+    return;
+  }
+
   if (isStaticAsset(url.pathname)) {
     event.respondWith(cacheFirstStrategy(request));
   } else if (isAIModel(url.href)) {
