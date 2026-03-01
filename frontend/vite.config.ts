@@ -69,8 +69,8 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [
           /^\/eft-guide(\/.*)?$/,
-          /^\/latest\.apk$/,
-          /\.apk$/,
+          /^\/latest\.apk(?:\?.*)?$/,
+          /\.apk(?:\?.*)?$/,
         ], // eft-guide/apk 파일은 SW가 가로채지 않음
         runtimeCaching: [
           {

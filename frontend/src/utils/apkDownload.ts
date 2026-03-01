@@ -8,22 +8,23 @@ const getBuildToken = (): string => {
 };
 
 export const buildApkDownloadUrl = (rawUrl: string): string => {
-  const trimmedUrl = rawUrl.trim();
-  if (!trimmedUrl) {
+  const url = rawUrl.trim();
+  if (!url) {
     return "";
   }
+  if (/\.apk(?:$|\?)/i.test(url)) return url;
   if (typeof window === "undefined") {
-    return trimmedUrl;
+    return url;
   }
   try {
-    const target = new URL(trimmedUrl, window.location.origin);
+    const target = new URL(url, window.location.origin);
     if (target.searchParams.has("v")) {
       return target.href;
     }
     target.searchParams.set("v", getBuildToken());
     return target.toString();
   } catch {
-    const separator = trimmedUrl.includes("?") ? "&" : "?";
-    return `${trimmedUrl}${separator}v=${encodeURIComponent(getBuildToken())}`;
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}v=${encodeURIComponent(getBuildToken())}`;
   }
 };
