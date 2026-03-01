@@ -11,9 +11,12 @@ from backend.app.schemas.coach import (
     CoachAnalyzeRequest,
     CoachAnalyzeResponse,
     CoachFollowup,
+    CoachInternal,
+    CoachPolicy,
     CoachReply,
     CoachRisk,
     CoachSimulation,
+    CoachSuggestedMessage,
     RomanceCompatibilityNotes,
     RomanceInsights,
     RomanceInterestHypothesis,
@@ -32,6 +35,17 @@ class NoopCoachProvider:
 
 
 class CoachEngine:
+    _BANNED_SENDABLE_PATTERNS = [
+        r"예상\s*효과",
+        r"근거\s*:",
+        r"가설",
+        r"다음\s*행동",
+        r"주의점",
+        r"Hypotheses",
+        r"Signal",
+        r"Romance",
+    ]
+
     def __init__(self, provider: StructuredCoachProvider | None = None) -> None:
         self.provider = provider or NoopCoachProvider()
 
@@ -54,14 +68,18 @@ class CoachEngine:
             analysis=analysis,
             replies=replies,
         )
-        romance_insights = self._build_romance_insights(request=request, analysis=analysis)
+        romance_insights = None
+        if request.context.relationship == "romance_interest":
+            romance_insights = self._build_romance_insights(request=request, analysis=analysis)
         evidence_items = self._build_evidence_items(
             extra_context=merged_extra_context,
             fallback_text=text,
         )
         confidence = self._score_confidence(analysis=analysis)
+        messages, policy = self._build_sendable_messages_from_replies(replies=replies, request=request)
 
         baseline = CoachAnalyzeResponse(
+            messages=messages,
             action=action,
             analysis=analysis,
             simulations=simulations,
@@ -70,12 +88,83 @@ class CoachEngine:
             romance_insights=romance_insights,
             evidence_items=evidence_items,
             confidence=confidence,
+            internal=CoachInternal(notes=[], banned_sections_detected=[], rewrite_applied=False),
+            policy=policy,
         )
 
         return self._try_provider_override(
             request=request,
             baseline=baseline,
             extra_context=merged_extra_context,
+        )
+
+    def _build_sendable_messages_from_replies(
+        self,
+        *,
+        replies: list[CoachReply],
+        request: CoachAnalyzeRequest,
+    ) -> tuple[list[CoachSuggestedMessage], CoachPolicy]:
+        labels = {
+            "soft": "기본(부드럽게)",
+            "neutral": "실무형(중립)",
+            "firm": "경계형(단호)",
+        }
+        banned_detected: list[str] = []
+        rewrite_applied = False
+
+        def _sanitize(text: str) -> str:
+            nonlocal rewrite_applied
+            original = text
+            cleaned = text.strip()
+
+            lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+            kept: list[str] = []
+            for line in lines:
+                if any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in self._BANNED_SENDABLE_PATTERNS):
+                    banned_detected.append(line[:80])
+                    rewrite_applied = True
+                    continue
+                kept.append(line)
+
+            cleaned = " ".join(kept).strip()
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+            if len(cleaned) > 260:
+                cleaned = cleaned[:260].rstrip()
+                rewrite_applied = True
+
+            if cleaned != original.strip():
+                rewrite_applied = True
+            return cleaned
+
+        messages: list[CoachSuggestedMessage] = []
+        for reply in (replies or [])[:3]:
+            sanitized = _sanitize(reply.text or "")
+            if sanitized:
+                messages.append(
+                    CoachSuggestedMessage(
+                        label=labels.get(reply.tone, reply.tone),
+                        text=sanitized,
+                    )
+                )
+
+        if not messages:
+            relationship = request.context.relationship or "peer"
+            formal = relationship in ("boss", "client", "stranger")
+            fallback_text = (
+                "메시지 확인했습니다. 전달 내용을 기준으로 한 문장으로 정리해 다시 공유드릴게요."
+                if formal
+                else "메시지 확인했어. 전달 내용 한 줄로 정리해서 다시 공유할게."
+            )
+            messages = [CoachSuggestedMessage(label="기본(재작성)", text=fallback_text)]
+            rewrite_applied = True
+
+        return (
+            messages,
+            CoachPolicy(
+                rewrite_applied=rewrite_applied,
+                banned_patterns_detected=banned_detected[:5],
+            ),
         )
 
     def _build_counterparty_context(self, *, extra_context: dict[str, Any]) -> dict[str, Any]:
@@ -184,6 +273,9 @@ class CoachEngine:
             "User draft may be rough. Rewrite into polished Korean messages aligned with context and persona intent.\n"
             "Persona alignment rule: reflect context.relationship, context.goal, context.image_goal, and default_send_policy.\n"
             "Generate exactly 3 reply suggestions in replies.\n"
+            "CRITICAL: replies[i].text must be sendable only. Do NOT include meta/report text like "
+            "'예상 효과', '근거', '가설', '주의점', '다음 행동', 'Hypotheses', 'Signal', 'Romance'.\n"
+            "If context.relationship != 'romance_interest', set romance_insights to null.\n"
             "Keep output keys exactly aligned with the baseline schema skeleton.\n"
             f"room_id={request.room_id}\n"
             f"context={json.dumps(request.context.model_dump(), ensure_ascii=False)}\n"
@@ -197,9 +289,67 @@ class CoachEngine:
             if not isinstance(payload, dict) or not payload:
                 return baseline
             candidate = CoachAnalyzeResponse.model_validate(payload)
-            return self._normalize_provider_response(candidate=candidate, baseline=baseline)
+            normalized = self._normalize_provider_response(candidate=candidate, baseline=baseline)
+
+            if not normalized.messages:
+                messages, policy = self._build_sendable_messages_from_replies(
+                    replies=normalized.replies or baseline.replies,
+                    request=request,
+                )
+                normalized = normalized.model_copy(update={"messages": messages, "policy": policy})
+
+            messages, policy = self._sanitize_existing_messages(messages=normalized.messages, request=request)
+            normalized = normalized.model_copy(update={"messages": messages, "policy": policy})
+            return normalized
         except Exception:
             return baseline
+
+    def _sanitize_existing_messages(
+        self,
+        *,
+        messages: list[CoachSuggestedMessage],
+        request: CoachAnalyzeRequest,
+    ) -> tuple[list[CoachSuggestedMessage], CoachPolicy]:
+        banned_detected: list[str] = []
+        rewrite_applied = False
+
+        def _sanitize(text: str) -> str:
+            nonlocal rewrite_applied
+            cleaned = text.strip()
+            if any(re.search(pattern, cleaned, flags=re.IGNORECASE) for pattern in self._BANNED_SENDABLE_PATTERNS):
+                banned_detected.append(cleaned[:80])
+                rewrite_applied = True
+                return ""
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            if len(cleaned) > 260:
+                cleaned = cleaned[:260].rstrip()
+                rewrite_applied = True
+            return cleaned
+
+        sanitized_messages: list[CoachSuggestedMessage] = []
+        for message in (messages or [])[:3]:
+            cleaned = _sanitize(message.text or "")
+            if cleaned:
+                sanitized_messages.append(CoachSuggestedMessage(label=message.label, text=cleaned))
+
+        if not sanitized_messages:
+            relationship = request.context.relationship or "peer"
+            formal = relationship in ("boss", "client", "stranger")
+            fallback_text = (
+                "메시지 확인했습니다. 전달 내용을 기준으로 한 문장으로 정리해 다시 공유드릴게요."
+                if formal
+                else "메시지 확인했어. 전달 내용 한 줄로 정리해서 다시 공유할게."
+            )
+            sanitized_messages = [CoachSuggestedMessage(label="기본(재작성)", text=fallback_text)]
+            rewrite_applied = True
+
+        return (
+            sanitized_messages,
+            CoachPolicy(
+                rewrite_applied=rewrite_applied,
+                banned_patterns_detected=banned_detected[:5],
+            ),
+        )
 
     def _normalize_provider_response(
         self,
@@ -219,7 +369,11 @@ class CoachEngine:
         if not replies and fallback_replies:
             replies = fallback_replies[:3]
 
-        return candidate.model_copy(update={"replies": replies})
+        romance_insights = candidate.romance_insights
+        if baseline.romance_insights is None:
+            romance_insights = None
+
+        return candidate.model_copy(update={"replies": replies, "romance_insights": romance_insights})
 
     def _build_analysis(self, *, text: str, banned_tones: list[str]) -> CoachAnalysis:
         politeness = self._score_politeness(text)

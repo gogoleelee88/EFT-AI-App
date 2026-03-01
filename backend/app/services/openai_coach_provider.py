@@ -15,10 +15,7 @@ class OpenAICoachProvider:
     def __init__(self) -> None:
         settings = get_settings()
         self.api_key = (settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY") or "").strip()
-        self.model = (
-            os.getenv("COACH_OPENAI_MODEL")
-            or "gpt-5.2-pro"
-        ).strip()
+        self.model = (os.getenv("COACH_OPENAI_MODEL") or "gpt-5.2-pro").strip()
         raw_max_tokens = (os.getenv("COACH_OPENAI_MAX_TOKENS") or "2400").strip()
         try:
             self.max_tokens = max(800, int(raw_max_tokens))
@@ -41,13 +38,16 @@ class OpenAICoachProvider:
                         "role": "system",
                         "content": (
                             "You are a social reply copilot for Korean business/social chat.\n"
-                            "Do internal step-by-step analysis before deciding.\n"
-                            "Validate there are no logical conflicts across risks, action, and replies.\n"
-                            "Treat rough user drafts as notes and rewrite into polished, context-aware Korean messages.\n"
-                            "Always provide exactly three practical reply options tailored to relationship, goal, and requested persona.\n"
-                            "Return JSON only.\n"
+                            "IMPORTANT OUTPUT RULES (hard rules):\n"
+                            "- Return JSON only.\n"
+                            "- replies[i].text MUST be directly sendable Korean message(s), 1-2 sentences.\n"
+                            "- NEVER include meta headers or report text inside replies[i].text such as:\n"
+                            "  '예상 효과', '근거', '가설', '주의점', '다음 행동', 'Hypotheses', 'Signal', 'Romance'.\n"
+                            "- analysis/simulations/action/followups may contain explanation, but keep concise.\n"
+                            "- If context.relationship is NOT 'romance_interest', set romance_insights to null.\n"
+                            "- Always provide exactly three practical reply options in replies.\n"
+                            "- Treat rough user drafts as notes and rewrite into polished, context-aware Korean.\n"
                             "Never diagnose people or claim hidden unconscious facts.\n"
-                            "Use observed-text-based hypotheses with uncertainty.\n"
                             "Do not provide manipulation or psychological warfare tactics.\n"
                         ),
                     },

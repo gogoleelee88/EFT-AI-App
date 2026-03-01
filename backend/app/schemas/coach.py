@@ -123,12 +123,31 @@ class RomanceInsights(BaseModel):
     safe_clarifying_questions: list[str]
 
 
+class CoachSuggestedMessage(BaseModel):
+    label: str
+    text: str = Field(..., min_length=1)
+
+
+class CoachInternal(BaseModel):
+    notes: list[str] = Field(default_factory=list)
+    banned_sections_detected: list[str] = Field(default_factory=list)
+    rewrite_applied: bool = False
+
+
+class CoachPolicy(BaseModel):
+    rewrite_applied: bool = False
+    banned_patterns_detected: list[str] = Field(default_factory=list)
+
+
 class CoachAnalyzeResponse(BaseModel):
+    messages: list[CoachSuggestedMessage] = Field(default_factory=list)
     action: CoachAction
     analysis: CoachAnalysis
     simulations: list[CoachSimulation]
     replies: list[CoachReply]
     followups: list[CoachFollowup]
-    romance_insights: RomanceInsights
+    romance_insights: Optional[RomanceInsights] = None
     evidence_items: list[str] = Field(default_factory=list)
     confidence: float = Field(..., ge=0, le=1)
+    internal: CoachInternal = Field(default_factory=CoachInternal)
+    policy: CoachPolicy = Field(default_factory=CoachPolicy)
