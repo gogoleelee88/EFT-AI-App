@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import os
@@ -60,6 +60,12 @@ class OpenChatRequest(BaseModel):
     session_id: Optional[str] = None
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=600, ge=64, le=2048)
+    # Optional context from recovery / schedule flows.
+    entry_point: Optional[str] = None
+    entry_sentence: Optional[str] = None
+    session_state: Optional[str] = None
+    schedule_id: Optional[str] = None
+    schedule_name: Optional[str] = None
 
 
 class OpenChatResponse(BaseModel):
@@ -73,7 +79,28 @@ class OpenChatResponse(BaseModel):
 
 
 def _build_openchat_messages(payload: OpenChatRequest) -> List[Dict[str, str]]:
-    messages: List[Dict[str, str]] = [{"role": "system", "content": OPENCHAT_SYSTEM_PROMPT}]
+    # Embed context so OpenChat can guide user with schedule/recovery details.
+    context_lines: List[str] = []
+    if payload.entry_point:
+        context_lines.append(f"- entry_point: {payload.entry_point}")
+    if payload.session_state:
+        context_lines.append(f"- session_state: {payload.session_state}")
+    if payload.schedule_name:
+        context_lines.append(f"- schedule_name: {payload.schedule_name}")
+    if payload.schedule_id:
+        context_lines.append(f"- schedule_id: {payload.schedule_id}")
+    if payload.entry_sentence:
+        context_lines.append(f"- entry_sentence: {payload.entry_sentence}")
+
+    system_prompt = OPENCHAT_SYSTEM_PROMPT
+    if context_lines:
+        system_prompt = (
+            OPENCHAT_SYSTEM_PROMPT
+            + "\n\nContext for this chat (do not repeat verbatim unless helpful):\n"
+            + "\n".join(context_lines)
+        )
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
     for turn in payload.history[-10:]:
         content = turn.content.strip()
         if content:
@@ -191,6 +218,80 @@ async def openchat(payload: OpenChatRequest):
             raise HTTPException(status_code=upstream_status, detail=detail)
 
         raise HTTPException(status_code=502, detail=f"{provider_label.upper()} response generation failed.")
+
+
+class SessionAdviceRequest(BaseModel):
+    session_type: Literal["eftar", "meditation"] = "eftar"
+    strict_intake: Dict[str, Any]
+    intensity_before: int = Field(..., ge=0, le=10)
+    intensity_after: int = Field(..., ge=0, le=10)
+    selected_theme_id: Optional[str] = None
+    selected_video_title: Optional[str] = None
+
+
+class SessionAdviceResponse(BaseModel):
+    advice: str
+    delta: int
+    source: str
+    model: str
+
+
+@chat_router.post("/api/emotion/session-advice", response_model=SessionAdviceResponse)
+async def session_advice(payload: SessionAdviceRequest) -> SessionAdviceResponse:
+    """
+    Minimal advice endpoint used by frontend SessionAdvicePage.
+    Returns a short Korean advice text after EFT/meditation.
+    """
+    settings = get_settings()
+    delta = int(payload.intensity_before) - int(payload.intensity_after)
+
+    intake = payload.strict_intake or {}
+    core_emotion = str(intake.get("core_emotion") or "").strip()
+    situation = str(intake.get("situation_context") or "").strip()
+    entry_point = str(intake.get("entry_point") or "").strip()
+    entry_sentence = str(intake.get("entry_sentence") or "").strip()
+    schedule_name = str(intake.get("schedule_name") or "").strip()
+
+    fallback = (
+        "지금은 다시 시작할 수 있는 상태예요. "
+        "딱 5분만 '다음 행동 1개'부터 착수해보세요. "
+        "완벽하게 하려 하지 말고, 다시 궤도에 올리는 게 목표예요."
+    )
+
+    try:
+        provider_label = llm_provider.provider_name()
+        model_name = (settings.OPENAI_MODEL or "unknown").strip()
+
+        prompt = (
+            "You are a helpful Korean coach.\n"
+            "Write 3-5 short sentences of practical advice.\n"
+            "Do NOT be verbose. Do NOT mention policy.\n\n"
+            f"session_type={payload.session_type}\n"
+            f"intensity_before={payload.intensity_before}\n"
+            f"intensity_after={payload.intensity_after}\n"
+            f"delta={delta}\n"
+            f"core_emotion={core_emotion}\n"
+            f"schedule_name={schedule_name}\n"
+            f"entry_point={entry_point}\n"
+            f"entry_sentence={entry_sentence}\n"
+            f"situation_context={situation}\n"
+        )
+
+        llm_out = llm_provider.chat(
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "세션 후 바로 실행 가능한 짧은 조언을 주세요."},
+            ],
+            json_schema=None,
+        )
+        advice = str(llm_out.get("assistant_message") or "").strip()
+        if not advice:
+            advice = fallback
+
+        return SessionAdviceResponse(advice=advice, delta=delta, source=provider_label, model=model_name)
+    except Exception:
+        # Always succeed with fallback so UI remains stable.
+        return SessionAdviceResponse(advice=fallback, delta=delta, source="fallback", model="rule_based")
 
 
 class ChatHubRequest(BaseModel):

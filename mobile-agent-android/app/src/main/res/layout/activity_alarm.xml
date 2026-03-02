@@ -77,4 +77,48 @@
         android:textColor="#9CA3AF"
         android:textSize="13sp" />
 
+    <!-- Procrastination card (shown after timeout if mission not completed) -->
+    <LinearLayout
+        android:id="@+id/procrastinationCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:background="#1F2937"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/procrastinationTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/procrastination_detected_title"
+            android:textColor="#FBBF24"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/procrastinationBody"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/procrastination_detected_body"
+            android:textColor="#E5E7EB"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/handleResistanceButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/handle_resistance_now" />
+
+        <Button
+            android:id="@+id/skipResistanceButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/skip_for_now" />
+    </LinearLayout>
+
 </LinearLayout>

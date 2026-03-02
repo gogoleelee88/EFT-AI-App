@@ -32,6 +32,13 @@ interface AdviceLocationState {
 const FALLBACK_ADVICE =
   '지금도 강도가 일정 수준으로 유지되고 있어요. 2분 동안 천천히 숨을 고르며 오늘의 감정과 몸의 감각을 짧게 적어보세요.';
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const todayTokenLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+const journalToastKeyForToday = () => `journal_toast_${todayTokenLocal()}`;
+
 export default function SessionAdvicePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -40,6 +47,8 @@ export default function SessionAdvicePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AdviceResponse | null>(null);
+  const [showJournalToast, setShowJournalToast] = useState(false);
+  const [journalToastInitialized, setJournalToastInitialized] = useState(false);
 
   const sessionType: SessionType = state.sessionType ?? 'eftar';
   const strictIntake = state.strictIntake;
@@ -47,6 +56,34 @@ export default function SessionAdvicePage() {
     typeof state.intensityBefore === 'number' ? Math.max(0, Math.min(10, state.intensityBefore)) : null;
   const intensityAfter =
     typeof state.intensityAfter === 'number' ? Math.max(0, Math.min(10, state.intensityAfter)) : null;
+
+  // Initialize "once per day" toast state from localStorage.
+  useEffect(() => {
+    try {
+      const key = journalToastKeyForToday();
+      const alreadyShown = localStorage.getItem(key) === '1';
+      setShowJournalToast(!alreadyShown);
+    } catch {
+      // If localStorage is blocked, default to showing once.
+      setShowJournalToast(true);
+    } finally {
+      setJournalToastInitialized(true);
+    }
+  }, []);
+
+  const markJournalToastShown = () => {
+    try {
+      localStorage.setItem(journalToastKeyForToday(), '1');
+    } catch {
+      // ignore
+    }
+  };
+
+  const goToTodayJournal = () => {
+    markJournalToastShown();
+    setShowJournalToast(false);
+    navigate('/signal-inbox');
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -97,6 +134,13 @@ export default function SessionAdvicePage() {
 
     void run();
   }, [intensityAfter, intensityBefore, sessionType, state.selectedThemeId, state.selectedVideoTitle, strictIntake]);
+
+  // If advice is loaded successfully, keep toast visible only if not shown today.
+  useEffect(() => {
+    if (!journalToastInitialized) return;
+    if (loading) return;
+    // no-op: showJournalToast already decided by storage; keep it as-is.
+  }, [journalToastInitialized, loading]);
 
   const deltaLabel = useMemo(() => {
     if (intensityBefore == null || intensityAfter == null) return '-';
@@ -152,6 +196,51 @@ export default function SessionAdvicePage() {
           </div>
         )}
 
+        {/* Daily journal toast (once per day, optional; does not block main flow) */}
+        {!loading && showJournalToast && (
+          <div className="mt-5 flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-emerald-900">
+                  📓 오늘의 기록이 업데이트됐어요 (1/1)
+                </div>
+                <div className="mt-1 text-xs text-emerald-800">
+                  일정별 미룸/딴짓/막힘 요약을 확인할 수 있어요. (선택)
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  markJournalToastShown();
+                  setShowJournalToast(false);
+                }}
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+              >
+                닫기
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={goToTodayJournal}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                보기
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  markJournalToastShown();
+                  setShowJournalToast(false);
+                }}
+                className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+              >
+                오늘은 넘어가기
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap gap-3">
           <button
             type="button"
@@ -159,6 +248,13 @@ export default function SessionAdvicePage() {
             className="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
           >
             대시보드로 이동
+          </button>
+          <button
+            type="button"
+            onClick={goToTodayJournal}
+            className="rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+          >
+            오늘 기록 보기
           </button>
           <button
             type="button"

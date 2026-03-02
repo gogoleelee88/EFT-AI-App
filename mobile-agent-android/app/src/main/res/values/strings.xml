@@ -106,4 +106,9 @@
     <string name="usage_access_required_for_start_body">To start focus with app-switch detection, Usage Access must be granted in Android Settings. Open settings now?</string>
     <string name="usage_access_prompt_open">Open</string>
     <string name="usage_access_prompt_later">Later</string>
+    <string name="procrastination_detected_title">미룸(저항) 신호 감지</string>
+    <string name="procrastination_detected_body">지금 바로 감정을 처리하면 다시 시작하기 쉬워져요.</string>
+    <string name="handle_resistance_now">저항감 처리하기</string>
+    <string name="skip_for_now">지금은 넘어가기</string>
+    <string name="msg_need_login_for_recovery">웹 개입을 위해 먼저 앱에서 로그인/연동이 필요해요.</string>
 </resources>

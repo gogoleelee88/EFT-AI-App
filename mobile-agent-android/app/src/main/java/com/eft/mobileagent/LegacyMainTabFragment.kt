@@ -179,6 +179,7 @@ abstract class LegacyMainTabFragment : Fragment() {
     private var lastMeaningfulProgressAt = 0L
     private var scheduleStartEventSent = false
     private var lastProgressBlockedEventAt = 0L
+    private var activeScheduleName: String? = null
     private var usageTracker: com.eft.mobileagent.behavior.usage.UsageSessionTracker? = null
     private var usagePoller: com.eft.mobileagent.behavior.usage.UsageStatsPoller? = null
     private val recoveryTimerHandler = Handler(Looper.getMainLooper())
@@ -188,6 +189,9 @@ abstract class LegacyMainTabFragment : Fragment() {
         scheduleStartDelayMinutes = 3,
         progressBlockedMinutes = 8,
     )
+    private var lastRealtimeDistractionPromptAt = 0L
+    private var snoozeRealtimeUntilAt = 0L
+    private var realtimePromptShowing = false
 
     private companion object {
         const val SOFT_NUDGE_TRIGGER_REASON = "focus_soft_nudge"
@@ -209,6 +213,10 @@ abstract class LegacyMainTabFragment : Fragment() {
         const val PREF_KEY_USAGE_ACCESS_PROMPTED = "usage_access_prompted"
         const val DEV_MODE_TAP_TARGET = 5
         const val DEV_MODE_TAP_WINDOW_MS = 2_500L
+        const val REALTIME_WINDOW_MS = 90_000L
+        const val REALTIME_MIN_EXTERNAL_SECONDS = 45
+        const val REALTIME_PROMPT_COOLDOWN_MS = 5 * 60_000L
+        const val REALTIME_SNOOZE_MS = 5 * 60_000L
     }
 
     private val requestLocationPermissionLauncher =
@@ -1067,6 +1075,7 @@ abstract class LegacyMainTabFragment : Fragment() {
     private fun beginRecoveryTracking(focusSessionId: String?) {
         activeFocusSessionId = focusSessionId
         focusSessionStartedAt = System.currentTimeMillis()
+        activeScheduleName = resolveScheduleNameForUi()
         hasMeaningfulProgress = false
         lastMeaningfulProgressAt = focusSessionStartedAt
         scheduleStartEventSent = false
@@ -1081,7 +1090,12 @@ abstract class LegacyMainTabFragment : Fragment() {
             usageTracker = com.eft.mobileagent.behavior.usage.UsageSessionTracker().apply {
                 reset(focusSessionStartedAt)
             }
-            usagePoller = com.eft.mobileagent.behavior.usage.UsageStatsPoller(requireContext(), usageTracker!!)
+            usagePoller = com.eft.mobileagent.behavior.usage.UsageStatsPoller(
+                requireContext(),
+                usageTracker!!,
+            ) { recent, nowMs ->
+                runOnUiThreadSafe { maybePromptRealtimeDistraction(recent = recent, nowMs = nowMs) }
+            }
             runCatching { usagePoller?.start() }
         }
 
@@ -1092,6 +1106,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         stopRecoveryTimer()
         activeFocusSessionId = null
         focusSessionStartedAt = 0L
+        activeScheduleName = null
         hasMeaningfulProgress = false
         lastMeaningfulProgressAt = 0L
         scheduleStartEventSent = false
@@ -1100,6 +1115,85 @@ abstract class LegacyMainTabFragment : Fragment() {
         runCatching { usagePoller?.stop() }
         usagePoller = null
         usageTracker = null
+        lastRealtimeDistractionPromptAt = 0L
+        snoozeRealtimeUntilAt = 0L
+        realtimePromptShowing = false
+    }
+
+    private fun resolveScheduleNameForUi(): String {
+        val repo = AlarmRepository(requireContext())
+        val lastId = repo.getLastAlarmId()
+        val job = if (!lastId.isNullOrBlank()) repo.getAlarm(lastId) else null
+        val label = job?.label?.trim().orEmpty()
+        return if (label.isNotBlank()) label else "업무 세션"
+    }
+
+    private fun maybePromptRealtimeDistraction(
+        recent: List<com.eft.mobileagent.behavior.usage.AppUsageStat>,
+        nowMs: Long,
+    ) {
+        if (focusSessionStartedAt <= 0L) return
+        if (!hasMeaningfulProgress) return
+        if (realtimePromptShowing) return
+        if (nowMs < snoozeRealtimeUntilAt) return
+        if (nowMs - lastRealtimeDistractionPromptAt < REALTIME_PROMPT_COOLDOWN_MS) return
+
+        val topExternal = recent.firstOrNull {
+            it.category != "WorkTool" && it.category != "System" && it.category != "Browser"
+        } ?: return
+        if (topExternal.seconds < REALTIME_MIN_EXTERNAL_SECONDS) return
+
+        val cat = topExternal.category
+        if (cat != "YouTube" && cat != "SNS" && cat != "Other") return
+
+        val scheduleName = (activeScheduleName ?: "업무 세션")
+        showRealtimeDistractionDialog(
+            scheduleName = scheduleName,
+            distractionCategory = cat,
+            seconds = topExternal.seconds,
+            nowMs = nowMs,
+        )
+    }
+
+    private fun showRealtimeDistractionDialog(
+        scheduleName: String,
+        distractionCategory: String,
+        seconds: Int,
+        nowMs: Long,
+    ) {
+        if (!isAdded) return
+        realtimePromptShowing = true
+        lastRealtimeDistractionPromptAt = nowMs
+
+        val body =
+            "“$scheduleName” 중에 [$distractionCategory]로 이탈했어요 (최근 ${seconds}초).\n" +
+                "업무가 막힌 지점이 있나요?\n\n" +
+                "지금 감정을 처리하면 다시 시작하기 쉬워져요."
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("딴짓 신호 감지")
+            .setMessage(body)
+            .setPositiveButton("감정 처리하기") { _, _ ->
+                sendRecoveryEvent(
+                    entryPoint = "distraction_detected",
+                    sessionState = "in_progress",
+                    blockedMin = null,
+                    distractionType = distractionCategory,
+                    confidence = 0.74,
+                    source = "android_usage_realtime",
+                    openWeb = true,
+                )
+                realtimePromptShowing = false
+            }
+            .setNegativeButton("괜찮아요") { _, _ ->
+                realtimePromptShowing = false
+            }
+            .setNeutralButton("5분 뒤 다시") { _, _ ->
+                snoozeRealtimeUntilAt = nowMs + REALTIME_SNOOZE_MS
+                realtimePromptShowing = false
+            }
+            .setOnDismissListener { realtimePromptShowing = false }
+            .show()
     }
 
     private fun markMeaningfulProgress() {
@@ -1366,6 +1460,7 @@ abstract class LegacyMainTabFragment : Fragment() {
                     .put("user_id", inputs.userId)
                     .put("session_state", sessionState)
                     .put("entry_point", entryPoint)
+                    .put("schedule_name", (activeScheduleName ?: "업무 세션"))
                     .put("confidence", adjustedConfidence(confidence))
                     .put("cooldown_minutes", recoveryCooldownMinutes())
                     .put("source", source)
@@ -1411,6 +1506,7 @@ abstract class LegacyMainTabFragment : Fragment() {
                     .put("focus_session_id", focusSessionId)
                     .put("session_state", "in_progress")
                     .put("entry_point", "session_summary")
+                    .put("schedule_name", (activeScheduleName ?: "업무 세션"))
                     .put("confidence", adjustedConfidence(mismatchScore))
                     .put("cooldown_minutes", recoveryCooldownMinutes())
                     .put("source", "android_usage_stats")

@@ -10,6 +10,7 @@ import android.os.Looper
 class UsageStatsPoller(
     private val context: Context,
     private val tracker: UsageSessionTracker,
+    private val onAfterPoll: ((recentSummary: List<AppUsageStat>, nowMs: Long) -> Unit)? = null,
 ) {
     private val handler = Handler(Looper.getMainLooper())
     private var running = false
@@ -72,5 +73,8 @@ class UsageStatsPoller(
         // Close open segment up to now (prevents time gaps).
         tracker.finalizeTo(now)
         lastQueryAt = now
+
+        // Emit recent window summary for realtime nudge engine.
+        onAfterPoll?.invoke(tracker.recentSummary(windowMs = 90_000L, nowMs = now), now)
     }
 }
