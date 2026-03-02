@@ -37,7 +37,8 @@ from backend.services.intake_storage import IntakeStorageService
 
 # Core routers
 from backend.app.api.chat import chat_router as chat_hub_router
-from backend.routers.auth import router as auth_router
+from backend.routers.auth import router as auth_router
+from backend.routers.pairing import router as pairing_router
 from backend.routers.compare import router as compare_router
 from backend.routers.emotion_candidates import router as emotion_router
 from backend.routers import guidance_router
@@ -658,7 +659,8 @@ app.include_router(work_guide_router)
 app.include_router(compare_router)
 app.include_router(suds_router)
 app.include_router(notion_router)
-app.include_router(auth_router)
+app.include_router(auth_router)
+app.include_router(pairing_router)
 app.include_router(notion_oauth_router)
 app.include_router(profile_router)
 app.include_router(push_router)

@@ -1,5 +1,6 @@
 import React from "react";
 import LoginPage from "./pages/LoginPage";
+import MobileLinkPage from "./pages/MobileLinkPage";
 import RootLanding from "./pages/RootLanding";
 import Dashboard from "./pages/Dashboard";
 import ARDemo from "./pages/ARDemo";
@@ -48,6 +49,7 @@ export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<RootLanding />} />
+      <Route path="/mobile-link" element={<MobileLinkPage />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/plan/day" element={<PlanDayPage />} />
       <Route path="/profile-setup" element={<ProfileSetupPage />} />
