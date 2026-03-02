@@ -9,7 +9,18 @@ const toWsOrigin = (base: string): string => {
 const inferLocalApi = () =>
   `http://${typeof window === "undefined" ? "localhost" : window.location.hostname}:8000`;
 
-const PROD_DEFAULT = "https://eft-ai-app.onrender.com";
+const inferProdApi = () => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname.toLowerCase();
+    // On Vercel, keep API same-origin so auth cookies are first-party.
+    if (host.endsWith(".vercel.app")) {
+      return window.location.origin;
+    }
+  }
+  return "https://eft-ai-app.onrender.com";
+};
+
+const PROD_DEFAULT = inferProdApi();
 const DEV_DEFAULT = inferLocalApi();
 
 const raw = trimSlash(
