@@ -30,6 +30,46 @@ class ReminderSyncClient(baseUrl: String) {
         private const val TAG = "ReminderSyncClient"
     }
 
+    fun claimPairing(code: String): String {
+        val endpoint = "$normalizedBaseUrl/api/pairing/claim"
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 5000
+            readTimeout = 5000
+            doOutput = true
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "application/json")
+        }
+
+        val payload = JSONObject()
+            .put("code", code.trim())
+            .toString()
+
+        val body = try {
+            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            val http = conn.responseCode
+            val stream = if (http in 200..299) conn.inputStream else (conn.errorStream ?: conn.inputStream)
+            val text = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            if (http !in 200..299) {
+                throw IllegalStateException("HTTP $http: $text")
+            }
+            text
+        } finally {
+            conn.disconnect()
+        }
+
+        val json = JSONObject(body)
+        if (json.has("ok") && !json.optBoolean("ok", true)) {
+            val error = json.optString("error", "pairing_failed")
+            throw IllegalStateException(error)
+        }
+        val userId = json.optString("user_id", "").trim()
+        if (userId.isBlank()) {
+            throw IllegalStateException("invalid_user_id")
+        }
+        return userId
+    }
+
     fun login(identifier: String): SyncLoginUser {
         val endpoint = "$normalizedBaseUrl/api/reminders/mobile-login"
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {

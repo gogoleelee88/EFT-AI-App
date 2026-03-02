@@ -15,6 +15,7 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.DatePicker
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -47,6 +48,8 @@ import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -77,7 +80,8 @@ abstract class LegacyMainTabFragment : Fragment() {
     private lateinit var syncUserIdInput: EditText
     private lateinit var behaviorAccessTokenInput: EditText
     private lateinit var loginSyncUserButton: Button
-    private lateinit var loginFormContainer: View
+    private lateinit var scanPairingQrButton: Button
+    private lateinit var loginFormContainer: LinearLayout
     private lateinit var editLoginButton: Button
     private lateinit var loggedInUserStatusView: TextView
     private lateinit var syncServerAlarmsButton: Button
@@ -128,6 +132,7 @@ abstract class LegacyMainTabFragment : Fragment() {
     private var developerModeTapStartAt = 0L
     private var behaviorQuestionSheet: BottomSheetDialog? = null
     private var behaviorQuestionSheetView: View? = null
+    private val pairingCodeRegex = Regex("""(\d{6})""")
 
     protected enum class MainTab {
         HOME,
@@ -223,6 +228,31 @@ abstract class LegacyMainTabFragment : Fragment() {
             handleNotificationPermissionResult(granted)
         }
 
+    private val scanPairingQrLauncher =
+        registerForActivityResult(ScanContract()) { result ->
+            val raw = result.contents ?: return@registerForActivityResult
+            val code = parsePairingCode(raw)
+            if (code == null) {
+                toast(getString(R.string.msg_pairing_invalid_qr))
+                return@registerForActivityResult
+            }
+            syncUserIdInput.setText(code)
+            claimPairingAndLogin(code)
+        }
+
+    private fun parsePairingCode(raw: String): String? {
+        val match = pairingCodeRegex.find(raw.trim()) ?: return null
+        return match.groupValues[1]
+    }
+
+    private fun startQrScan() {
+        val options = ScanOptions()
+        options.setPrompt("웹에서 표시된 QR을 스캔해 계정을 연결하세요")
+        options.setBeepEnabled(true)
+        options.setOrientationLocked(false)
+        scanPairingQrLauncher.launch(options)
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -246,6 +276,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         syncUserIdInput = view.findViewById(R.id.syncUserIdInput)
         behaviorAccessTokenInput = view.findViewById(R.id.behaviorAccessTokenInput)
         loginSyncUserButton = view.findViewById(R.id.loginSyncUserButton)
+        scanPairingQrButton = view.findViewById(R.id.scanPairingQrButton)
         loginFormContainer = view.findViewById(R.id.loginFormContainer)
         editLoginButton = view.findViewById(R.id.editLoginButton)
         loggedInUserStatusView = view.findViewById(R.id.loggedInUserStatusView)
@@ -326,8 +357,10 @@ abstract class LegacyMainTabFragment : Fragment() {
             syncServerReminders()
         }
         loginSyncUserButton.setOnClickListener {
-            loginSyncUser()
+            val code = syncUserIdInput.text?.toString()?.trim().orEmpty()
+            claimPairingAndLogin(code)
         }
+        scanPairingQrButton.setOnClickListener { startQrScan() }
         editLoginButton.setOnClickListener {
             loginFormContainer.visibility = View.VISIBLE
             editLoginButton.visibility = View.GONE
@@ -885,13 +918,14 @@ abstract class LegacyMainTabFragment : Fragment() {
         }.start()
     }
 
-    private fun loginSyncUser() {
-        val identifier = syncUserIdInput.text?.toString()?.trim().orEmpty()
-        if (identifier.isBlank()) {
+    private fun claimPairingAndLogin(code: String) {
+        val pairingCode = code.trim()
+        if (pairingCode.isBlank()) {
             toast(getString(R.string.msg_login_identifier_required))
             return
         }
-        val baseUrl = ReminderSyncManager.normalizeBaseUrl(backendBaseUrlInput.text?.toString().orEmpty())
+
+        val baseUrl = ReminderSyncManager.normalizeBaseUrl(BuildConfig.BACKEND_BASE_URL)
         if (baseUrl == null) {
             toast(getString(R.string.msg_sync_backend_url_required))
             return
@@ -900,38 +934,40 @@ abstract class LegacyMainTabFragment : Fragment() {
         val previousUserId = ReminderSyncManager.loadConfig(requireContext())?.userId
 
         loginSyncUserButton.isEnabled = false
+        scanPairingQrButton.isEnabled = false
         Thread {
             val result = runCatching {
-                val user = ReminderSyncClient(baseUrl).login(identifier)
-                ReminderSyncManager.saveConfig(requireContext(), baseUrl, user.userId)
+                val userId = ReminderSyncClient(baseUrl).claimPairing(pairingCode)
+                ReminderSyncManager.saveConfig(requireContext(), baseUrl, userId)
                 ReminderSyncWorkScheduler.ensurePeriodicSync(requireContext())
                 ReminderSyncWorkScheduler.triggerImmediateSync(requireContext())
                 val syncResult = ReminderSyncManager.syncNow(
-                context = requireContext(),
+                    context = requireContext(),
                     baseUrl = baseUrl,
-                    userId = user.userId,
+                    userId = userId,
                     limit = 80,
                 )
-                Pair(user, syncResult)
+                Pair(userId, syncResult)
             }
 
             runOnUiThreadSafe {
                 loginSyncUserButton.isEnabled = true
-                result.onSuccess { (user, syncResult) ->
-                    syncUserIdInput.setText(user.userId)
-                    if (previousUserId != null && previousUserId != user.userId) {
+                scanPairingQrButton.isEnabled = true
+                result.onSuccess { (userId, syncResult) ->
+                    syncUserIdInput.setText(userId)
+                    if (previousUserId != null && previousUserId != userId) {
                         behaviorQueueRepository.clearAll()
                     }
-                    refreshLoginStatusUi(user.userId)
+                    refreshLoginStatusUi(userId)
                     refreshAlarmSummaryUi()
                     behaviorConfigStore.saveAccessToken(behaviorAccessTokenInput.text?.toString())
                     BehaviorAgentController.start(requireContext())
                     refreshBehaviorStatusUi()
-                    val display = user.email ?: user.userId
+
                     val behaviorStartedMessage = "Behavior auto-started"
                     if (syncResult.skippedCount > 0) {
                         toast(
-                            "${getString(R.string.msg_login_success, display)} / " +
+                            "${getString(R.string.msg_login_success, userId)} / " +
                                 getString(
                                     R.string.msg_sync_success_with_skip_detail,
                                     syncResult.scheduledCount,
@@ -943,18 +979,14 @@ abstract class LegacyMainTabFragment : Fragment() {
                         )
                     } else {
                         toast(
-                            "${getString(R.string.msg_login_success, display)} / " +
+                            "${getString(R.string.msg_login_success, userId)} / " +
                                 getString(R.string.msg_sync_success, syncResult.scheduledCount) +
                                 " / $behaviorStartedMessage",
                         )
                     }
                 }.onFailure { err ->
                     val message = err.message ?: "unknown"
-                    if (message.contains("CLEARTEXT", ignoreCase = true)) {
-                        toast("Login failed: use http://10.0.2.2:8000 as backend URL.")
-                    } else {
-                        toast(getString(R.string.msg_login_failed, message))
-                    }
+                    toast(getString(R.string.msg_login_failed, message))
                 }
             }
         }.start()
@@ -1871,11 +1903,7 @@ abstract class LegacyMainTabFragment : Fragment() {
             val hasUserId = syncUserIdInput.text?.toString()?.trim()?.isNotBlank() == true
             applyDeveloperModeVisibility(hasUserId)
         }
-        if (isDeveloperModeEnabled) {
-            developerModeHintText.visibility = View.GONE
-        } else {
-            developerModeHintText.visibility = View.VISIBLE
-        }
+        developerModeHintText.visibility = View.GONE
     }
 
     private fun refreshGeneralSettingsVisibility() {
