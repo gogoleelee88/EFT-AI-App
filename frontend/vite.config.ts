@@ -68,6 +68,11 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [
+          /^\/api(\/.*)?(?:\?.*)?$/,
+          /^\/v1(\/.*)?(?:\?.*)?$/,
+          /^\/ws(\/.*)?(?:\?.*)?$/,
+          /^\/health(?:\?.*)?$/,
+          /^\/suds(\/.*)?(?:\?.*)?$/,
           /^\/eft-guide(\/.*)?$/,
           /^\/latest\.apk(?:\?.*)?$/,
           /\.apk(?:\?.*)?$/,
