@@ -70,6 +70,8 @@
     <string name="login_sync_user">로그인</string>
     <string name="pair_scan_qr">QR로 계정 연결</string>
     <string name="msg_pairing_invalid_qr">유효하지 않은 QR 코드입니다.</string>
+    <string name="logout_sync_user">연결 해제</string>
+    <string name="msg_logout_done">연결이 해제되었습니다.</string>
     <string name="edit_login">로그인 정보 수정</string>
     <string name="msg_login_identifier_required">아이디 또는 이메일을 입력해주세요.</string>
     <string name="msg_login_success">로그인 완료: %1$s</string>

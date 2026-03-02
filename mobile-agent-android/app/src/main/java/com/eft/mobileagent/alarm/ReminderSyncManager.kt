@@ -86,6 +86,13 @@ object ReminderSyncManager {
             .apply()
     }
 
+    fun clearConfig(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(KEY_BASE_URL)
+            .remove(KEY_USER_ID)
+            .apply()
+    }
+
     fun syncWithSavedConfig(context: Context, limit: Int = 80): ReminderSyncSummary {
         val config = loadConfig(context) ?: throw MissingSyncConfigException()
         return syncNow(context, config.baseUrl, config.userId, limit)

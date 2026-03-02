@@ -81,6 +81,7 @@ abstract class LegacyMainTabFragment : Fragment() {
     private lateinit var behaviorAccessTokenInput: EditText
     private lateinit var loginSyncUserButton: Button
     private lateinit var scanPairingQrButton: Button
+    private lateinit var logoutSyncUserButton: Button
     private lateinit var loginFormContainer: LinearLayout
     private lateinit var editLoginButton: Button
     private lateinit var loggedInUserStatusView: TextView
@@ -277,6 +278,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         behaviorAccessTokenInput = view.findViewById(R.id.behaviorAccessTokenInput)
         loginSyncUserButton = view.findViewById(R.id.loginSyncUserButton)
         scanPairingQrButton = view.findViewById(R.id.scanPairingQrButton)
+        logoutSyncUserButton = view.findViewById(R.id.logoutSyncUserButton)
         loginFormContainer = view.findViewById(R.id.loginFormContainer)
         editLoginButton = view.findViewById(R.id.editLoginButton)
         loggedInUserStatusView = view.findViewById(R.id.loggedInUserStatusView)
@@ -361,6 +363,9 @@ abstract class LegacyMainTabFragment : Fragment() {
             claimPairingAndLogin(code)
         }
         scanPairingQrButton.setOnClickListener { startQrScan() }
+        logoutSyncUserButton.setOnClickListener {
+            logoutSyncUser()
+        }
         editLoginButton.setOnClickListener {
             loginFormContainer.visibility = View.VISIBLE
             editLoginButton.visibility = View.GONE
@@ -857,6 +862,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         if (!isDeveloperModeEnabled) {
             loginFormContainer.visibility = View.GONE
             editLoginButton.visibility = View.GONE
+            logoutSyncUserButton.visibility = View.GONE
             return
         }
 
@@ -865,6 +871,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         loggedInUserStatusView.visibility = View.VISIBLE
         loginFormContainer.visibility = if (isLoggedIn) View.GONE else View.VISIBLE
         editLoginButton.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
+        logoutSyncUserButton.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
     }
 
     private fun refreshLoginStatusUi(userId: String?) {
@@ -990,6 +997,22 @@ abstract class LegacyMainTabFragment : Fragment() {
                 }
             }
         }.start()
+    }
+
+    private fun logoutSyncUser() {
+        BehaviorAgentController.stop(requireContext())
+        ReminderSyncManager.clearConfig(requireContext())
+        behaviorConfigStore.saveAccessToken(null)
+        behaviorQueueRepository.clearAll()
+
+        syncUserIdInput.setText("")
+        backendBaseUrlInput.setText(BuildConfig.BACKEND_BASE_URL)
+
+        refreshLoginStatusUi(null)
+        refreshAlarmSummaryUi()
+        refreshBehaviorStatusUi()
+        applyDeveloperModeVisibility(isLoggedIn = false)
+        toast(getString(R.string.msg_logout_done))
     }
 
     private fun startBehaviorAgent() {
@@ -1899,6 +1922,7 @@ abstract class LegacyMainTabFragment : Fragment() {
             syncServerAlarmsButton.visibility = View.GONE
             loggedInUserStatusView.visibility = View.GONE
             editLoginButton.visibility = View.GONE
+            logoutSyncUserButton.visibility = View.GONE
         } else {
             val hasUserId = syncUserIdInput.text?.toString()?.trim()?.isNotBlank() == true
             applyDeveloperModeVisibility(hasUserId)
