@@ -12,6 +12,11 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/:path*", "destination": "https://eft-ai-app.onrender.com/api/:path*" },
+    { "source": "/v1/:path*", "destination": "https://eft-ai-app.onrender.com/v1/:path*" },
+    { "source": "/suds", "destination": "https://eft-ai-app.onrender.com/suds" },
+    { "source": "/ws/:path*", "destination": "https://eft-ai-app.onrender.com/ws/:path*" },
+    { "source": "/health", "destination": "https://eft-ai-app.onrender.com/health" },
     { "source": "/((?!.*\\..*).*)", "destination": "/index.html" }
   ]
 }
