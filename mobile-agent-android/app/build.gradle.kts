@@ -58,4 +58,6 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:2.8.9")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.zxing:core:3.5.3")
 }
