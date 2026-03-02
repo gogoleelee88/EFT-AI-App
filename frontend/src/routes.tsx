@@ -36,6 +36,7 @@ import DemoStartPage from "./pages/DemoStartPage";
 import DemoResultPage from "./pages/DemoResultPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import SessionAdvicePage from "./pages/SessionAdvicePage";
+import RecoveryChoicePage from "./pages/RecoveryChoicePage";
 import MealCoachPage from "./pages/MealCoachPage";
 import MenstrualModulePage from "./pages/MenstrualModulePage";
 import MenstrualOutputsPage from "./pages/MenstrualOutputsPage";
@@ -62,6 +63,7 @@ export default function AppRoutes() {
       <Route path="/condition" element={<ConditionHubPage />} />
       <Route path="/condition/module/:metricKey" element={<ConditionModulePage />} />
       <Route path="/resistance" element={<ResistanceEventPage />} />
+      <Route path="/recover" element={<RecoveryChoicePage />} />
       <Route path="/eft-strict" element={<EFTStrictPage />} />
       <Route path="/ai-chat" element={<AIChat />} />
       <Route path="/demo" element={<DemoStartPage />} />

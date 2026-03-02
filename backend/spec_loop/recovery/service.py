@@ -110,7 +110,7 @@ def _build_recovery_url(
         params["blocked_min"] = str(int(blocked_min))
     if distraction_type:
         params["distraction_type"] = distraction_type
-    return f"{base}/eft-strict?{urlencode(params)}"
+    return f"{base}/recover?{urlencode(params)}"
 
 
 def _has_recent_open_event(

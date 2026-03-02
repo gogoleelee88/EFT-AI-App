@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -15,6 +17,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.eft.mobileagent.R
+import com.eft.mobileagent.behavior.BehaviorApiClient
+import org.json.JSONObject
 
 class AlarmActivity : AppCompatActivity() {
     private lateinit var repository: AlarmRepository
@@ -29,9 +33,15 @@ class AlarmActivity : AppCompatActivity() {
     private lateinit var manualDismissButton: Button
     private lateinit var snoozeButton: Button
     private lateinit var alarmNoDismissNote: TextView
+    private lateinit var procrastinationCard: View
+    private lateinit var handleResistanceButton: Button
+    private lateinit var skipResistanceButton: Button
 
     private var alarmId: String? = null
     private var alarm: AlarmJob? = null
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private var alarmShownAt: Long = 0L
+    private var missionCompletedOrDismissed: Boolean = false
 
     private val requestLocationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -70,6 +80,9 @@ class AlarmActivity : AppCompatActivity() {
         manualDismissButton = findViewById(R.id.manualDismissButton)
         snoozeButton = findViewById(R.id.snoozeButton)
         alarmNoDismissNote = findViewById(R.id.alarmNoDismissNote)
+        procrastinationCard = findViewById(R.id.procrastinationCard)
+        handleResistanceButton = findViewById(R.id.handleResistanceButton)
+        skipResistanceButton = findViewById(R.id.skipResistanceButton)
 
         alarmId = intent.getStringExtra(AlarmReceiver.EXTRA_ALARM_ID)
         if (alarmId.isNullOrBlank()) {
@@ -84,6 +97,10 @@ class AlarmActivity : AppCompatActivity() {
 
         bindAlarmUi(alarm!!)
         snoozeButton.setOnClickListener { snoozeAlarm() }
+        alarmShownAt = System.currentTimeMillis()
+        uiHandler.postDelayed({ maybeShowProcrastinationCard() }, PROCRASTINATION_TIMEOUT_MS)
+        handleResistanceButton.setOnClickListener { openRecoveryChoiceForAlarm() }
+        skipResistanceButton.setOnClickListener { snoozeAlarm() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -95,6 +112,11 @@ class AlarmActivity : AppCompatActivity() {
                 }
             }
         })
+    }
+
+    override fun onDestroy() {
+        uiHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
     private fun bindAlarmUi(job: AlarmJob) {
@@ -186,7 +208,57 @@ class AlarmActivity : AppCompatActivity() {
         }
     }
 
+    private fun maybeShowProcrastinationCard() {
+        if (isFinishing || isDestroyed) return
+        if (missionCompletedOrDismissed) return
+        procrastinationCard.visibility = View.VISIBLE
+    }
+
+    private fun openRecoveryChoiceForAlarm() {
+        val job = alarm ?: return
+        val config = ReminderSyncManager.loadConfig(this)
+        if (config == null) {
+            toast(getString(R.string.msg_need_login_for_recovery))
+            return
+        }
+
+        Thread {
+            val recoveryUrl = runCatching {
+                val client = BehaviorApiClient(baseUrl = config.baseUrl, accessToken = null)
+                val elapsedMin = ((System.currentTimeMillis() - alarmShownAt) / 60_000L).toInt().coerceAtLeast(1)
+                val payload = JSONObject()
+                    .put("user_id", config.userId)
+                    .put("session_state", "start")
+                    .put("entry_point", "schedule_start")
+                    .put("schedule_name", job.label)
+                    .put("blocked_min", elapsedMin)
+                    .put("confidence", 0.66)
+                    .put("source", "android_alarm_timeout")
+                val resp = client.post("/api/spec/recovery/events", payload.toString())
+                if (resp.statusCode !in 200..299) return@runCatching null
+                val obj = JSONObject(resp.body)
+                obj.optString("recovery_url").trim().ifBlank { null }
+            }.getOrNull()
+
+            runOnUiThread {
+                if (!recoveryUrl.isNullOrBlank()) {
+                    runCatching {
+                        startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(recoveryUrl),
+                            ),
+                        )
+                    }.onFailure { toast("웹 열기 실패: ${it.message ?: "unknown"}") }
+                } else {
+                    toast("Recovery URL을 받지 못했습니다.")
+                }
+            }
+        }.start()
+    }
+
     private fun completeMissionAndDismiss(distanceMeters: Float) {
+        missionCompletedOrDismissed = true
         val id = alarmId ?: return
         scheduler.cancel(id)
         repository.setLastAlarmId(null)
@@ -197,6 +269,7 @@ class AlarmActivity : AppCompatActivity() {
     }
 
     private fun dismissManualAlarm() {
+        missionCompletedOrDismissed = true
         val id = alarmId ?: return
         scheduler.cancel(id)
         repository.setLastAlarmId(null)
@@ -207,6 +280,7 @@ class AlarmActivity : AppCompatActivity() {
     }
 
     private fun snoozeAlarm() {
+        missionCompletedOrDismissed = true
         val job = alarm ?: return
         val now = System.currentTimeMillis()
         val newId = "${job.alarmId}_snooze_$now"
@@ -237,5 +311,6 @@ class AlarmActivity : AppCompatActivity() {
 
     private companion object {
         private const val SNOOZE_MINUTES = 10
+        private const val PROCRASTINATION_TIMEOUT_MS = 90_000L
     }
 }
