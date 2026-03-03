@@ -37,6 +37,18 @@ export const resolveBackendUrl = (path: string) => {
     return normalizedInput
   }
   const normalizedPath = normalizedInput.startsWith("/") ? normalizedInput : `/${normalizedInput}`;
+
+  // PRODUCTION SAFETY:
+  // Always keep API calls same-origin in production by using relative paths.
+  // This guarantees first-party cookies and relies on Vercel rewrites to reach the backend.
+  // It also prevents deploy-time env overrides (VITE_API_BASE_URL / VITE_PRODUCTION_ORIGIN)
+  // from forcing cross-site absolute calls that break cookies on mobile browsers.
+  if (import.meta.env.PROD) {
+    if (/^\/(api|v1|ws|health|suds)(\/|$)/.test(normalizedPath)) {
+      return normalizedPath;
+    }
+  }
+
   return `${API_CONFIG.API_BASE_URL}${normalizedPath}`;
 };
 
