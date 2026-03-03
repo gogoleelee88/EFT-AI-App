@@ -867,16 +867,11 @@ abstract class LegacyMainTabFragment : Fragment() {
     }
 
     private fun applyDeveloperModeVisibility(isLoggedIn: Boolean) {
-        if (!isDeveloperModeEnabled) {
-            loginFormContainer.visibility = View.GONE
-            editLoginButton.visibility = View.GONE
-            logoutSyncUserButton.visibility = View.GONE
-            return
-        }
-
-        behaviorAccessTokenInput.visibility = View.VISIBLE
-        syncServerAlarmsButton.visibility = View.VISIBLE
+        val showDevOnlyControls = isDeveloperModeEnabled
+        behaviorAccessTokenInput.visibility = if (showDevOnlyControls) View.VISIBLE else View.GONE
+        syncServerAlarmsButton.visibility = if (showDevOnlyControls) View.VISIBLE else View.GONE
         loggedInUserStatusView.visibility = View.VISIBLE
+
         loginFormContainer.visibility = if (isLoggedIn) View.GONE else View.VISIBLE
         editLoginButton.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
         logoutSyncUserButton.visibility = if (isLoggedIn) View.VISIBLE else View.GONE
@@ -2012,17 +2007,8 @@ abstract class LegacyMainTabFragment : Fragment() {
     }
 
     private fun refreshDeveloperModeUi() {
-        if (!isDeveloperModeEnabled) {
-            loginFormContainer.visibility = View.GONE
-            behaviorAccessTokenInput.visibility = View.GONE
-            syncServerAlarmsButton.visibility = View.GONE
-            loggedInUserStatusView.visibility = View.GONE
-            editLoginButton.visibility = View.GONE
-            logoutSyncUserButton.visibility = View.GONE
-        } else {
-            val hasUserId = syncUserIdInput.text?.toString()?.trim()?.isNotBlank() == true
-            applyDeveloperModeVisibility(hasUserId)
-        }
+        val hasUserId = syncUserIdInput.text?.toString()?.trim()?.isNotBlank() == true
+        applyDeveloperModeVisibility(hasUserId)
         developerModeHintText.visibility = View.GONE
     }
 

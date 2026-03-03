@@ -10,13 +10,9 @@ const inferLocalApi = () =>
   `http://${typeof window === "undefined" ? "localhost" : window.location.hostname}:8000`;
 
 const inferProdApi = () => {
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname.toLowerCase();
-    // On Vercel, keep API same-origin so auth cookies are first-party.
-    if (host.endsWith(".vercel.app")) {
-      return window.location.origin;
-    }
-  }
+  // In production, keep API same-origin in the browser so auth cookies are first-party.
+  // Vercel rewrites (/api -> backend) will forward requests to Render.
+  if (typeof window !== "undefined") return window.location.origin;
   return "https://eft-ai-app.onrender.com";
 };
 
