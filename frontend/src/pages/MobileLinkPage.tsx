@@ -19,13 +19,10 @@ export default function MobileLinkPage() {
   const [busy, setBusy] = useState(false);
 
   const nextQuery = encodeURIComponent("/mobile-link");
+  const loginPath = `/login?next=${nextQuery}`;
 
   useEffect(() => {
-    if (loading) return;
-    if (!isAuthenticated) {
-      navigate(`/login?next=${nextQuery}`, { replace: true });
-      return;
-    }
+    if (loading || !isAuthenticated) return;
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, loading]);
@@ -54,16 +51,42 @@ export default function MobileLinkPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="max-w-md mx-auto p-4">
+        <h1 className="text-xl font-bold">Connect mobile app</h1>
+        <p className="mt-2 text-sm opacity-80">Checking login session...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-md mx-auto p-4">
+        <h1 className="text-xl font-bold">Connect mobile app</h1>
+        <p className="text-sm opacity-80 mt-2">Open the app and scan this QR.</p>
+        <div className="mt-4 p-3 border rounded bg-white">
+          <div className="font-semibold">Login required</div>
+          <div className="text-sm mt-1">You need to log in on the web first to create a pairing QR.</div>
+        </div>
+        <button
+          className="mt-4 w-full py-3 rounded bg-black text-white"
+          onClick={() => navigate(loginPath)}
+        >
+          Go to login
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto p-4">
-      <h1 className="text-xl font-bold">모바일 연결</h1>
-      <p className="text-sm opacity-80 mt-2">
-        앱에서 “QR로 계정 연결”을 눌러 아래 QR을 스캔하세요.
-      </p>
+      <h1 className="text-xl font-bold">Connect mobile app</h1>
+      <p className="text-sm opacity-80 mt-2">Open the app and scan this QR.</p>
 
       {error && (
         <div className="mt-4 p-3 border rounded bg-white">
-          <div className="font-semibold">오류</div>
+          <div className="font-semibold">Error</div>
           <div className="text-sm mt-1">{error}</div>
         </div>
       )}
@@ -75,7 +98,7 @@ export default function MobileLinkPage() {
           </div>
           <div className="text-center mt-3">
             <div className="text-3xl font-bold tracking-widest">{data.code}</div>
-            <div className="text-xs opacity-70 mt-2">만료(UTC): {data.expires_at}</div>
+            <div className="text-xs opacity-70 mt-2">Expires (UTC): {data.expires_at}</div>
           </div>
         </div>
       )}
@@ -85,7 +108,7 @@ export default function MobileLinkPage() {
         disabled={busy}
         onClick={refresh}
       >
-        {busy ? "발급 중..." : "새 QR 발급"}
+        {busy ? "Generating..." : "Generate new QR"}
       </button>
     </div>
   );
