@@ -3,7 +3,7 @@ Firebase ID Token -> Backend verify -> JWT(httpOnly cookies) ë°ê¸
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 
@@ -43,30 +43,86 @@ class LoginResponse(BaseModel):
   user: UserResponse
 
 
-def _set_cookie(resp: Response, name: str, value: str, max_age: int) -> None:
+def _first_header_value(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    head = value.split(",", 1)[0].strip()
+    return head or None
+
+
+def _request_host(request: Request) -> str:
+    host = _first_header_value(request.headers.get("x-forwarded-host")) or _first_header_value(request.headers.get("host"))
+    if not host:
+        return ""
+    return host.split(":", 1)[0].strip().lower()
+
+
+def _request_is_secure(request: Request) -> bool:
+    forwarded_proto = _first_header_value(request.headers.get("x-forwarded-proto"))
+    if forwarded_proto:
+        return forwarded_proto.lower() == "https"
+    return (request.url.scheme or "").lower() == "https"
+
+
+def _resolve_cookie_domain(request: Request) -> Optional[str]:
     s = get_settings()
+    configured = (s.COOKIE_DOMAIN or "").strip()
+    if not configured or configured.lower() == "localhost":
+        return None
+
+    # Keep auth cookies host-only when traffic comes through reverse proxies.
+    if _first_header_value(request.headers.get("x-forwarded-host")):
+        return None
+
+    req_host = _request_host(request)
+    normalized = configured.lstrip(".").lower()
+    if req_host and req_host != normalized and not req_host.endswith(f".{normalized}"):
+        logger.warning(
+            "Ignoring COOKIE_DOMAIN=%s for host=%s to keep cookie first-party",
+            configured,
+            req_host,
+        )
+        return None
+    return configured
+
+
+def _cookie_options(request: Request, max_age: int) -> Dict[str, Any]:
+    s = get_settings()
+    forwarded_proto = _first_header_value(request.headers.get("x-forwarded-proto"))
+
+    secure = bool(s.COOKIE_SECURE or _request_is_secure(request))
+    # If proxy forwarded proto is present, treat it as canonical.
+    if forwarded_proto is not None:
+        secure = forwarded_proto.lower() == "https"
+
+    # OAuth redirect compatibility on mobile browsers requires None+Secure.
+    samesite = "none" if secure else "lax"
+
+    return {
+        "max_age": max_age,
+        "httponly": True,
+        "secure": secure,
+        "samesite": samesite,
+        "domain": _resolve_cookie_domain(request),
+        "path": "/",
+    }
+
+
+def _set_cookie(request: Request, resp: Response, name: str, value: str, max_age: int) -> None:
     # localhost?ì??domain ?ëµ (ë¸ë¼?°ì? ?¸í??
-    domain = s.COOKIE_DOMAIN if s.COOKIE_DOMAIN and s.COOKIE_DOMAIN not in ("localhost", "") else None
     resp.set_cookie(
         key=name,
         value=value,
-        max_age=max_age,
-        httponly=True,
-        secure=s.COOKIE_SECURE,
-        samesite=s.COOKIE_SAMESITE,
-        domain=domain,
-        path="/",
+        **_cookie_options(request, max_age=max_age),
     )
 
 
-def _clear_cookie(resp: Response, name: str) -> None:
-    s = get_settings()
-    domain = s.COOKIE_DOMAIN if s.COOKIE_DOMAIN and s.COOKIE_DOMAIN not in ("localhost", "") else None
-    resp.delete_cookie(key=name, domain=domain, path="/")
+def _clear_cookie(request: Request, resp: Response, name: str) -> None:
+    resp.delete_cookie(key=name, domain=_resolve_cookie_domain(request), path="/")
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(req: LoginRequest, resp: Response, db: Session = Depends(get_db)):
+async def login(req: LoginRequest, request: Request, resp: Response, db: Session = Depends(get_db)):
     """
     ?ë¡?¸ì??Firebase signInWithPopup -> getIdToken() ë°ì? ??
     ê·?ID Token??ë³´ë´ë©?ë°±ì?ê? ê²ì¦íê³??ë¹??JWT ì¿í¤ë¥??¸í?©ë??
@@ -82,8 +138,8 @@ async def login(req: LoginRequest, resp: Response, db: Session = Depends(get_db)
         refresh_max_age = int((pair.refresh_expires_at - datetime.now(timezone.utc)).total_seconds())
 
         s = get_settings()
-        _set_cookie(resp, s.COOKIE_NAME_ACCESS, pair.access_token, max_age=access_max_age)
-        _set_cookie(resp, s.COOKIE_NAME_REFRESH, pair.refresh_token, max_age=refresh_max_age)
+        _set_cookie(request, resp, s.COOKIE_NAME_ACCESS, pair.access_token, max_age=access_max_age)
+        _set_cookie(request, resp, s.COOKIE_NAME_REFRESH, pair.refresh_token, max_age=refresh_max_age)
 
         return LoginResponse(
             success=True,
@@ -201,6 +257,7 @@ async def update_profile(
 
 @router.post("/refresh", response_model=RefreshResponse)
 async def refresh(
+    request: Request,
     resp: Response,
     db: Session = Depends(get_db),
     refresh_token: Optional[str] = Cookie(default=None, alias="refresh_token")
@@ -223,25 +280,21 @@ async def refresh(
         access_max_age = int((pair.access_expires_at - datetime.now(timezone.utc)).total_seconds())
         refresh_max_age = int((pair.refresh_expires_at - datetime.now(timezone.utc)).total_seconds())
 
-        _set_cookie(resp, s.COOKIE_NAME_ACCESS, pair.access_token, max_age=access_max_age)
-        _set_cookie(resp, s.COOKIE_NAME_REFRESH, pair.refresh_token, max_age=refresh_max_age)
+        _set_cookie(request, resp, s.COOKIE_NAME_ACCESS, pair.access_token, max_age=access_max_age)
+        _set_cookie(request, resp, s.COOKIE_NAME_REFRESH, pair.refresh_token, max_age=refresh_max_age)
         return RefreshResponse(success=True)
     except Exception:
         return RefreshResponse(success=False)
 
 
 @router.post("/logout")
-async def logout(resp: Response, db: Session = Depends(get_db), refresh_token: Optional[str] = Cookie(default=None, alias="refresh_token")):
+async def logout(request: Request, resp: Response, db: Session = Depends(get_db), refresh_token: Optional[str] = Cookie(default=None, alias="refresh_token")):
     s = get_settings()
     if refresh_token:
         try:
             _get_auth_service().revoke_refresh_token(db, refresh_token)
         except Exception:
             pass
-    _clear_cookie(resp, s.COOKIE_NAME_ACCESS)
-    _clear_cookie(resp, s.COOKIE_NAME_REFRESH)
+    _clear_cookie(request, resp, s.COOKIE_NAME_ACCESS)
+    _clear_cookie(request, resp, s.COOKIE_NAME_REFRESH)
     return {"success": True}
-
-
-
-
