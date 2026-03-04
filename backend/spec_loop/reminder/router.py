@@ -51,6 +51,18 @@ def _normalize_source_type(value: Optional[str]) -> str:
     return "service"
 
 
+def _optional_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed != parsed:  # NaN check
+        return None
+    return parsed
+
+
 def _looks_like_email(value: str) -> bool:
     text = value.strip()
     return "@" in text and "." in text.split("@")[-1]
@@ -158,6 +170,11 @@ def mobile_sync_reminders(
         source_type = _normalize_source_type(metadata.get("source_type"))
         if source_type == "google":
             mission_type = "manual_dismiss"
+        target_lat = _optional_float(metadata.get("target_lat"))
+        target_lng = _optional_float(metadata.get("target_lng"))
+        radius_meters = _optional_float(metadata.get("radius_meters"))
+        if radius_meters is not None and radius_meters <= 0:
+            radius_meters = None
 
         alarms.append(
             {
@@ -173,6 +190,9 @@ def mobile_sync_reminders(
                 "title": metadata.get("task_title") or "誘몄뀡 ?뚮엺",
                 "mission_type": mission_type,
                 "source_type": source_type,
+                "target_lat": target_lat,
+                "target_lng": target_lng,
+                "radius_meters": radius_meters,
             }
         )
 
@@ -247,5 +267,3 @@ def mobile_login(
             "name": user.name,
         },
     }
-
-

@@ -11,7 +11,7 @@ export default function AppHeader() {
           to="/mobile-link"
           className="px-3 py-1 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 transition-colors"
         >
-          Link mobile app
+          앱 qr로그인
         </Link>
         {supported && (
           <button
