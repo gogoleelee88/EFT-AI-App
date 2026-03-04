@@ -3,6 +3,7 @@ package com.eft.mobileagent.alarm
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.eft.mobileagent.BuildConfig
 import java.net.URI
 
 data class ReminderSyncConfig(
@@ -53,7 +54,14 @@ object ReminderSyncManager {
 
     fun loadConfig(context: Context): ReminderSyncConfig? {
         val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        readConfigFrom(prefs)?.let { return it }
+        readConfigFrom(prefs)?.let { stored ->
+            val preferred = preferPublicBackend(stored.baseUrl)
+            if (preferred != stored.baseUrl) {
+                saveConfig(context, preferred, stored.userId)
+                return stored.copy(baseUrl = preferred)
+            }
+            return stored
+        }
 
         val legacyConfig = readConfigFrom(
             prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE),
@@ -61,10 +69,11 @@ object ReminderSyncManager {
             userIdKey = LEGACY_KEY_USER_ID,
         ) ?: return null
 
-        saveConfig(context, legacyConfig.baseUrl, legacyConfig.userId)
+        val preferredLegacyBase = preferPublicBackend(legacyConfig.baseUrl)
+        saveConfig(context, preferredLegacyBase, legacyConfig.userId)
         context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
             .edit().remove(LEGACY_KEY_BASE_URL).remove(LEGACY_KEY_USER_ID).apply()
-        return legacyConfig
+        return legacyConfig.copy(baseUrl = preferredLegacyBase)
     }
 
     private fun readConfigFrom(
@@ -76,6 +85,31 @@ object ReminderSyncManager {
         val userId = prefs.getString(userIdKey, "").orEmpty().trim()
         if (userId.isBlank()) return null
         return ReminderSyncConfig(baseUrl = baseUrl, userId = userId)
+    }
+
+    private fun preferPublicBackend(currentBaseUrl: String): String {
+        val fallback = normalizeBaseUrl(BuildConfig.BACKEND_BASE_URL) ?: return currentBaseUrl
+        val currentHost = runCatching { URI(currentBaseUrl).host?.lowercase().orEmpty() }.getOrDefault("")
+        val fallbackHost = runCatching { URI(fallback).host?.lowercase().orEmpty() }.getOrDefault("")
+        if (currentHost.isBlank() || fallbackHost.isBlank()) return currentBaseUrl
+
+        if (isLocalOrPrivateHost(currentHost) && !isLocalOrPrivateHost(fallbackHost)) {
+            return fallback
+        }
+        return currentBaseUrl
+    }
+
+    private fun isLocalOrPrivateHost(host: String): Boolean {
+        val h = host.trim().lowercase()
+        if (h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "0.0.0.0") return true
+        if (h.startsWith("10.")) return true
+        if (h.startsWith("192.168.")) return true
+        if (h.startsWith("169.254.")) return true
+        if (h.startsWith("172.")) {
+            val secondOctet = h.split(".").getOrNull(1)?.toIntOrNull()
+            if (secondOctet != null && secondOctet in 16..31) return true
+        }
+        return false
     }
 
     fun saveConfig(context: Context, baseUrl: String, userId: String) {

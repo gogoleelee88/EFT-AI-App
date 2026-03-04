@@ -216,10 +216,10 @@ class Settings(BaseSettings):
     NOTION_API_BASE_URL: str = "https://api.notion.com/v1"
     NOTION_API_VERSION: str = "2022-06-28"
     NOTION_USER_DB_NAME: str = "MoodTalk Users"
-    BASE_FRONTEND_URL: str = Field("http://localhost:3000", env="BASE_FRONTEND_URL")
+    BASE_FRONTEND_URL: str = Field("https://eft-ai-app-frontend-4ia5.vercel.app", env="BASE_FRONTEND_URL")
 
-    FRONTEND_URL: str = "http://localhost:5173"
-    FRONTEND_DASHBOARD_URL: str = "http://localhost:5173/dashboard"
+    FRONTEND_URL: str = "https://eft-ai-app-frontend-4ia5.vercel.app"
+    FRONTEND_DASHBOARD_URL: str = "https://eft-ai-app-frontend-4ia5.vercel.app/dashboard"
     SOFT_NUDGE_MODE: str = Field("prod", env="SOFT_NUDGE_MODE")
     SOFT_NUDGE_PROD_MIN_SESSION_SECONDS: int = Field(15 * 60, env="SOFT_NUDGE_PROD_MIN_SESSION_SECONDS")
     SOFT_NUDGE_DEMO_MIN_SESSION_SECONDS: int = Field(30, env="SOFT_NUDGE_DEMO_MIN_SESSION_SECONDS")
@@ -249,6 +249,17 @@ class Settings(BaseSettings):
         if v not in ALLOWED_PREMIUM_MODE:
             raise ValueError(f"PREMIUM_MODE must be one of {ALLOWED_PREMIUM_MODE}, got: {value}")
         return v
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def _coerce_debug(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production", "false", "0", "off", "no"}:
+                return False
+            if normalized in {"debug", "dev", "development", "true", "1", "on", "yes"}:
+                return True
+        return value
 
     @field_validator("MODULE_MODE")
     @classmethod

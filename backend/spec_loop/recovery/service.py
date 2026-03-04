@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+import ipaddress
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -76,13 +77,48 @@ def _build_entry_sentence(
 
 def _resolve_frontend_base_url() -> str:
     settings = get_settings()
-    dashboard_url = (settings.FRONTEND_DASHBOARD_URL or "").strip()
-    if not dashboard_url:
+    candidates = [
+        (settings.FRONTEND_DASHBOARD_URL or "").strip(),
+        (settings.FRONTEND_URL or "").strip(),
+        (getattr(settings, "BASE_FRONTEND_URL", "") or "").strip(),
+    ]
+
+    normalized_bases: list[str] = []
+    for raw in candidates:
+        if not raw:
+            continue
+        base = raw.rstrip("/")
+        if base.endswith("/dashboard"):
+            base = base[: -len("/dashboard")]
+        base = base.rstrip("/")
+        if base:
+            normalized_bases.append(base)
+
+    if not normalized_bases:
         return ""
-    base = dashboard_url.rstrip("/")
-    if base.endswith("/dashboard"):
-        base = base[: -len("/dashboard")]
-    return base.rstrip("/")
+
+    for base in normalized_bases:
+        parsed = urlparse(base)
+        host = (parsed.hostname or "").strip().lower()
+        if not _is_local_or_private_host(host):
+            return base
+
+    return normalized_bases[0]
+
+
+def _is_local_or_private_host(host: str) -> bool:
+    if not host:
+        return True
+    if host in {"localhost", "0.0.0.0", "::1"}:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return bool(ip.is_private or ip.is_loopback or ip.is_link_local)
+    except ValueError:
+        # Hostname: treat *.local as local/private.
+        if host.endswith(".local"):
+            return True
+        return False
 
 
 def _build_recovery_url(
