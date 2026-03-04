@@ -20,7 +20,7 @@ android {
         versionName = generatedVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "BACKEND_BASE_URL", "\"http://192.168.0.139:8000\"")
+        buildConfigField("String", "BACKEND_BASE_URL", "\"https://eft-ai-app.onrender.com\"")
         buildConfigField("String", "COMPLETION_EVENT_PATH", "\"/api/push/metrics\"")
     }
 
