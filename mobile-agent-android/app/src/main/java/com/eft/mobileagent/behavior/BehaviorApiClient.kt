@@ -3,6 +3,7 @@ package com.eft.mobileagent.behavior
 import com.eft.mobileagent.BuildConfig
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
 data class BehaviorAgentConfig(
@@ -19,20 +20,55 @@ class BehaviorAgentConfigStore(private val context: android.content.Context) {
         val rawUrl = prefs.getString(KEY_SYNC_BASE_URL, null)?.trim()?.ifBlank { null }
             ?: legacyPrefs.getString(KEY_SYNC_BASE_URL, null)?.trim()?.ifBlank { null }
             ?: BuildConfig.BACKEND_BASE_URL
-        val normalized = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
-            rawUrl.removeSuffix("/")
-        } else {
-            "http://${rawUrl.removeSuffix("/")}"
+        val normalized = normalizeBaseUrl(rawUrl)
+        val defaultBaseUrl = normalizeBaseUrl(BuildConfig.BACKEND_BASE_URL)
+        val effectiveBaseUrl = preferPublicBackend(normalized, defaultBaseUrl)
+
+        if (effectiveBaseUrl != normalized) {
+            prefs.edit().putString(KEY_SYNC_BASE_URL, effectiveBaseUrl).apply()
         }
+
         val uid = prefs.getString(KEY_SYNC_USER_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
             ?: legacyPrefs.getString(KEY_SYNC_USER_ID, null)?.trim()?.takeIf { it.isNotEmpty() }
         val token = prefs.getString(KEY_BEHAVIOR_ACCESS_TOKEN, null)?.trim()?.takeIf { it.isNotEmpty() }
             ?: legacyPrefs.getString(KEY_BEHAVIOR_ACCESS_TOKEN, null)?.trim()?.takeIf { it.isNotEmpty() }
         return BehaviorAgentConfig(
-            backendBaseUrl = normalized,
+            backendBaseUrl = effectiveBaseUrl,
             userId = uid,
             accessToken = token,
         )
+    }
+
+    private fun normalizeBaseUrl(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed.removeSuffix("/")
+        }
+        return "http://${trimmed.removeSuffix("/")}"
+    }
+
+    private fun preferPublicBackend(currentBaseUrl: String, fallbackBaseUrl: String): String {
+        val currentHost = runCatching { URI(currentBaseUrl).host?.lowercase().orEmpty() }.getOrDefault("")
+        val fallbackHost = runCatching { URI(fallbackBaseUrl).host?.lowercase().orEmpty() }.getOrDefault("")
+        if (currentHost.isBlank() || fallbackHost.isBlank()) return currentBaseUrl
+
+        if (isLocalOrPrivateHost(currentHost) && !isLocalOrPrivateHost(fallbackHost)) {
+            return fallbackBaseUrl
+        }
+        return currentBaseUrl
+    }
+
+    private fun isLocalOrPrivateHost(host: String): Boolean {
+        val h = host.trim().lowercase()
+        if (h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "0.0.0.0") return true
+        if (h.startsWith("10.")) return true
+        if (h.startsWith("192.168.")) return true
+        if (h.startsWith("169.254.")) return true
+        if (h.startsWith("172.")) {
+            val secondOctet = h.split(".").getOrNull(1)?.toIntOrNull()
+            if (secondOctet != null && secondOctet in 16..31) return true
+        }
+        return false
     }
 
     fun loadAccessToken(): String? {
