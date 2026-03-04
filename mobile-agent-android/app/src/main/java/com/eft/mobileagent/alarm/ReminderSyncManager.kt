@@ -143,10 +143,37 @@ object ReminderSyncManager {
                 reminder.triggerAtMillis
             }
 
+            val hasTargetLocation =
+                reminder.targetLatitude != null && reminder.targetLongitude != null
+            if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL && !hasTargetLocation) {
+                skippedMissingTargetCount++
+                skippedCount++
+                Log.w(
+                    TAG,
+                    "location reminder skipped due to missing target sync_key=${reminder.syncKey}",
+                )
+                return@forEach
+            }
+
             val alarmJob = AlarmJob(
                 alarmId = reminder.syncKey,
                 triggerAtMillis = scheduleAt,
                 label = reminder.title.ifBlank { "(no_title)" },
+                targetLatitude = if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL) {
+                    reminder.targetLatitude
+                } else {
+                    null
+                },
+                targetLongitude = if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL) {
+                    reminder.targetLongitude
+                } else {
+                    null
+                },
+                radiusMeters = if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL) {
+                    reminder.radiusMeters
+                } else {
+                    TargetLocation.DEFAULT_RADIUS_METERS
+                },
                 missionType = reminder.missionType.value,
                 sourceType = reminder.sourceType.value,
                 enabled = true,

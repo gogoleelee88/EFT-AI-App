@@ -1,7 +1,6 @@
 package com.eft.mobileagent.alarm
 
 import android.util.Log
-import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -15,6 +14,9 @@ data class SyncedReminder(
     val nextFireAtUtcRaw: String,
     val missionType: AlarmMissionType,
     val sourceType: AlarmSourceType,
+    val targetLatitude: Double? = null,
+    val targetLongitude: Double? = null,
+    val radiusMeters: Float = TargetLocation.DEFAULT_RADIUS_METERS,
 )
 
 data class SyncLoginUser(
@@ -28,6 +30,14 @@ class ReminderSyncClient(baseUrl: String) {
 
     companion object {
         private const val TAG = "ReminderSyncClient"
+    }
+
+    private fun JSONObject.optNullableDouble(vararg keys: String): Double? {
+        keys.forEach { key ->
+            if (!has(key) || isNull(key)) return@forEach
+            return optDouble(key).takeUnless { it.isNaN() || it.isInfinite() }
+        }
+        return null
     }
 
     fun claimPairing(code: String): String {
@@ -159,11 +169,20 @@ class ReminderSyncClient(baseUrl: String) {
             } else {
                 AlarmMissionType.MANUAL_DISMISS
             }
+            val targetLatitude = item.optNullableDouble("target_lat", "targetLatitude")
+            val targetLongitude = item.optNullableDouble("target_lng", "targetLongitude")
+            val radiusMeters = (
+                item.optNullableDouble("radius_meters", "radiusMeters")
+                    ?.takeIf { it > 0.0 }
+                    ?.toFloat()
+            ) ?: TargetLocation.DEFAULT_RADIUS_METERS
 
             Log.i(
                 TAG,
                 "mobile-sync alarm sync_key=$resolvedSyncKey mission_type=${missionType.value} " +
-                    "source_type=${sourceType.value} next_fire_at_utc=${fireAtRaw.ifBlank { "(missing)" }}",
+                    "source_type=${sourceType.value} target_lat=${targetLatitude ?: "null"} " +
+                    "target_lng=${targetLongitude ?: "null"} radius_meters=$radiusMeters " +
+                    "next_fire_at_utc=${fireAtRaw.ifBlank { "(missing)" }}",
             )
 
             val parsedNextFireAt = runCatching {
@@ -183,6 +202,9 @@ class ReminderSyncClient(baseUrl: String) {
                 nextFireAtUtcRaw = fireAtRaw,
                 missionType = missionType,
                 sourceType = sourceType,
+                targetLatitude = targetLatitude,
+                targetLongitude = targetLongitude,
+                radiusMeters = radiusMeters,
             )
         }
         return out

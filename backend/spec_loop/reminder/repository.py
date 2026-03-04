@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 import hashlib
+import math
 from typing import Any, Iterable, Optional
 
 from sqlalchemy import inspect, or_
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from backend.spec_loop.models import (
     DayPlan,
     MissionResult,
+    Place,
     PushSubscription,
     ReminderDelivery,
     ReminderJob,
@@ -94,6 +96,102 @@ def _infer_source_type(item: dict[str, Any]) -> str:
     if "google" in raw:
         return "google"
     return "service"
+
+
+def _as_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def _as_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_location_target(
+    db: Session,
+    *,
+    item: dict[str, Any],
+    user_id: Optional[str],
+) -> dict[str, Any]:
+    missions = item.get("missions")
+    if not isinstance(missions, list):
+        return {}
+
+    for mission in missions:
+        if not isinstance(mission, dict):
+            continue
+        if mission.get("enabled") is False:
+            continue
+        mission_type = str(mission.get("type") or "").strip().lower()
+        if mission_type != "location":
+            continue
+
+        config = mission.get("config")
+        if not isinstance(config, dict):
+            return {}
+
+        place_id = _as_int(config.get("place_id"))
+        place_name = str(config.get("place_name") or "").strip() or None
+
+        gps = config.get("gps")
+        target_lat: Optional[float] = None
+        target_lng: Optional[float] = None
+        radius_meters: Optional[float] = None
+        if isinstance(gps, dict):
+            target_lat = _as_float(gps.get("lat"))
+            target_lng = _as_float(gps.get("lng"))
+            radius_meters = _as_float(gps.get("radius"))
+
+        if target_lat is None:
+            target_lat = _as_float(config.get("gps_lat"))
+        if target_lng is None:
+            target_lng = _as_float(config.get("gps_lng"))
+        if radius_meters is None:
+            radius_meters = _as_float(config.get("gps_radius"))
+
+        place = None
+        if place_id is not None and (target_lat is None or target_lng is None or place_name is None):
+            place = db.query(Place).filter(Place.place_id == place_id).first()
+            if place is not None and user_id and place.user_id and place.user_id != user_id:
+                place = None
+
+        if place is not None:
+            if place_name is None:
+                place_name = str(place.name or "").strip() or None
+            if target_lat is None:
+                target_lat = _as_float(place.gps_lat)
+            if target_lng is None:
+                target_lng = _as_float(place.gps_lng)
+            if radius_meters is None:
+                radius_meters = _as_float(place.gps_radius)
+
+        if radius_meters is None or radius_meters <= 0:
+            radius_meters = 80.0
+
+        payload: dict[str, Any] = {}
+        if place_id is not None:
+            payload["target_place_id"] = place_id
+        if place_name:
+            payload["target_place_name"] = place_name
+        if target_lat is not None and target_lng is not None:
+            payload["target_lat"] = target_lat
+            payload["target_lng"] = target_lng
+            payload["radius_meters"] = radius_meters
+        return payload
+
+    return {}
 
 
 def _supports_channel_in_stable_unique(db: Session) -> bool:
@@ -224,6 +322,11 @@ def upsert_jobs_for_day_plan(
             mission_type = _infer_mission_type(item)
             if source_type == "google":
                 mission_type = "manual_dismiss"
+            location_target = _extract_location_target(
+                db,
+                item=item,
+                user_id=day_plan.user_id,
+            )
 
             metadata = {
                 "task_title": task_title,
@@ -233,6 +336,7 @@ def upsert_jobs_for_day_plan(
                 "source_type": source_type,
                 "expected_motion": item.get("expected_motion"),
             }
+            metadata.update(location_target)
             if job is None:
                 job = ReminderJob(
                     user_id=day_plan.user_id,
@@ -641,4 +745,3 @@ def metrics_counts(db: Session, *, user_id: Optional[str] = None) -> dict[str, i
         "webpush_enabled": webpush,
         "fcm_enabled": fcm,
     }
-

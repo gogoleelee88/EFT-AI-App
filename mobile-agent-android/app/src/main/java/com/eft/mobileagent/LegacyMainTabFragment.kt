@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.widget.Button
 import android.widget.DatePicker
 import android.widget.EditText
@@ -64,6 +65,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
+import java.util.regex.Pattern
 
 abstract class LegacyMainTabFragment : Fragment() {
     protected abstract val tabMode: MainTab
@@ -133,7 +135,7 @@ abstract class LegacyMainTabFragment : Fragment() {
     private var developerModeTapStartAt = 0L
     private var behaviorQuestionSheet: BottomSheetDialog? = null
     private var behaviorQuestionSheetView: View? = null
-    private val pairingCodeRegex = Regex("""(\d{6})""")
+    private val pairingCodeRegex: Pattern = Pattern.compile("(\\d{6})")
 
     protected enum class MainTab {
         HOME,
@@ -237,29 +239,86 @@ abstract class LegacyMainTabFragment : Fragment() {
             handleNotificationPermissionResult(granted)
         }
 
+    private val requestCameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                launchQrScanner()
+            } else {
+                toast("Camera permission is required to scan QR.")
+            }
+        }
+
     private val scanPairingQrLauncher =
         registerForActivityResult(ScanContract()) { result ->
-            val raw = result.contents ?: return@registerForActivityResult
+            val raw = result.contents
+            if (raw.isNullOrBlank()) {
+                Log.w("QR_LOGIN", "Scanner returned empty payload (cancelled or decode failed)")
+                return@registerForActivityResult
+            }
             val code = parsePairingCode(raw)
             if (code == null) {
+                Log.w("QR_LOGIN", "Invalid pairing QR payload: len=${raw.length}")
                 toast(getString(R.string.msg_pairing_invalid_qr))
                 return@registerForActivityResult
             }
+            Log.d("QR_LOGIN", "Pairing code parsed: $code")
             syncUserIdInput.setText(code)
             claimPairingAndLogin(code)
         }
 
     private fun parsePairingCode(raw: String): String? {
-        val match = pairingCodeRegex.find(raw.trim()) ?: return null
-        return match.groupValues[1]
+        val s = raw.trim()
+        if (s.isEmpty()) return null
+
+        // 1) Fast path: exact 6 digits
+        if (s.length == 6 && s.all { it.isDigit() }) return s
+
+        // 2) Normalize and try common prefix
+        val upper = s.uppercase(Locale.US)
+        val idx = upper.indexOf("EFTAI_PAIR:")
+        if (idx >= 0) {
+            val tail = upper.substring(idx + "EFTAI_PAIR:".length).trim()
+            val m = pairingCodeRegex.matcher(tail)
+            if (m.find()) return m.group(1)
+        }
+
+        // 3) Fallback: find any 6-digit sequence in the whole payload
+        val m = pairingCodeRegex.matcher(s)
+        if (m.find()) return m.group(1)
+
+        return null
+    }
+
+    private fun hasCameraPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            requireContext(),
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun startQrScan() {
-        val options = ScanOptions()
-        options.setPrompt("웹에서 표시된 QR을 스캔해 계정을 연결하세요")
-        options.setBeepEnabled(true)
-        options.setOrientationLocked(false)
-        scanPairingQrLauncher.launch(options)
+        if (!hasCameraPermission()) {
+            requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return
+        }
+        launchQrScanner()
+    }
+
+    private fun launchQrScanner() {
+        try {
+            val options = ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt("웹에서 표시된 QR을 스캔해 계정을 연결하세요")
+                setBeepEnabled(true)
+                setOrientationLocked(true)
+                setCameraId(0)
+            }
+            Log.d("QR_LOGIN", "Launching QR scanner")
+            scanPairingQrLauncher.launch(options)
+        } catch (t: Throwable) {
+            Log.e("QR_LOGIN", "Failed to launch QR scanner", t)
+            toast("Failed to start QR scanner.")
+        }
     }
 
     override fun onCreateView(

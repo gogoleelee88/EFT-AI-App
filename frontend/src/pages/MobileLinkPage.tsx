@@ -94,7 +94,13 @@ export default function MobileLinkPage() {
       {data && (
         <div className="mt-5 p-4 border rounded bg-white">
           <div className="flex justify-center">
-            <QRCodeCanvas value={data.qr_payload} size={220} />
+            <QRCodeCanvas
+              value={data.qr_payload}
+              size={320}
+              level="H"
+              marginSize={4}
+              includeMargin
+            />
           </div>
           <div className="text-center mt-3">
             <div className="text-3xl font-bold tracking-widest">{data.code}</div>

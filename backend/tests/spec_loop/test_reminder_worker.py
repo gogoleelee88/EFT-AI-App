@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from backend.models.user import User
-from backend.spec_loop.models import DayPlan, MissionResult, ReminderDelivery, ReminderJob
+from backend.spec_loop.models import DayPlan, MissionResult, Place, ReminderDelivery, ReminderJob
 from backend.spec_loop.reminder import repository
 from backend.spec_loop.reminder.providers.webpush_provider import WebPushProvider
 from backend.spec_loop.reminder.worker import process_due_reminders
@@ -221,3 +221,72 @@ def test_upsert_legacy_unique_prefers_available_channel(db_session, monkeypatch)
     jobs = db_session.query(ReminderJob).filter(ReminderJob.day_id == plan.day_id).all()
     assert len(jobs) == 1
     assert jobs[0].channel == "fcm"
+
+
+def test_upsert_location_mission_stores_target_metadata_from_place_fallback(db_session):
+    user_id = _seed_user(db_session, "location-meta-user")
+    now_local = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Seoul"))
+    alarm_time = (now_local + timedelta(minutes=5)).strftime("%H:%M")
+
+    place = Place(
+        user_id=user_id,
+        name="Test Library",
+        address="Seoul",
+        gps_lat=37.5001,
+        gps_lng=127.0301,
+        gps_radius=55,
+    )
+    db_session.add(place)
+    db_session.commit()
+    db_session.refresh(place)
+
+    plan = DayPlan(
+        user_id=user_id,
+        date=now_local.date(),
+        mode=100,
+        version=1,
+        items=[
+            {
+                "item_id": "location-meta-item-1",
+                "task_title": "location mission metadata",
+                "planned_block_minutes": 30,
+                "micro_steps": ["start"],
+                "missions": [
+                    {
+                        "mission_id": "mission_1",
+                        "type": "location",
+                        "enabled": True,
+                        # Intentionally omit config.gps to verify place_id fallback lookup.
+                        "config": {
+                            "place_id": place.place_id,
+                            "place_name": place.name,
+                        },
+                    }
+                ],
+                "alarm": {
+                    "time": alarm_time,
+                    "repeat": "daily",
+                    "custom_days": None,
+                },
+            }
+        ],
+    )
+    db_session.add(plan)
+    db_session.commit()
+    db_session.refresh(plan)
+
+    repository.upsert_jobs_for_day_plan(
+        db_session,
+        plan,
+        timezone_name="Asia/Seoul",
+        channels=["webpush"],
+        now_utc=datetime.now(timezone.utc),
+    )
+
+    job = db_session.query(ReminderJob).filter(ReminderJob.day_id == plan.day_id).one()
+    metadata = job.metadata_json or {}
+    assert metadata["target_place_id"] == place.place_id
+    assert metadata["target_place_name"] == place.name
+    assert metadata["target_lat"] == place.gps_lat
+    assert metadata["target_lng"] == place.gps_lng
+    assert metadata["radius_meters"] == float(place.gps_radius)
