@@ -46,6 +46,8 @@ import com.eft.mobileagent.behavior.BehaviorApiClient
 import com.eft.mobileagent.behavior.BehaviorAgentController
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
 import com.eft.mobileagent.behavior.BehaviorQueueRepository
+import com.eft.mobileagent.recovery.EftStrictIntakeBottomSheet
+import com.eft.mobileagent.recovery.EftStrictIntakeChatBottomSheet
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -68,7 +70,7 @@ import java.util.TimeZone
 import java.util.UUID
 import java.util.regex.Pattern
 
-abstract class LegacyMainTabFragment : Fragment() {
+abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeBottomSheet.Listener, EftStrictIntakeChatBottomSheet.Listener {
     protected abstract val tabMode: MainTab
     protected abstract val tabLayoutRes: Int
 
@@ -1626,12 +1628,91 @@ abstract class LegacyMainTabFragment : Fragment() {
             }.getOrNull()
 
             runOnUiThreadSafe {
-                val url = intervention?.recoveryUrl
-                if (openWeb && intervention?.action == "open_web" && !url.isNullOrBlank()) {
-                    openRecoveryUrl(url)
+                // Native-first (web NEVER opens). When backend suggests open_web, show /eft-strict intake.
+                if (openWeb && intervention?.action == "open_web") {
+                    showStrictIntakeBottomSheet(
+                        inputsUserId = inputs.userId,
+                        entryPoint = entryPoint,
+                        scheduleName = (activeScheduleName ?: "업무 세션"),
+                        focusSessionId = activeFocusSessionId,
+                        distractionType = distractionType,
+                        blockedMin = blockedMin,
+                        entrySentence = intervention.entrySentence,
+                    )
                 }
             }
         }.start()
+    }
+
+    private fun showStrictIntakeBottomSheet(
+        inputsUserId: String?,
+        entryPoint: String?,
+        scheduleName: String?,
+        focusSessionId: String?,
+        distractionType: String?,
+        blockedMin: Int?,
+        entrySentence: String?,
+    ) {
+        if (!isAdded) return
+        val sessionId = "android_recovery_${System.currentTimeMillis()}"
+        val sheet = EftStrictIntakeChatBottomSheet.newInstance(
+            sessionId = sessionId,
+            userId = inputsUserId,
+            entryPoint = entryPoint,
+            scheduleName = scheduleName,
+            focusSessionId = focusSessionId,
+            distractionType = distractionType,
+            blockedMin = blockedMin,
+            entrySentence = entrySentence,
+        )
+        sheet.show(parentFragmentManager, "EftStrictIntakeChatBottomSheet")
+    }
+
+    override fun onStrictIntakeSubmit(payload: EftStrictIntakeBottomSheet.StrictIntakePayload) {
+        val inputs = collectBehaviorStartInputs(silent = true) ?: return
+        Thread {
+            val result = runCatching {
+                val client = BehaviorApiClient(baseUrl = inputs.baseUrl, accessToken = inputs.accessToken)
+                val body = JSONObject()
+                    .put("session_id", payload.sessionId)
+                    .put("session_type", payload.sessionType)
+                    .put("user_id", payload.userId ?: inputs.userId)
+                    .put("core_emotion", payload.coreEmotion)
+                    .put("situation_context", payload.situationContext)
+                    .put("automatic_thought", payload.automaticThought)
+                    .put("intensity_before", payload.intensityBefore)
+                payload.physicalSensation?.let { body.put("physical_sensation", it) }
+                payload.copingAttempt?.let { body.put("coping_attempt", it) }
+                payload.immediateGoal?.let { body.put("immediate_goal", it) }
+                payload.entryPoint?.let { body.put("entry_point", it) }
+                payload.scheduleName?.let { body.put("schedule_name", it) }
+                payload.focusSessionId?.let { body.put("focus_session_id", it) }
+                payload.distractionType?.let { body.put("distraction_type", it) }
+                payload.blockedMin?.let { body.put("blocked_min", it) }
+                payload.entrySentence?.let { body.put("entry_sentence", it) }
+
+                val resp = client.post("/api/emotion/checkin", body.toString())
+                if (resp.statusCode !in 200..299) {
+                    throw RuntimeException("HTTP ${resp.statusCode}")
+                }
+                true
+            }.getOrElse {
+                Log.w("EFTStrict", "save failed: ${it.message}", it)
+                false
+            }
+
+            runOnUiThreadSafe {
+                if (result) {
+                    toast(getString(R.string.strict_intake_saved))
+                } else {
+                    toast(getString(R.string.strict_intake_save_failed, "unknown"))
+                }
+            }
+        }.start()
+    }
+
+    override fun onStrictIntakeCancelled() {
+        // no-op
     }
 
     private fun sendRecoveryEventSessionSummary(

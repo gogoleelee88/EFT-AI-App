@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -22,10 +23,12 @@ import androidx.core.content.FileProvider
 import com.eft.mobileagent.R
 import com.eft.mobileagent.behavior.BehaviorApiClient
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
+import com.eft.mobileagent.recovery.EftStrictIntakeBottomSheet
+import com.eft.mobileagent.recovery.EftStrictIntakeChatBottomSheet
 import org.json.JSONObject
 import java.io.File
 
-class AlarmActivity : AppCompatActivity() {
+class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, EftStrictIntakeChatBottomSheet.Listener {
     private lateinit var repository: AlarmRepository
     private lateinit var scheduler: AlarmScheduler
     private lateinit var validator: LocationMissionValidator
@@ -436,19 +439,63 @@ class AlarmActivity : AppCompatActivity() {
 
             runOnUiThread {
                 if (!recoveryUrl.isNullOrBlank()) {
-                    runCatching {
-                        startActivity(
-                            android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse(recoveryUrl),
-                            ),
-                        )
-                    }.onFailure { toast("웹 열기 실패: ${it.message ?: "unknown"}") }
+                    // Native /eft-strict intake (web NEVER opens)
+                    val sessionId = "android_alarm_recovery_${System.currentTimeMillis()}"
+                    val sheet = EftStrictIntakeChatBottomSheet.newInstance(
+                        sessionId = sessionId,
+                        userId = config.userId,
+                        entryPoint = "schedule_start",
+                        scheduleName = job.label,
+                        focusSessionId = null,
+                        distractionType = null,
+                        blockedMin = ((System.currentTimeMillis() - alarmShownAt) / 60_000L).toInt().coerceAtLeast(1),
+                        entrySentence = null,
+                    )
+                    sheet.show(supportFragmentManager, "EftStrictIntakeChatBottomSheet")
                 } else {
                     toast("Recovery URL을 받지 못했습니다.")
                 }
             }
         }.start()
+    }
+
+    override fun onStrictIntakeSubmit(payload: EftStrictIntakeBottomSheet.StrictIntakePayload) {
+        val config = ReminderSyncManager.loadConfig(this) ?: return
+        val token = behaviorConfigStore.loadAccessToken()?.trim()?.ifBlank { null }
+        Thread {
+            val ok = runCatching {
+                val client = BehaviorApiClient(baseUrl = config.baseUrl, accessToken = token)
+                val body = JSONObject()
+                    .put("session_id", payload.sessionId)
+                    .put("session_type", payload.sessionType)
+                    .put("user_id", payload.userId ?: config.userId)
+                    .put("core_emotion", payload.coreEmotion)
+                    .put("situation_context", payload.situationContext)
+                    .put("automatic_thought", payload.automaticThought)
+                    .put("intensity_before", payload.intensityBefore)
+                payload.physicalSensation?.let { body.put("physical_sensation", it) }
+                payload.copingAttempt?.let { body.put("coping_attempt", it) }
+                payload.immediateGoal?.let { body.put("immediate_goal", it) }
+
+                val resp = client.post("/api/emotion/checkin", body.toString())
+                resp.statusCode in 200..299
+            }.getOrElse {
+                Log.w("EFTStrict", "alarm save failed: ${it.message}", it)
+                false
+            }
+
+            runOnUiThread {
+                if (ok) {
+                    toast(getString(R.string.strict_intake_saved))
+                } else {
+                    toast(getString(R.string.strict_intake_save_failed, "unknown"))
+                }
+            }
+        }.start()
+    }
+
+    override fun onStrictIntakeCancelled() {
+        // no-op
     }
 
     private fun completeMissionAndDismiss(distanceMeters: Float) {
