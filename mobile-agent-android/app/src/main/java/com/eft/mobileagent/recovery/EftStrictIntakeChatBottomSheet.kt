@@ -1,6 +1,8 @@
 package com.eft.mobileagent.recovery
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,6 +15,7 @@ import android.widget.TextView
 import androidx.core.view.isVisible
 import com.eft.mobileagent.R
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import kotlin.math.max
 
 /**
  * Chat-like 7-step /eft-strict intake:
@@ -44,6 +47,7 @@ class EftStrictIntakeChatBottomSheet : BottomSheetDialogFragment() {
 
     private var stepIndex = 0
     private var intensity: Int = 6
+    private val ui = Handler(Looper.getMainLooper())
 
     private val values: MutableMap<Field, String> = mutableMapOf()
 
@@ -104,13 +108,13 @@ class EftStrictIntakeChatBottomSheet : BottomSheetDialogFragment() {
         intensitySendBtn.setOnClickListener { handleIntensityAnswer() }
 
         // Start conversation
-        addAssistantMessage(getString(R.string.strict_chat_intro))
-        askCurrentStep()
+        addAssistantMessageWithTyping(getString(R.string.strict_chat_intro))
+        ui.postDelayed({ askCurrentStep() }, 350L)
     }
 
     private fun askCurrentStep() {
         val step = steps[stepIndex]
-        addAssistantMessage(step.question)
+        addAssistantMessageWithTyping(step.question)
 
         val isIntensity = step.field == Field.INTENSITY_BEFORE
         inputRow.isVisible = !isIntensity
@@ -162,7 +166,7 @@ class EftStrictIntakeChatBottomSheet : BottomSheetDialogFragment() {
         val thought = values[Field.AUTOMATIC_THOUGHT].orEmpty().trim()
 
         if (coreEmotion.isBlank() || situation.isBlank() || thought.isBlank()) {
-            addAssistantMessage(getString(R.string.strict_chat_incomplete_error))
+            addAssistantMessageWithTyping(getString(R.string.strict_chat_incomplete_error))
             scrollToBottom()
             return
         }
@@ -193,17 +197,64 @@ class EftStrictIntakeChatBottomSheet : BottomSheetDialogFragment() {
         dismissAllowingStateLoss()
     }
 
-    private fun addAssistantMessage(text: String) {
-        val view = layoutInflater.inflate(R.layout.item_chat_bubble_assistant, messages, false) as TextView
-        view.text = text
-        messages.addView(view)
+    private fun addAssistantMessageWithTyping(text: String) {
+        val typingView = layoutInflater.inflate(R.layout.item_chat_typing, messages, false)
+        messages.addView(typingView)
+        startTypingDotsAnimation(typingView)
+        scrollToBottom()
+
+        val delay = (350L + max(0, text.length - 12) * 18L).coerceAtMost(1200L)
+        ui.postDelayed({
+            val idx = messages.indexOfChild(typingView)
+            if (idx >= 0) messages.removeViewAt(idx)
+
+            val bubble = layoutInflater.inflate(R.layout.item_chat_bubble_assistant, messages, false)
+            val tv = bubble.findViewById<TextView>(R.id.assistantText)
+            tv.text = text
+            messages.addView(bubble)
+            scrollToBottom()
+        }, delay)
+    }
+
+    private fun startTypingDotsAnimation(typingView: View) {
+        val d1 = typingView.findViewById<TextView>(R.id.dot1)
+        val d2 = typingView.findViewById<TextView>(R.id.dot2)
+        val d3 = typingView.findViewById<TextView>(R.id.dot3)
+
+        fun pulse(v: TextView, baseDelay: Long) {
+            val runnable = object : Runnable {
+                var phase = 0
+
+                override fun run() {
+                    if (!typingView.isAttachedToWindow) return
+                    v.alpha = when (phase % 3) {
+                        0 -> 0.35f
+                        1 -> 1.0f
+                        else -> 0.6f
+                    }
+                    phase++
+                    ui.postDelayed(this, 220L)
+                }
+            }
+            ui.postDelayed(runnable, baseDelay)
+        }
+
+        pulse(d1, 0L)
+        pulse(d2, 80L)
+        pulse(d3, 160L)
     }
 
     private fun addUserMessage(text: String) {
-        val view = layoutInflater.inflate(R.layout.item_chat_bubble_user, messages, false) as TextView
-        view.text = text
-        messages.addView(view)
+        val bubble = layoutInflater.inflate(R.layout.item_chat_bubble_user, messages, false)
+        val tv = bubble.findViewById<TextView>(R.id.userText)
+        tv.text = text
+        messages.addView(bubble)
         scrollToBottom()
+    }
+
+    override fun onDestroyView() {
+        ui.removeCallbacksAndMessages(null)
+        super.onDestroyView()
     }
 
     private fun scrollToBottom() {
