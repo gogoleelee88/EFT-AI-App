@@ -28,7 +28,7 @@ import com.eft.mobileagent.recovery.EftStrictIntakeChatBottomSheet
 import org.json.JSONObject
 import java.io.File
 
-class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, EftStrictIntakeChatBottomSheet.Listener {
+class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listener {
     private lateinit var repository: AlarmRepository
     private lateinit var scheduler: AlarmScheduler
     private lateinit var validator: LocationMissionValidator

@@ -70,7 +70,7 @@ import java.util.TimeZone
 import java.util.UUID
 import java.util.regex.Pattern
 
-abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeBottomSheet.Listener, EftStrictIntakeChatBottomSheet.Listener {
+abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomSheet.Listener {
     protected abstract val tabMode: MainTab
     protected abstract val tabLayoutRes: Int
 
