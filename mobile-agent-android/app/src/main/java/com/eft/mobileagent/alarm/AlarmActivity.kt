@@ -57,6 +57,11 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, 
     private var pendingPhotoFile: File? = null
     private var pendingPhotoUri: Uri? = null
 
+    private data class RecoveryInterventionUi(
+        val action: String,
+        val entrySentence: String?,
+    )
+
     private val takePictureLauncher =
         registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
             if (ok) {
@@ -419,10 +424,12 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, 
             return
         }
 
+        val elapsedMin = ((System.currentTimeMillis() - alarmShownAt) / 60_000L).toInt().coerceAtLeast(1)
+        val accessToken = behaviorConfigStore.loadAccessToken()?.trim()?.ifBlank { null }
+
         Thread {
-            val recoveryUrl = runCatching {
-                val client = BehaviorApiClient(baseUrl = config.baseUrl, accessToken = null)
-                val elapsedMin = ((System.currentTimeMillis() - alarmShownAt) / 60_000L).toInt().coerceAtLeast(1)
+            val intervention = runCatching {
+                val client = BehaviorApiClient(baseUrl = config.baseUrl, accessToken = accessToken)
                 val payload = JSONObject()
                     .put("user_id", config.userId)
                     .put("session_state", "start")
@@ -434,70 +441,30 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, 
                 val resp = client.post("/api/spec/recovery/events", payload.toString())
                 if (resp.statusCode !in 200..299) return@runCatching null
                 val obj = JSONObject(resp.body)
-                obj.optString("recovery_url").trim().ifBlank { null }
+                RecoveryInterventionUi(
+                    action = obj.optString("action", "ignore").ifBlank { "ignore" },
+                    entrySentence = obj.optString("entry_sentence").trim().ifBlank { null },
+                )
             }.getOrNull()
 
             runOnUiThread {
-                if (!recoveryUrl.isNullOrBlank()) {
-                    // Native /eft-strict intake (web NEVER opens)
-                    val sessionId = "android_alarm_recovery_${System.currentTimeMillis()}"
-                    val sheet = EftStrictIntakeChatBottomSheet.newInstance(
-                        sessionId = sessionId,
+                if (intervention?.action == "open_web") {
+                    showStrictIntakeChatBottomSheet(
+                        sessionId = alarmId ?: "android_alarm_${System.currentTimeMillis()}",
                         userId = config.userId,
                         entryPoint = "schedule_start",
                         scheduleName = job.label,
                         focusSessionId = null,
-                        distractionType = null,
-                        blockedMin = ((System.currentTimeMillis() - alarmShownAt) / 60_000L).toInt().coerceAtLeast(1),
-                        entrySentence = null,
+                        distractionType = "alarm_timeout",
+                        blockedMin = elapsedMin,
+                        entrySentence = intervention.entrySentence,
                     )
-                    sheet.show(supportFragmentManager, "EftStrictIntakeChatBottomSheet")
                 } else {
-                    toast("Recovery URL을 받지 못했습니다.")
+                    toast("Recovery action unavailable")
                 }
             }
         }.start()
     }
-
-    override fun onStrictIntakeSubmit(payload: EftStrictIntakeBottomSheet.StrictIntakePayload) {
-        val config = ReminderSyncManager.loadConfig(this) ?: return
-        val token = behaviorConfigStore.loadAccessToken()?.trim()?.ifBlank { null }
-        Thread {
-            val ok = runCatching {
-                val client = BehaviorApiClient(baseUrl = config.baseUrl, accessToken = token)
-                val body = JSONObject()
-                    .put("session_id", payload.sessionId)
-                    .put("session_type", payload.sessionType)
-                    .put("user_id", payload.userId ?: config.userId)
-                    .put("core_emotion", payload.coreEmotion)
-                    .put("situation_context", payload.situationContext)
-                    .put("automatic_thought", payload.automaticThought)
-                    .put("intensity_before", payload.intensityBefore)
-                payload.physicalSensation?.let { body.put("physical_sensation", it) }
-                payload.copingAttempt?.let { body.put("coping_attempt", it) }
-                payload.immediateGoal?.let { body.put("immediate_goal", it) }
-
-                val resp = client.post("/api/emotion/checkin", body.toString())
-                resp.statusCode in 200..299
-            }.getOrElse {
-                Log.w("EFTStrict", "alarm save failed: ${it.message}", it)
-                false
-            }
-
-            runOnUiThread {
-                if (ok) {
-                    toast(getString(R.string.strict_intake_saved))
-                } else {
-                    toast(getString(R.string.strict_intake_save_failed, "unknown"))
-                }
-            }
-        }.start()
-    }
-
-    override fun onStrictIntakeCancelled() {
-        // no-op
-    }
-
     private fun completeMissionAndDismiss(distanceMeters: Float) {
         missionCompletedOrDismissed = true
         missionCountDown?.cancel()
@@ -558,6 +525,69 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, 
         finish()
     }
 
+    private fun showStrictIntakeChatBottomSheet(
+        sessionId: String,
+        userId: String?,
+        entryPoint: String?,
+        scheduleName: String?,
+        focusSessionId: String?,
+        distractionType: String?,
+        blockedMin: Int?,
+        entrySentence: String?,
+    ) {
+        if (isFinishing || isDestroyed) return
+        val fm = supportFragmentManager
+        if (fm.isStateSaved) return
+        if (fm.findFragmentByTag(STRICT_CHAT_SHEET_TAG) != null) return
+        EftStrictIntakeChatBottomSheet.newInstance(
+            sessionId = sessionId,
+            userId = userId,
+            entryPoint = entryPoint,
+            scheduleName = scheduleName,
+            focusSessionId = focusSessionId,
+            distractionType = distractionType,
+            blockedMin = blockedMin,
+            entrySentence = entrySentence,
+        ).show(fm, STRICT_CHAT_SHEET_TAG)
+    }
+
+    override fun onStrictIntakeSubmit(payload: EftStrictIntakeBottomSheet.StrictIntakePayload) {
+        val syncConfig = ReminderSyncManager.loadConfig(this)
+        val stored = behaviorConfigStore.load()
+        val baseUrl = syncConfig?.baseUrl ?: stored.backendBaseUrl
+        val accessToken = behaviorConfigStore.loadAccessToken()?.trim()?.ifBlank { null } ?: stored.accessToken
+
+        val body = JSONObject()
+            .put("session_id", payload.sessionId)
+            .put("session_type", payload.sessionType.ifBlank { "eftar" })
+            .put("core_emotion", payload.coreEmotion)
+            .put("situation_context", payload.situationContext)
+            .put("automatic_thought", payload.automaticThought)
+            .put("intensity_before", payload.intensityBefore)
+
+        payload.userId?.trim()?.takeIf { it.isNotEmpty() }?.let { body.put("user_id", it) }
+        payload.physicalSensation?.trim()?.takeIf { it.isNotEmpty() }?.let { body.put("physical_sensation", it) }
+        payload.copingAttempt?.trim()?.takeIf { it.isNotEmpty() }?.let { body.put("coping_attempt", it) }
+        payload.immediateGoal?.trim()?.takeIf { it.isNotEmpty() }?.let { body.put("immediate_goal", it) }
+
+        Thread {
+            val resp = runCatching {
+                val client = BehaviorApiClient(baseUrl = baseUrl, accessToken = accessToken)
+                client.post("/api/emotion/checkin", body.toString())
+            }.getOrNull()
+
+            runOnUiThread {
+                if (resp == null || resp.statusCode !in 200..299) {
+                    toast("Strict intake save failed")
+                }
+            }
+        }.start()
+    }
+
+    override fun onStrictIntakeCancelled() {
+        // no-op: user dismissed the strict intake sheet
+    }
+
     private fun toast(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
@@ -565,5 +595,6 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeBottomSheet.Listener, 
     private companion object {
         private const val SNOOZE_MINUTES = 10
         private const val PROCRASTINATION_TIMEOUT_MS = 90_000L
+        private const val STRICT_CHAT_SHEET_TAG = "EftStrictIntakeChatBottomSheet"
     }
 }
