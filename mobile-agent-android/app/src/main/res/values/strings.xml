@@ -106,6 +106,14 @@
     <string name="usage_access_required_for_start_body">To start focus with app-switch detection, Usage Access must be granted in Android Settings. Open settings now?</string>
     <string name="usage_access_prompt_open">Open</string>
     <string name="usage_access_prompt_later">Later</string>
+    <string name="strict_chat_intro">Looks like you are stuck right now. Answer 7 quick prompts and I will save it.</string>
+    <string name="strict_chat_required_hint">Type here...</string>
+    <string name="strict_chat_optional_hint">Optional (leave blank to skip)</string>
+    <string name="strict_chat_send">Send</string>
+    <string name="strict_chat_cancel">Close</string>
+    <string name="strict_chat_required_error">This is required. One short line is enough.</string>
+    <string name="strict_chat_skip">(skip)</string>
+    <string name="strict_chat_incomplete_error">Some required fields are empty. Please fill them once more.</string>
     <string name="procrastination_detected_title">미룸(저항) 신호 감지</string>
     <string name="procrastination_detected_body">지금 바로 감정을 처리하면 다시 시작하기 쉬워져요.</string>
     <string name="handle_resistance_now">저항감 처리하기</string>
