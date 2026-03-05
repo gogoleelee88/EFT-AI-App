@@ -2,6 +2,8 @@ package com.eft.mobileagent.calendar
 
 import android.content.Context
 import android.view.LayoutInflater
+import android.view.View
+import android.widget.Button
 import android.widget.TextView
 import com.eft.mobileagent.R
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -21,6 +23,7 @@ class GoogleEventBottomSheet(
         val title = view.findViewById<TextView>(R.id.eventTitle)
         val time = view.findViewById<TextView>(R.id.eventTime)
         val desc = view.findViewById<TextView>(R.id.eventDescription)
+        val close = view.findViewById<Button>(R.id.closeButton)
 
         title.text = item.title
 
@@ -34,7 +37,14 @@ class GoogleEventBottomSheet(
         }
 
         time.text = if (end != null) "$start ~ $end" else start
-        desc.text = item.description ?: ""
+        val description = item.description?.trim().orEmpty()
+        if (description.isNotEmpty()) {
+            desc.visibility = View.VISIBLE
+            desc.text = description
+        } else {
+            desc.visibility = View.GONE
+        }
+        close.setOnClickListener { dismiss() }
 
         setContentView(view)
     }

@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.DatePicker
 import android.widget.EditText
@@ -501,6 +502,16 @@ abstract class LegacyMainTabFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         refreshGeneralSettingsVisibility()
+        refreshAlarmSummaryUi()
+        val lastId = repository.getLastAlarmId()
+        if (!lastId.isNullOrBlank()) {
+            alarmSummaryView.alpha = 0.6f
+            alarmSummaryView.animate()
+                .alpha(1.0f)
+                .setDuration(280L)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .start()
+        }
         refreshBehaviorStatusUi()
         refreshPendingBehaviorQuestion(manual = false)
         startBehaviorQuestionPolling()
