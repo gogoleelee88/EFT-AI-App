@@ -121,6 +121,7 @@ abstract class LegacyMainTabFragment : Fragment() {
     private lateinit var sourceGoogleRadio: RadioButton
     private lateinit var missionTypeGroup: RadioGroup
     private lateinit var missionLocationRadio: RadioButton
+    private lateinit var missionPhotoRadio: RadioButton
     private lateinit var missionManualRadio: RadioButton
     private lateinit var locationSectionContainer: View
     private lateinit var targetLocationView: TextView
@@ -383,6 +384,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         sourceGoogleRadio = view.findViewById(R.id.sourceGoogleRadio)
         missionTypeGroup = view.findViewById(R.id.missionTypeGroup)
         missionLocationRadio = view.findViewById(R.id.missionLocationRadio)
+        missionPhotoRadio = view.findViewById(R.id.missionPhotoRadio)
         missionManualRadio = view.findViewById(R.id.missionManualRadio)
         locationSectionContainer = view.findViewById(R.id.locationSectionContainer)
         targetLocationView = view.findViewById(R.id.targetLocationView)
@@ -689,6 +691,7 @@ abstract class LegacyMainTabFragment : Fragment() {
         val sourceType = selectedSourceType()
         val missionType = selectedMissionType(sourceType)
         val target = repository.getTargetLocation()
+        val clientRequestId = UUID.randomUUID().toString()
         if (missionType == AlarmMissionType.LOCATION_ARRIVAL && target == null) {
             toast(getString(R.string.msg_target_missing))
             return
@@ -705,6 +708,7 @@ abstract class LegacyMainTabFragment : Fragment() {
             return
         }
         val alarmId = UUID.randomUUID().toString()
+        val planDate = selectedPlanDate().toString()
         val fallbackLabel = when (sourceType) {
             AlarmSourceType.GOOGLE -> getString(R.string.source_google)
             AlarmSourceType.SERVICE -> getString(R.string.source_service)
@@ -722,6 +726,8 @@ abstract class LegacyMainTabFragment : Fragment() {
             } else {
                 TargetLocation.DEFAULT_RADIUS_METERS
             },
+            planDate = planDate,
+            taskUid = "",
             missionType = missionType.value,
             sourceType = sourceType.value,
         )
@@ -729,6 +735,93 @@ abstract class LegacyMainTabFragment : Fragment() {
         repository.setLastAlarmId(alarmId)
         refreshAlarmSummaryUi()
         toast(getString(R.string.msg_alarm_scheduled, formatTime(triggerAtMillis)))
+
+        val alarmTimeLocal = selectedAlarmTimeLocal()
+        saveDayPlanToServerIfConfigured(
+            alarmId = alarmId,
+            planDate = planDate,
+            alarmTimeLocal = alarmTimeLocal,
+            label = label,
+            sourceType = sourceType,
+            missionType = missionType,
+            target = target,
+            clientRequestId = clientRequestId,
+        )
+    }
+
+    private fun selectedPlanDate(): LocalDate {
+        return LocalDate.of(datePicker.year, datePicker.month + 1, datePicker.dayOfMonth)
+    }
+
+    private fun selectedAlarmTimeLocal(): String {
+        val hour = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) timePicker.hour else timePicker.currentHour
+        val minute = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) timePicker.minute else timePicker.currentMinute
+        return String.format(Locale.US, "%02d:%02d", hour, minute)
+    }
+
+    private fun saveDayPlanToServerIfConfigured(
+        alarmId: String,
+        planDate: String,
+        alarmTimeLocal: String,
+        label: String,
+        sourceType: AlarmSourceType,
+        missionType: AlarmMissionType,
+        target: TargetLocation?,
+        clientRequestId: String,
+    ) {
+        val syncConfig = ReminderSyncManager.loadConfig(requireContext()) ?: return
+        val accessToken = behaviorAccessTokenInput.text
+            ?.toString()
+            ?.trim()
+            ?.ifBlank { null }
+            ?: behaviorConfigStore.loadAccessToken()
+        if (accessToken.isNullOrBlank()) return
+
+        Thread {
+            val result = runCatching {
+                val client = ReminderSyncClient(syncConfig.baseUrl)
+                val expectedVersion = client.getPlanDayVersionByDate(
+                    planDate = planDate,
+                    accessToken = accessToken,
+                )
+                client.savePlanDayWithSingleAlarm(
+                    userId = syncConfig.userId,
+                    planDate = planDate,
+                    alarmTimeLocal = alarmTimeLocal,
+                    title = label,
+                    sourceType = sourceType,
+                    missionType = missionType,
+                    targetLatitude = if (missionType == AlarmMissionType.LOCATION_ARRIVAL) target?.latitude else null,
+                    targetLongitude = if (missionType == AlarmMissionType.LOCATION_ARRIVAL) target?.longitude else null,
+                    radiusMeters = if (missionType == AlarmMissionType.LOCATION_ARRIVAL) {
+                        target?.radiusMeters ?: TargetLocation.DEFAULT_RADIUS_METERS
+                    } else {
+                        TargetLocation.DEFAULT_RADIUS_METERS
+                    },
+                    clientRequestId = clientRequestId,
+                    expectedVersion = expectedVersion,
+                    accessToken = accessToken,
+                )
+            }
+
+            runOnUiThreadSafe {
+                result.onSuccess { saved ->
+                    val existing = repository.getAlarm(alarmId)
+                    if (existing != null) {
+                        repository.upsertAlarm(
+                            existing.copy(
+                                planDate = saved.date,
+                                taskUid = saved.taskUid ?: existing.taskUid,
+                            ),
+                        )
+                        refreshAlarmSummaryUi()
+                    }
+                }
+                result.onFailure { err ->
+                    toast("Server save failed: ${err.message ?: "unknown"}")
+                }
+            }
+        }.start()
     }
 
     private fun ensureExactAlarmPermission(): Boolean {
@@ -787,10 +880,11 @@ abstract class LegacyMainTabFragment : Fragment() {
         alarmSummaryView.text = if (alarm == null || !alarm.enabled) {
             getString(R.string.summary_no_active_alarm)
         } else {
-            val missionLabel = if (alarm.missionType == AlarmMissionType.MANUAL_DISMISS.value) {
-                getString(R.string.label_manual_mission_short)
-            } else {
-                getString(R.string.label_location_mission_short)
+            val missionLabel = when (alarm.missionType) {
+                AlarmMissionType.MANUAL_DISMISS.value -> getString(R.string.label_manual_mission_short)
+                AlarmMissionType.TIME_CHECK.value -> getString(R.string.label_manual_mission_short)
+                AlarmMissionType.PHOTO.value -> "photo"
+                else -> getString(R.string.label_location_mission_short)
             }
             val sourceLabel = if (alarm.sourceType == AlarmSourceType.GOOGLE.value) {
                 getString(R.string.label_source_google_short)
@@ -819,26 +913,17 @@ abstract class LegacyMainTabFragment : Fragment() {
     }
 
     private fun selectedMissionType(sourceType: AlarmSourceType): AlarmMissionType {
-        if (sourceType == AlarmSourceType.GOOGLE) {
-            return AlarmMissionType.MANUAL_DISMISS
-        }
-        return if (missionManualRadio.isChecked) {
-            AlarmMissionType.MANUAL_DISMISS
-        } else {
-            AlarmMissionType.LOCATION_ARRIVAL
+        return when {
+            missionLocationRadio.isChecked -> AlarmMissionType.LOCATION_ARRIVAL
+            missionPhotoRadio.isChecked -> AlarmMissionType.PHOTO
+            else -> AlarmMissionType.MANUAL_DISMISS
         }
     }
 
     private fun applySourceRules() {
-        if (selectedSourceType() == AlarmSourceType.GOOGLE) {
-            missionLocationRadio.isEnabled = false
-            missionManualRadio.isChecked = true
-            if (sourceChangedByUser) {
-                toast(getString(R.string.msg_google_manual_forced))
-            }
-            return
-        }
         missionLocationRadio.isEnabled = true
+        missionPhotoRadio.isEnabled = true
+        missionManualRadio.isEnabled = true
     }
 
     private fun refreshMissionUi() {

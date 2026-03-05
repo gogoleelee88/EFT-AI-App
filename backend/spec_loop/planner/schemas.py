@@ -38,6 +38,7 @@ class PlanDayResponse(BaseModel):
     date: date
     mode: int
     items: list[dict]
+    version: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -68,6 +69,10 @@ class AlarmInput(BaseModel):
     time: str = Field(..., description="HH:mm 형식")
     repeat: Literal["once", "daily", "weekdays", "weekends", "custom", "custom_days"] = "daily"
     custom_days: Optional[list[int]] = Field(None, description="커스텀 요일 (0=일~6=토)")
+    source_type: Optional[Literal["service", "google"]] = Field(
+        default=None,
+        description="Reminder source type.",
+    )
 
 
 class PlanItemWithMission(BaseModel):
@@ -101,3 +106,5 @@ class PlanDayWithMissionRequest(BaseModel):
     mode: int = Field(..., description="100 | 70 | 40")
     items: list[PlanItemWithMission]
     user_id: Optional[str] = None
+    client_request_id: Optional[str] = None
+    expected_version: Optional[int] = None

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from hashlib import sha1
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.spec_loop.authz import get_current_user_spec
 from backend.spec_loop.reminder import repository
 from backend.spec_loop.reminder.schedule import next_fire_at_utc
 
@@ -41,6 +43,12 @@ def _normalize_mission_type(value: Optional[str]) -> str:
     raw = (value or "").strip().lower()
     if raw == "location_arrival":
         return "location_arrival"
+    # Preserve photo mission type so Android can render photo proof flow.
+    if raw == "photo":
+        return "photo"
+    # Legacy / optional: treat time_check as manual to avoid UX confusion
+    if raw == "time_check":
+        return "manual_dismiss"
     return "manual_dismiss"
 
 
@@ -81,6 +89,90 @@ def _normalize_name_for_local_user(identifier: str) -> str:
     if _looks_like_email(text):
         return text.split("@", 1)[0][:80]
     return text[:80] or "mobile-user"
+
+
+class MobileCreateReminderRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128)
+    date: date
+    title: str = Field(..., min_length=1, max_length=200)
+    alarm_time_local: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    planned_block_minutes: int = Field(default=15, ge=1, le=240)
+    repeat_rule: Literal["once", "daily", "weekdays", "weekends", "custom", "custom_days"] = "once"
+    custom_days: list[int] = Field(default_factory=list)
+    mission_type: Literal["location_arrival", "manual_dismiss"] = "manual_dismiss"
+    source_type: Literal["service", "google"] = "service"
+    target_lat: Optional[float] = None
+    target_lng: Optional[float] = None
+    radius_meters: Optional[float] = None
+
+
+class MobileCreateReminderResponse(BaseModel):
+    ok: bool = True
+    day_id: int
+    task_uid: str
+
+
+def _build_mobile_reminder_item(
+    body: MobileCreateReminderRequest,
+    *,
+    task_uid: str,
+    item_id: str,
+) -> dict[str, Any]:
+    mission_type = body.mission_type
+    if body.source_type == "google":
+        mission_type = "manual_dismiss"
+
+    missions: list[dict[str, Any]]
+    if mission_type == "location_arrival":
+        config: dict[str, Any] = {}
+        if body.target_lat is not None and body.target_lng is not None:
+            radius = body.radius_meters if (body.radius_meters is not None and body.radius_meters > 0) else 80.0
+            config = {
+                "gps": {
+                    "lat": body.target_lat,
+                    "lng": body.target_lng,
+                    "radius": radius,
+                },
+                "gps_lat": body.target_lat,
+                "gps_lng": body.target_lng,
+                "gps_radius": radius,
+            }
+        missions = [{"type": "location", "enabled": True, "config": config}]
+    else:
+        missions = [{"type": "time_check", "enabled": True, "config": {}}]
+
+    return {
+        "item_id": item_id,
+        "task_title": body.title.strip(),
+        "task_uid": task_uid,
+        "planned_block_minutes": body.planned_block_minutes,
+        "micro_steps": [],
+        "missions": missions,
+        "missions_combination_mode": "basic",
+        "source_type": body.source_type,
+        "alarm": {
+            "time": body.alarm_time_local,
+            "repeat": body.repeat_rule,
+            "custom_days": body.custom_days,
+            "source_type": body.source_type,
+        },
+    }
+
+
+@router.post("/mobile-create", response_model=MobileCreateReminderResponse)
+def mobile_create_reminder(
+    body: MobileCreateReminderRequest,
+    db: Session = Depends(get_db),
+    _user=Depends(get_current_user_spec),
+):
+    _ = (body, db, _user)
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "error": "deprecated",
+            "message": "Use POST /api/spec/plan/day-with-mission",
+        },
+    )
 
 
 @router.get("/next")
@@ -168,8 +260,6 @@ def mobile_sync_reminders(
         metadata = job.metadata_json or {}
         mission_type = _normalize_mission_type(metadata.get("mission_type"))
         source_type = _normalize_source_type(metadata.get("source_type"))
-        if source_type == "google":
-            mission_type = "manual_dismiss"
         target_lat = _optional_float(metadata.get("target_lat"))
         target_lng = _optional_float(metadata.get("target_lng"))
         radius_meters = _optional_float(metadata.get("radius_meters"))
@@ -181,6 +271,7 @@ def mobile_sync_reminders(
                 "sync_key": sync_key,
                 "job_id": job.job_id,
                 "day_id": job.day_id,
+                "plan_date": str(job.plan_date),
                 "task_uid": job.task_uid,
                 "alarm_time_local": job.alarm_time_local,
                 "repeat_rule": job.repeat_rule,

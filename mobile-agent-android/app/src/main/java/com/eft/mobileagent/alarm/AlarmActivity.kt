@@ -3,8 +3,10 @@ package com.eft.mobileagent.alarm
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -16,14 +18,18 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.eft.mobileagent.R
 import com.eft.mobileagent.behavior.BehaviorApiClient
+import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
 import org.json.JSONObject
+import java.io.File
 
 class AlarmActivity : AppCompatActivity() {
     private lateinit var repository: AlarmRepository
     private lateinit var scheduler: AlarmScheduler
     private lateinit var validator: LocationMissionValidator
+    private lateinit var behaviorConfigStore: BehaviorAgentConfigStore
 
     private lateinit var alarmMissionText: TextView
     private lateinit var resultText: TextView
@@ -42,6 +48,21 @@ class AlarmActivity : AppCompatActivity() {
     private val uiHandler = Handler(Looper.getMainLooper())
     private var alarmShownAt: Long = 0L
     private var missionCompletedOrDismissed: Boolean = false
+    private var missionCountDown: CountDownTimer? = null
+    private var photoGatePassed = false
+    private var photoCaptured = false
+    private var pendingPhotoFile: File? = null
+    private var pendingPhotoUri: Uri? = null
+
+    private val takePictureLauncher =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+            if (ok) {
+                onPhotoCaptured()
+            } else {
+                resultText.text = "Photo capture canceled."
+                resultText.setTextColor(Color.parseColor("#F87171"))
+            }
+        }
 
     private val requestLocationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -71,6 +92,7 @@ class AlarmActivity : AppCompatActivity() {
         repository = AlarmRepository(this)
         scheduler = AlarmScheduler(this)
         validator = LocationMissionValidator(this)
+        behaviorConfigStore = BehaviorAgentConfigStore(this)
 
         alarmTitleText = findViewById(R.id.alarmTitleText)
         alarmMissionText = findViewById(R.id.alarmMissionText)
@@ -95,7 +117,7 @@ class AlarmActivity : AppCompatActivity() {
             return
         }
 
-        bindAlarmUi(alarm!!)
+        render(alarm!!)
         snoozeButton.setOnClickListener { snoozeAlarm() }
         alarmShownAt = System.currentTimeMillis()
         uiHandler.postDelayed({ maybeShowProcrastinationCard() }, PROCRASTINATION_TIMEOUT_MS)
@@ -104,8 +126,11 @@ class AlarmActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                val isManual = alarm?.missionType == AlarmMissionType.MANUAL_DISMISS.value
-                if (isManual) {
+                val missionType = alarm?.missionType
+                val isManualLike =
+                    missionType == AlarmMissionType.MANUAL_DISMISS.value ||
+                        missionType == AlarmMissionType.TIME_CHECK.value
+                if (isManualLike) {
                     toast(getString(R.string.manual_dismiss_note))
                 } else {
                     toast(getString(R.string.msg_cannot_dismiss_before_mission))
@@ -116,19 +141,54 @@ class AlarmActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         uiHandler.removeCallbacksAndMessages(null)
+        missionCountDown?.cancel()
+        missionCountDown = null
+        cleanupPendingPhotoFile()
         super.onDestroy()
     }
 
-    private fun bindAlarmUi(job: AlarmJob) {
+    private fun render(job: AlarmJob) {
         alarmTitleText.text = getString(R.string.format_alarm_title, job.label)
-        if (job.missionType == AlarmMissionType.MANUAL_DISMISS.value) {
-            bindManualDismissUi()
-            return
+        resetViews()
+
+        when (job.missionType) {
+            AlarmMissionType.LOCATION_ARRIVAL.value -> renderLocation(job)
+            AlarmMissionType.PHOTO.value -> renderPhoto(job)
+            AlarmMissionType.TIME_CHECK.value,
+            AlarmMissionType.MANUAL_DISMISS.value -> renderManual(job)
+            else -> renderManual(job)
         }
-        bindLocationMissionUi(job)
     }
 
-    private fun bindLocationMissionUi(job: AlarmJob) {
+    private fun resetViews() {
+        missionCountDown?.cancel()
+        missionCountDown = null
+
+        photoGatePassed = false
+        photoCaptured = false
+        cleanupPendingPhotoFile()
+
+        confirmArrivalButton.visibility = View.GONE
+        manualDismissButton.visibility = View.GONE
+        alarmNoDismissNote.visibility = View.VISIBLE
+        targetText.visibility = View.VISIBLE
+        resultText.visibility = View.VISIBLE
+
+        confirmArrivalButton.text = getString(R.string.confirm_arrival)
+        confirmArrivalButton.isEnabled = true
+        manualDismissButton.text = getString(R.string.manual_dismiss)
+        manualDismissButton.isEnabled = true
+
+        confirmArrivalButton.setOnClickListener(null)
+        manualDismissButton.setOnClickListener(null)
+
+        targetText.text = ""
+        resultText.text = ""
+        resultText.setTextColor(Color.parseColor("#E5E7EB"))
+        alarmNoDismissNote.text = ""
+    }
+
+    private fun renderLocation(job: AlarmJob) {
         alarmMissionText.text = getString(R.string.location_mission_title)
         confirmArrivalButton.visibility = View.VISIBLE
         manualDismissButton.visibility = View.GONE
@@ -146,7 +206,7 @@ class AlarmActivity : AppCompatActivity() {
         confirmArrivalButton.setOnClickListener { ensureLocationPermissionThenCheck() }
     }
 
-    private fun bindManualDismissUi() {
+    private fun renderManual(@Suppress("UNUSED_PARAMETER") job: AlarmJob) {
         alarmMissionText.text = getString(R.string.manual_mission_title)
         confirmArrivalButton.visibility = View.GONE
         manualDismissButton.visibility = View.VISIBLE
@@ -155,6 +215,91 @@ class AlarmActivity : AppCompatActivity() {
         resultText.text = getString(R.string.manual_result_prompt)
         resultText.setTextColor(Color.parseColor("#E5E7EB"))
         manualDismissButton.setOnClickListener { dismissManualAlarm() }
+    }
+
+    private fun renderPhoto(job: AlarmJob) {
+        // Buffer to reduce server-side too_early due to clock/network variance.
+        val minSeconds = 12
+
+        alarmMissionText.text = "Mission: photo proof"
+        confirmArrivalButton.visibility = View.VISIBLE
+        manualDismissButton.visibility = View.VISIBLE
+        confirmArrivalButton.text = "Take photo"
+        manualDismissButton.text = "Upload & dismiss"
+        confirmArrivalButton.isEnabled = false
+        manualDismissButton.isEnabled = false
+        alarmNoDismissNote.text = "Photo upload verification is required."
+        targetText.text = "Take one photo after the timer."
+        resultText.text = "Photo unlock in ${minSeconds}s"
+        resultText.setTextColor(Color.parseColor("#FBBF24"))
+
+        startTimeGateCountdown(
+            minSeconds = minSeconds,
+            onTickText = { remain -> "Photo unlock in ${remain}s" },
+        ) {
+            photoGatePassed = true
+            resultText.text = "Take a photo first."
+            resultText.setTextColor(Color.parseColor("#E5E7EB"))
+            confirmArrivalButton.isEnabled = true
+            refreshPhotoUploadButtonState()
+        }
+
+        confirmArrivalButton.setOnClickListener {
+            runCatching {
+                cleanupPendingPhotoFile()
+                val tempFile = File.createTempFile("mission_proof_", ".jpg", cacheDir)
+                val photoUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", tempFile)
+                pendingPhotoFile = tempFile
+                pendingPhotoUri = photoUri
+                takePictureLauncher.launch(photoUri)
+            }.onFailure {
+                resultText.text = "Failed to open camera."
+                resultText.setTextColor(Color.parseColor("#F87171"))
+            }
+        }
+
+        manualDismissButton.setOnClickListener {
+            val photoFile = pendingPhotoFile
+            if (!photoGatePassed || !photoCaptured || photoFile == null || !photoFile.exists()) {
+                resultText.text = "Take a photo before upload."
+                resultText.setTextColor(Color.parseColor("#F87171"))
+                return@setOnClickListener
+            }
+
+            val proofClient = buildMissionProofClientOrNull()
+            if (proofClient == null || job.planDate.isBlank() || job.taskUid.isBlank()) {
+                completeMissionAndDismiss(0f)
+                return@setOnClickListener
+            }
+
+            confirmArrivalButton.isEnabled = false
+            manualDismissButton.isEnabled = false
+            resultText.text = "Uploading proof..."
+            resultText.setTextColor(Color.parseColor("#E5E7EB"))
+
+            Thread {
+                val ok = runCatching {
+                    proofClient.submitPhoto(
+                        planDate = job.planDate,
+                        taskUid = job.taskUid,
+                        minSeconds = minSeconds,
+                        imageFile = photoFile,
+                    )
+                }.getOrDefault(false)
+                runOnUiThread {
+                    if (ok) {
+                        // Keep failed uploads for retry, but remove successful temp file.
+                        runCatching { photoFile.delete() }
+                        completeMissionAndDismiss(0f)
+                    } else {
+                        confirmArrivalButton.isEnabled = true
+                        refreshPhotoUploadButtonState()
+                        resultText.text = "Upload failed. Try again."
+                        resultText.setTextColor(Color.parseColor("#F87171"))
+                    }
+                }
+            }.start()
+        }
     }
 
     private fun ensureLocationPermissionThenCheck() {
@@ -205,6 +350,55 @@ class AlarmActivity : AppCompatActivity() {
                     resultText.setTextColor(Color.parseColor("#F87171"))
                 }
             }
+        }
+    }
+
+    private fun startTimeGateCountdown(
+        minSeconds: Int,
+        onTickText: (remainSeconds: Long) -> String = { remain -> "Verifiable in ${remain}s" },
+        onReady: () -> Unit,
+    ) {
+        missionCountDown?.cancel()
+        missionCountDown = object : CountDownTimer((minSeconds * 1000L), 250L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val remain = (millisUntilFinished / 1000L) + 1L
+                resultText.text = onTickText(remain)
+            }
+
+            override fun onFinish() {
+                onReady()
+            }
+        }.start()
+    }
+
+    private fun buildMissionProofClientOrNull(): MissionProofClient? {
+        val config = ReminderSyncManager.loadConfig(this) ?: return null
+        val token = behaviorConfigStore.loadAccessToken()?.trim()?.ifBlank { null } ?: return null
+        return MissionProofClient(baseUrl = config.baseUrl, accessToken = token)
+    }
+
+    private fun onPhotoCaptured() {
+        photoCaptured = true
+        pendingPhotoUri = null
+        resultText.text = if (photoGatePassed) {
+            "Photo captured. Upload to verify."
+        } else {
+            "Photo captured. Wait for timer."
+        }
+        resultText.setTextColor(Color.parseColor("#E5E7EB"))
+        refreshPhotoUploadButtonState()
+    }
+
+    private fun refreshPhotoUploadButtonState() {
+        manualDismissButton.isEnabled = photoGatePassed && photoCaptured
+    }
+
+    private fun cleanupPendingPhotoFile() {
+        pendingPhotoUri = null
+        val toDelete = pendingPhotoFile
+        pendingPhotoFile = null
+        if (toDelete != null && toDelete.exists()) {
+            runCatching { toDelete.delete() }
         }
     }
 
@@ -259,6 +453,9 @@ class AlarmActivity : AppCompatActivity() {
 
     private fun completeMissionAndDismiss(distanceMeters: Float) {
         missionCompletedOrDismissed = true
+        missionCountDown?.cancel()
+        missionCountDown = null
+        cleanupPendingPhotoFile()
         val id = alarmId ?: return
         scheduler.cancel(id)
         repository.setLastAlarmId(null)
@@ -270,6 +467,9 @@ class AlarmActivity : AppCompatActivity() {
 
     private fun dismissManualAlarm() {
         missionCompletedOrDismissed = true
+        missionCountDown?.cancel()
+        missionCountDown = null
+        cleanupPendingPhotoFile()
         val id = alarmId ?: return
         scheduler.cancel(id)
         repository.setLastAlarmId(null)
@@ -281,6 +481,9 @@ class AlarmActivity : AppCompatActivity() {
 
     private fun snoozeAlarm() {
         missionCompletedOrDismissed = true
+        missionCountDown?.cancel()
+        missionCountDown = null
+        cleanupPendingPhotoFile()
         val job = alarm ?: return
         val now = System.currentTimeMillis()
         val newId = "${job.alarmId}_snooze_$now"
@@ -301,6 +504,9 @@ class AlarmActivity : AppCompatActivity() {
     }
 
     private fun finishSafely() {
+        missionCountDown?.cancel()
+        missionCountDown = null
+        cleanupPendingPhotoFile()
         AlarmSoundService.stop(this)
         finish()
     }
