@@ -32,7 +32,10 @@ object ReminderSyncManager {
 
     private const val SCHEDULE_DECISION_CONDITION =
         "if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL || " +
-            "(reminder.missionType == AlarmMissionType.MANUAL_DISMISS && reminder.sourceType == AlarmSourceType.SERVICE))"
+            "reminder.missionType == AlarmMissionType.TIME_CHECK || " +
+            "reminder.missionType == AlarmMissionType.PHOTO || " +
+            "(reminder.missionType == AlarmMissionType.MANUAL_DISMISS && " +
+            "reminder.sourceType == AlarmSourceType.SERVICE))"
 
     private const val GRACE_MILLIS = 60_000L
     private const val LATE_SCHEDULE_DELAY_MILLIS = 1_000L
@@ -208,6 +211,8 @@ object ReminderSyncManager {
                 } else {
                     TargetLocation.DEFAULT_RADIUS_METERS
                 },
+                planDate = reminder.planDate,
+                taskUid = reminder.taskUid,
                 missionType = reminder.missionType.value,
                 sourceType = reminder.sourceType.value,
                 enabled = true,
@@ -232,7 +237,10 @@ object ReminderSyncManager {
             loggedScheduleCondition = true
         }
         return reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL ||
-            (reminder.missionType == AlarmMissionType.MANUAL_DISMISS && reminder.sourceType == AlarmSourceType.SERVICE)
+            reminder.missionType == AlarmMissionType.TIME_CHECK ||
+            reminder.missionType == AlarmMissionType.PHOTO ||
+            (reminder.missionType == AlarmMissionType.MANUAL_DISMISS &&
+                reminder.sourceType == AlarmSourceType.SERVICE)
     }
 
     private fun scheduleDecisionBranch(deltaMillis: Long, graceMillis: Long): String {

@@ -4,11 +4,12 @@ from datetime import date, datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from config.settings import get_settings
 from backend.spec_loop.execution_log_service import log_execution
+from backend.spec_loop.idempotency import idem_get_or_set
 from services.proposal_engine import build_llm_provider
 from backend.spec_loop.mission.service import create_mission_template, get_or_create_micro_action
 from backend.spec_loop.models import DayPlan, Task
@@ -191,7 +192,24 @@ def create_or_update_day_plan_with_mission(
     body: PlanDayWithMissionRequest,
     user_id: Optional[str] = None,
 ) -> DayPlan:
-    uid = body.user_id or user_id
+    uid = user_id if user_id is not None else body.user_id
+
+    if body.expected_version is not None:
+        existing = (
+            db.query(DayPlan)
+            .filter(DayPlan.user_id == uid, DayPlan.date == body.date)
+            .first()
+        )
+        if existing is not None and int(existing.version or 1) != int(body.expected_version):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "version_conflict",
+                    "expected": int(body.expected_version),
+                    "actual": int(existing.version or 1),
+                },
+            )
+
     existing_ids = [it.task_id for it in body.items if it.task_id is not None]
     _validate_task_ids(db, existing_ids)
 
@@ -278,7 +296,10 @@ def create_or_update_day_plan_with_mission(
                 "time": item.alarm.time,
                 "repeat": item.alarm.repeat,
                 "custom_days": item.alarm.custom_days,
+                "source_type": item.alarm.source_type,
             }
+            if item.alarm.source_type:
+                item_data["source_type"] = item.alarm.source_type
 
         items_payload.append(item_data)
 
@@ -304,6 +325,60 @@ def create_or_update_day_plan_with_mission(
         mode=plan.mode,
     )
     return plan
+
+
+def _to_plan_day_response_payload(plan: DayPlan) -> dict:
+    return {
+        "day_id": int(plan.day_id),
+        "date": plan.date.isoformat(),
+        "mode": int(plan.mode),
+        "items": list(plan.items or []),
+        "version": int(plan.version or 1),
+    }
+
+
+def get_day_plan_by_date(
+    db: Session,
+    user_id: str,
+    plan_date: date,
+):
+    plan = (
+        db.query(DayPlan)
+        .filter(DayPlan.user_id == user_id, DayPlan.date == plan_date, DayPlan.deleted_at.is_(None))
+        .first()
+    )
+    if plan is None:
+        return None
+    return _to_plan_day_response_payload(plan)
+
+
+def save_day_with_mission(
+    db: Session,
+    body: PlanDayWithMissionRequest,
+    user_id: str,
+):
+    """
+    Unified write path for web and mobile:
+    - overwrite day plan items (existing behavior)
+    - optional optimistic concurrency via expected_version
+    - optional idempotency via client_request_id
+    """
+
+    def _compute():
+        plan = create_or_update_day_plan_with_mission(
+            db=db,
+            body=body,
+            user_id=user_id,
+        )
+        return _to_plan_day_response_payload(plan)
+
+    return idem_get_or_set(
+        db=db,
+        user_id=user_id,
+        scope="spec:plan:day-with-mission",
+        key=body.client_request_id,
+        compute=_compute,
+    )
 
 
 def delete_day_plan(db: Session, day_id: int, user_id: Optional[str] = None) -> bool:
@@ -355,6 +430,3 @@ def restore_day_plan(db: Session, day_id: int, user_id: Optional[str] = None) ->
         channels=["webpush", "fcm"],
     )
     return plan
-
-
-

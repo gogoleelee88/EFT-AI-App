@@ -6,10 +6,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.time.OffsetDateTime
+import java.util.UUID
 
 data class SyncedReminder(
     val syncKey: String,
     val title: String,
+    val planDate: String,
+    val taskUid: String,
     val triggerAtMillis: Long,
     val nextFireAtUtcRaw: String,
     val missionType: AlarmMissionType,
@@ -23,6 +26,12 @@ data class SyncLoginUser(
     val userId: String,
     val email: String?,
     val name: String?,
+)
+
+data class PlanDaySaveResult(
+    val dayId: Int,
+    val date: String,
+    val taskUid: String?,
 )
 
 class ReminderSyncClient(baseUrl: String) {
@@ -127,6 +136,157 @@ class ReminderSyncClient(baseUrl: String) {
         )
     }
 
+    fun savePlanDayWithSingleAlarm(
+        @Suppress("UNUSED_PARAMETER") userId: String,
+        planDate: String,
+        alarmTimeLocal: String,
+        title: String,
+        sourceType: AlarmSourceType,
+        missionType: AlarmMissionType,
+        targetLatitude: Double? = null,
+        targetLongitude: Double? = null,
+        radiusMeters: Float? = null,
+        clientRequestId: String = UUID.randomUUID().toString(),
+        expectedVersion: Int? = null,
+        accessToken: String? = null,
+    ): PlanDaySaveResult {
+        val endpoint = "$normalizedBaseUrl/api/spec/plan/day-with-mission"
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 7000
+            readTimeout = 7000
+            doOutput = true
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "application/json")
+            if (!accessToken.isNullOrBlank()) {
+                setRequestProperty("Authorization", "Bearer $accessToken")
+            }
+        }
+
+        val resolvedTitle = title.trim().ifBlank { "Mobile schedule" }
+        val missionTypeForPayload = when (missionType) {
+            AlarmMissionType.LOCATION_ARRIVAL -> "location"
+            AlarmMissionType.TIME_CHECK -> "time_check"
+            AlarmMissionType.PHOTO -> "photo"
+            AlarmMissionType.MANUAL_DISMISS -> "time_check"
+        }
+        val missionConfig = JSONObject()
+        if (missionType == AlarmMissionType.LOCATION_ARRIVAL && targetLatitude != null && targetLongitude != null) {
+            val gps = JSONObject()
+                .put("lat", targetLatitude)
+                .put("lng", targetLongitude)
+            if ((radiusMeters ?: 0f) > 0f) {
+                gps.put("radius", radiusMeters)
+            }
+            missionConfig.put("gps", gps)
+            missionConfig.put("gps_lat", targetLatitude)
+            missionConfig.put("gps_lng", targetLongitude)
+            if ((radiusMeters ?: 0f) > 0f) {
+                missionConfig.put("gps_radius", radiusMeters)
+            }
+        }
+
+        val item = JSONObject()
+            .put("task_title", resolvedTitle)
+            .put("planned_block_minutes", 15)
+            .put("micro_steps", org.json.JSONArray())
+            .put(
+                "micro_action",
+                JSONObject()
+                    .put("name", "mobile_alarm")
+                    .put("source", "user_custom"),
+            )
+            .put(
+                "missions",
+                org.json.JSONArray().put(
+                    JSONObject()
+                        .put("type", missionTypeForPayload)
+                        .put("enabled", true)
+                        .put("config", missionConfig),
+                ),
+            )
+            .put("missions_combination_mode", "basic")
+            .put(
+                "alarm",
+                JSONObject()
+                    .put("time", alarmTimeLocal)
+                    .put("repeat", "once")
+                    .put("source_type", sourceType.value),
+            )
+
+        val payload = JSONObject()
+            .put("date", planDate)
+            .put("mode", 70)
+            .put("client_request_id", clientRequestId)
+            .put("items", org.json.JSONArray().put(item))
+            .apply {
+                if (expectedVersion != null) {
+                    put("expected_version", expectedVersion)
+                }
+            }
+            .toString()
+
+        val body = try {
+            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else (conn.errorStream ?: conn.inputStream)
+            val text = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            if (code !in 200..299) {
+                throw IllegalStateException("HTTP $code: $text")
+            }
+            text
+        } finally {
+            conn.disconnect()
+        }
+
+        val json = JSONObject(body)
+        val dayId = json.optInt("day_id", -1)
+        if (dayId <= 0) {
+            throw IllegalStateException("invalid_day_id")
+        }
+        val taskUid = runCatching {
+            val items = json.optJSONArray("items") ?: return@runCatching null
+            if (items.length() <= 0) return@runCatching null
+            items.optJSONObject(0)?.optString("task_uid", "")?.trim()?.ifBlank { null }
+        }.getOrNull()
+        return PlanDaySaveResult(
+            dayId = dayId,
+            date = json.optString("date", planDate),
+            taskUid = taskUid,
+        )
+    }
+
+    fun getPlanDayVersionByDate(
+        planDate: String,
+        accessToken: String?,
+    ): Int? {
+        val encodedDate = URLEncoder.encode(planDate, Charsets.UTF_8.name())
+        val endpoint = "$normalizedBaseUrl/api/spec/plan/day-by-date?date=$encodedDate"
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 5000
+            readTimeout = 5000
+            setRequestProperty("Accept", "application/json")
+            if (!accessToken.isNullOrBlank()) {
+                setRequestProperty("Authorization", "Bearer $accessToken")
+            }
+        }
+
+        val body = try {
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                return null
+            }
+            conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val version = json.optInt("version", -1)
+        return version.takeIf { it > 0 }
+    }
+
     fun fetchActiveReminders(userId: String, limit: Int = 50): List<SyncedReminder> {
         val encodedUserId = URLEncoder.encode(userId, Charsets.UTF_8.name())
         val conn = (URL("$normalizedBaseUrl/api/reminders/mobile-sync?user_id=$encodedUserId&limit=$limit").openConnection() as HttpURLConnection).apply {
@@ -164,10 +324,16 @@ class ReminderSyncClient(baseUrl: String) {
             } else {
                 AlarmSourceType.SERVICE
             }
-            val missionType = if (item.optString("mission_type", "").trim().lowercase() == AlarmMissionType.LOCATION_ARRIVAL.value) {
-                AlarmMissionType.LOCATION_ARRIVAL
-            } else {
-                AlarmMissionType.MANUAL_DISMISS
+            val planDate = item.optString("plan_date", "").trim()
+            val taskUid = item.optString("task_uid", "").trim()
+            val missionTypeRaw = item.optString("mission_type", "").trim().lowercase()
+            val missionType = when (missionTypeRaw) {
+                AlarmMissionType.LOCATION_ARRIVAL.value -> AlarmMissionType.LOCATION_ARRIVAL
+                AlarmMissionType.PHOTO.value -> AlarmMissionType.PHOTO
+                AlarmMissionType.MANUAL_DISMISS.value -> AlarmMissionType.MANUAL_DISMISS
+                // Legacy fallback: treat time_check as manual in app UI.
+                AlarmMissionType.TIME_CHECK.value -> AlarmMissionType.MANUAL_DISMISS
+                else -> AlarmMissionType.MANUAL_DISMISS
             }
             val targetLatitude = item.optNullableDouble("target_lat", "targetLatitude")
             val targetLongitude = item.optNullableDouble("target_lng", "targetLongitude")
@@ -198,6 +364,8 @@ class ReminderSyncClient(baseUrl: String) {
             out += SyncedReminder(
                 syncKey = resolvedSyncKey,
                 title = title,
+                planDate = planDate,
+                taskUid = taskUid,
                 triggerAtMillis = triggerAtMillis,
                 nextFireAtUtcRaw = fireAtRaw,
                 missionType = missionType,

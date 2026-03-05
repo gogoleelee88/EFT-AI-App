@@ -455,15 +455,22 @@
             android:layout_marginTop="8dp"
             android:orientation="horizontal">
 
-            <RadioButton
-                android:id="@+id/missionLocationRadio"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/mission_type_location" />
+        <RadioButton
+            android:id="@+id/missionLocationRadio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/mission_type_location" />
 
-            <RadioButton
-                android:id="@+id/missionManualRadio"
-                android:layout_width="wrap_content"
+        <RadioButton
+            android:id="@+id/missionPhotoRadio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="사진 인증" />
+
+        <RadioButton
+            android:id="@+id/missionManualRadio"
+            android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
                 android:text="@string/mission_type_manual" />

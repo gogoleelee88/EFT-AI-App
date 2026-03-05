@@ -17,6 +17,8 @@ data class AlarmJob(
     val targetLatitude: Double? = null,
     val targetLongitude: Double? = null,
     val radiusMeters: Float = TargetLocation.DEFAULT_RADIUS_METERS,
+    val planDate: String = "",
+    val taskUid: String = "",
     val missionType: String = AlarmMissionType.LOCATION_ARRIVAL.value,
     val sourceType: String = AlarmSourceType.SERVICE.value,
     val enabled: Boolean = true,
@@ -33,6 +35,8 @@ data class LocationValidationResult(
 enum class AlarmMissionType(val value: String) {
     LOCATION_ARRIVAL("location_arrival"),
     MANUAL_DISMISS("manual_dismiss"),
+    TIME_CHECK("time_check"),
+    PHOTO("photo"),
 }
 
 enum class AlarmSourceType(val value: String) {

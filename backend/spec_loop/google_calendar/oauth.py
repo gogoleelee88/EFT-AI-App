@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
@@ -99,6 +101,19 @@ def get_auth_url(state: Optional[str] = None, redirect_uri: Optional[str] = None
     return auth_url
 
 
+def build_auth_url(
+    *,
+    user_id: str,
+    next_path: str,
+    redirect_uri_override: Optional[str] = None,
+) -> str:
+    safe_next = (next_path or "").strip()
+    if safe_next and not safe_next.startswith("/"):
+        safe_next = ""
+    state = user_id if not safe_next else f"{user_id}|{safe_next}"
+    return get_auth_url(state=state, redirect_uri=redirect_uri_override)
+
+
 def handle_callback(code: str, user_id: str, redirect_uri: Optional[str] = None) -> None:
     redirect = _pick_redirect_uri(override_redirect_uri=redirect_uri)
     client_config = _build_client_config(redirect)
@@ -124,4 +139,35 @@ def handle_callback(code: str, user_id: str, redirect_uri: Optional[str] = None)
     finally:
         db.close()
 
+
+def get_connection_state(db, user_id: str) -> dict[str, object]:
+    row = db.query(GoogleToken).filter(GoogleToken.user_id == user_id).first()
+    if row is None or not row.token_json:
+        return {"connected": False, "status": "missing"}
+
+    try:
+        token = json.loads(row.token_json)
+    except Exception:
+        return {"connected": False, "status": "reconnect_required"}
+
+    expires_at = token.get("expires_at")
+    expiry = token.get("expiry")
+    if isinstance(expires_at, (int, float)):
+        if float(expires_at) <= datetime.now(timezone.utc).timestamp():
+            return {"connected": False, "status": "expired"}
+    elif isinstance(expiry, str):
+        try:
+            parsed = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            if parsed.astimezone(timezone.utc) <= datetime.now(timezone.utc):
+                return {"connected": False, "status": "expired"}
+        except Exception:
+            pass
+
+    revoked = token.get("revoked")
+    if isinstance(revoked, bool) and revoked:
+        return {"connected": False, "status": "revoked"}
+
+    return {"connected": True, "status": "connected"}
 

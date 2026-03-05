@@ -71,6 +71,8 @@ def _infer_mission_type(item: dict[str, Any]) -> str:
     missions = item.get("missions")
     if not isinstance(missions, list):
         return DEFAULT_MISSION_TYPE
+
+    has_manual_mission = False
     for mission in missions:
         if not isinstance(mission, dict):
             continue
@@ -79,15 +81,23 @@ def _infer_mission_type(item: dict[str, Any]) -> str:
         mission_type = str(mission.get("type") or "").strip().lower()
         if mission_type == "location":
             return "location_arrival"
+        if mission_type in {"photo", "time_check", "manual_dismiss"}:
+            has_manual_mission = True
+
+    if has_manual_mission:
+        return "manual_dismiss"
     return DEFAULT_MISSION_TYPE
 
 
 def _infer_source_type(item: dict[str, Any]) -> str:
+    alarm = item.get("alarm")
+    alarm_source = alarm.get("source_type") if isinstance(alarm, dict) else None
     raw = (
         str(
             item.get("source_type")
             or item.get("source")
             or item.get("calendar_source")
+            or alarm_source
             or ""
         )
         .strip()
@@ -320,8 +330,6 @@ def upsert_jobs_for_day_plan(
             job = query.order_by(ReminderJob.job_id.asc()).first()
             source_type = _infer_source_type(item)
             mission_type = _infer_mission_type(item)
-            if source_type == "google":
-                mission_type = "manual_dismiss"
             location_target = _extract_location_target(
                 db,
                 item=item,

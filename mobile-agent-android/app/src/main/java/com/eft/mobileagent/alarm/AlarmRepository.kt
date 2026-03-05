@@ -91,6 +91,8 @@ class AlarmRepository(context: Context) {
                         null
                     },
                     radiusMeters = item.optDouble("radiusMeters", TargetLocation.DEFAULT_RADIUS_METERS.toDouble()).toFloat(),
+                    planDate = item.optString("planDate", ""),
+                    taskUid = item.optString("taskUid", ""),
                     missionType = item.optString("missionType", AlarmMissionType.LOCATION_ARRIVAL.value),
                     sourceType = item.optString("sourceType", AlarmSourceType.SERVICE.value),
                     enabled = item.optBoolean("enabled", true),
@@ -111,6 +113,8 @@ class AlarmRepository(context: Context) {
                     .put("targetLatitude", job.targetLatitude)
                     .put("targetLongitude", job.targetLongitude)
                     .put("radiusMeters", job.radiusMeters.toDouble())
+                    .put("planDate", job.planDate)
+                    .put("taskUid", job.taskUid)
                     .put("missionType", job.missionType)
                     .put("sourceType", job.sourceType)
                     .put("enabled", job.enabled)

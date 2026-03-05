@@ -1,15 +1,21 @@
 from datetime import date, datetime, time, timezone
 from typing import List, Literal, Optional, Tuple
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.spec_loop.authz import get_current_user_id_spec
 from services.auth_service import AuthService
 from backend.spec_loop.google_calendar.models import GoogleEventMapping, GoogleToken
-from backend.spec_loop.google_calendar.oauth import get_auth_url, handle_callback
+from backend.spec_loop.google_calendar.oauth import (
+    build_auth_url,
+    get_auth_url,
+    get_connection_state,
+    handle_callback,
+)
 from config.settings import get_settings
 from backend.spec_loop.google_calendar.sync import (
     create_google_event,
@@ -88,6 +94,22 @@ def google_auth(
     return {"authUrl": auth_url}
 
 
+@router.get("/google/mobile/auth")
+def google_mobile_auth(
+    next: str = Query(default="/"),
+    redirect_uri: str = Query(..., description="Mobile deep-link callback (e.g. myapp://oauth/google/callback)"),
+    user_id: str = Depends(get_current_user_id_spec),
+):
+    safe_next = _safe_next_path(next, default="/")
+    return {
+        "authUrl": build_auth_url(
+            user_id=user_id,
+            next_path=safe_next,
+            redirect_uri_override=redirect_uri,
+        )
+    }
+
+
 @router.get("/google/callback")
 def google_callback(request: Request, code: str, state: Optional[str] = None):
     """OAuth callback: exchange code and redirect to frontend."""
@@ -106,6 +128,25 @@ def google_callback(request: Request, code: str, state: Optional[str] = None):
     return RedirectResponse(url=redirect_target)
 
 
+@router.get("/google/mobile/callback")
+def google_mobile_callback(
+    code: str,
+    state: Optional[str] = None,
+    redirect_uri: Optional[str] = Query(default=None),
+):
+    if not state:
+        raise HTTPException(status_code=400, detail="state is required")
+
+    user_id = state
+    next_path: Optional[str] = None
+    if "|" in state:
+        user_id, next_path = state.split("|", 1)
+
+    handle_callback(code, user_id, redirect_uri=redirect_uri)
+    safe_next = _safe_next_path(next_path, default="/")
+    return {"ok": True, "next": safe_next}
+
+
 @router.get("/google/status")
 def google_status(
     db: Session = Depends(get_db),
@@ -119,6 +160,29 @@ def google_status(
         is not None
     )
     return {"connected": bool(exists)}
+
+
+@router.get("/google/mobile/status")
+def google_mobile_status(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id_spec),
+):
+    state = get_connection_state(db=db, user_id=user_id)
+    return {"connected": bool(state.get("connected")), **state}
+
+
+@router.get("/google/mobile/events")
+def google_mobile_events(
+    date: date,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id_spec),
+):
+    """
+    Android overlay endpoint.
+    Supports Bearer or cookie auth via get_current_user_id_spec.
+    """
+    events = fetch_google_events(db, user_id, date)
+    return {"events": events}
 
 
 @router.get("/google/events")
@@ -440,8 +504,3 @@ def suggest_smart_plan(
         total_task_minutes=total_task_minutes,
         scheduled_minutes=scheduled_minutes,
     )
-
-
-
-
-

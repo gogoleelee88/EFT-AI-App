@@ -1,18 +1,20 @@
 ﻿# Mission API ?쩌챙째??- 챘짱쨍챙/?짜챙/챘짱쨍챙쨍?챘 챗쨈???챘?짭챙쨍??
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
+from backend.spec_loop.authz import get_current_user_id_spec
 from config.settings import get_settings
 from backend.spec_loop.mission import schemas, service
+from backend.spec_loop.mission import proof_service
 from backend.spec_loop.execution_log_service import log_execution
 from backend.spec_loop.models import DayPlan, MissionRun, Task
 from backend.spec_loop.validation.execution_log_schema import ExecutionLogEventType
@@ -78,6 +80,70 @@ def start_mission(
         "state": run.state,
         "started_at": run.started_at,
     }
+
+
+@router.post("/mission/proofs/time-check")
+def post_time_check_proof(
+    plan_date: date = Query(..., alias="plan_date"),
+    task_uid: str = Query(..., min_length=1, max_length=128),
+    min_seconds: int = Query(10, ge=0, le=600),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id_spec),
+):
+    scheduled, now = proof_service.verify_time_check(
+        db=db,
+        user_id=user_id,
+        plan_date=plan_date,
+        task_uid=task_uid,
+        min_seconds=min_seconds,
+    )
+    row = proof_service.upsert_proof(
+        db=db,
+        user_id=user_id,
+        plan_date=plan_date,
+        task_uid=task_uid,
+        mission_type="time_check",
+        min_seconds=min_seconds,
+        scheduled_fire_at_utc=scheduled,
+        data_json={"verified_at_utc": now.isoformat()},
+        photo_path=None,
+    )
+    return {"ok": True, "proof_id": row.id}
+
+
+@router.post("/mission/proofs/photo")
+def post_photo_proof(
+    plan_date: date = Form(...),
+    task_uid: str = Form(...),
+    min_seconds: int = Form(10),
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id_spec),
+):
+    scheduled, now = proof_service.verify_time_check(
+        db=db,
+        user_id=user_id,
+        plan_date=plan_date,
+        task_uid=task_uid,
+        min_seconds=int(min_seconds),
+    )
+    photo_path = proof_service.save_photo_file(image)
+    row = proof_service.upsert_proof(
+        db=db,
+        user_id=user_id,
+        plan_date=plan_date,
+        task_uid=task_uid,
+        mission_type="photo",
+        min_seconds=int(min_seconds),
+        scheduled_fire_at_utc=scheduled,
+        data_json={
+            "filename": image.filename,
+            "content_type": image.content_type,
+            "verified_at_utc": now.isoformat(),
+        },
+        photo_path=photo_path,
+    )
+    return {"ok": True, "proof_id": row.id}
 
 
 # === ?짜챙 (Place) API ===
@@ -738,7 +804,6 @@ def get_recent_tasks(
     """챙쨉챗쨌쩌 ?짭챙짤??Task 챘짧짤챘징 (?짹챗쨀쨉챘짜??짭챠짢)"""
     tasks = service.get_recent_tasks(db, user_id, limit)
     return tasks
-
 
 
 

@@ -24,6 +24,8 @@ from backend.spec_loop.models.reminder_job import ReminderJob
 from backend.spec_loop.models.reminder_delivery import ReminderDelivery
 from backend.spec_loop.models.push_subscription import PushSubscription
 from backend.spec_loop.models.recovery_event import RecoveryEvent
+from backend.spec_loop.models.idempotency_key import IdempotencyKey
+from backend.spec_loop.models.mission_proof import MissionProof
 
 __all__ = [
     "Task",
@@ -51,4 +53,6 @@ __all__ = [
     "ReminderDelivery",
     "PushSubscription",
     "RecoveryEvent",
+    "IdempotencyKey",
+    "MissionProof",
 ]
