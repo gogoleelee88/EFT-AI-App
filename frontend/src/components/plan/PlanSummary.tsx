@@ -43,6 +43,8 @@ const PlanSummary: React.FC<PlanSummaryProps> = ({
 
   const formatRepeat = (repeat: AlarmConfig["repeat"], customDays?: number[]) => {
     switch (repeat) {
+      case "once":
+        return "한 번만";
       case "daily":
         return "매일";
       case "weekdays":
@@ -50,6 +52,7 @@ const PlanSummary: React.FC<PlanSummaryProps> = ({
       case "weekends":
         return "주말만 (토~일)";
       case "custom":
+      case "custom_days":
         if (!customDays || customDays.length === 0) return "커스텀";
         const days = ["일", "월", "화", "수", "목", "금", "토"];
         return customDays.map((d) => days[d]).join(", ");
@@ -77,6 +80,9 @@ const PlanSummary: React.FC<PlanSummaryProps> = ({
   };
 
   const PrivacyIcon = privacyMeta[privacyMode].icon;
+  const start = alarm.start_time || alarm.time || "--:--";
+  const end = alarm.end_time || "--:--";
+  const windowText = `${start} ~ ${end}${alarm.ends_next_day ? " (+1일)" : ""}`;
 
   return (
     <div className="space-y-4 p-4 max-w-2xl mx-auto">
@@ -191,7 +197,7 @@ const PlanSummary: React.FC<PlanSummaryProps> = ({
         <div className="space-y-2">
           <div className="text-sm font-semibold text-gray-700">🔔 알람</div>
           <div className="text-base font-medium text-gray-800">
-            {alarm.time}
+            {windowText}
           </div>
           <div className="text-xs text-gray-600">
             {formatRepeat(alarm.repeat, alarm.custom_days)}

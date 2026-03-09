@@ -28,6 +28,26 @@ interface PlanWizardState {
   privacy_mode: PrivacyMode;
 }
 
+const HHMM_RX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+function parseMinutes(value: string): number | null {
+  const match = value.match(HHMM_RX);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function normalizeAlarm(alarm: AlarmConfig | null): AlarmConfig | null {
+  if (!alarm) return null;
+  const startTime = (alarm.start_time || alarm.time || "").trim();
+  return {
+    ...alarm,
+    start_time: startTime,
+    end_time: (alarm.end_time || "").trim(),
+    ends_next_day: Boolean(alarm.ends_next_day),
+    time: startTime || undefined,
+  };
+}
+
 function todayInKoreaIso(): string {
   try {
     return new Intl.DateTimeFormat("en-CA", {
@@ -103,7 +123,8 @@ export function usePlanWizard() {
   };
 
   const setAlarm = (alarm: AlarmConfig) => {
-    setState((prev) => ({ ...prev, alarm }));
+    const normalized = normalizeAlarm(alarm);
+    setState((prev) => ({ ...prev, alarm: normalized }));
   };
 
   const setPrivacyMode = (privacyMode: PrivacyMode) => {
@@ -124,6 +145,27 @@ export function usePlanWizard() {
       return "?뚮엺 ?쒓컙???ㅼ젙?섏꽭??";
     }
 
+    const startTime = alarm.start_time || alarm.time || "";
+    const endTime = alarm.end_time || "";
+    const startMinutes = parseMinutes(startTime);
+    const endMinutes = parseMinutes(endTime);
+
+    if (startMinutes == null) {
+      return "Alarm start_time must be HH:mm";
+    }
+    if (endMinutes == null) {
+      return "Alarm end_time must be HH:mm";
+    }
+    if (!alarm.ends_next_day && endMinutes <= startMinutes) {
+      return "For same-day schedule, end_time must be later than start_time.";
+    }
+    if (
+      (alarm.repeat === "custom" || alarm.repeat === "custom_days") &&
+      (!alarm.custom_days || alarm.custom_days.length === 0)
+    ) {
+      return "Custom repeat requires at least one custom day.";
+    }
+
     // ?쒖꽦?붾맂 誘몄뀡???덈뒗吏 ?뺤씤 (?좏깮??
     const enabledMissions = state.missions.filter((m) => m.enabled);
     if (enabledMissions.length === 0) {
@@ -138,7 +180,7 @@ export function usePlanWizard() {
     userId?: string,
     options?: { alarm?: AlarmConfig }
   ): Promise<PlanWithMissionResponse> => {
-    const effectiveAlarm = options?.alarm ?? state.alarm;
+    const effectiveAlarm = normalizeAlarm(options?.alarm ?? state.alarm);
     const validationError = validate(effectiveAlarm);
     if (validationError) {
       setError(validationError);
@@ -209,7 +251,7 @@ export function usePlanWizard() {
             `task=${state.task?.task_title || "untitled"}`,
             `duration=${state.task?.est_minutes || 30}`,
             `resistance=${state.task?.resistance_level ?? "unset"}`,
-            `alarm=${effectiveAlarm?.time || "unset"}`,
+            `alarm=${effectiveAlarm?.start_time || "unset"}~${effectiveAlarm?.end_time || "unset"}${effectiveAlarm?.ends_next_day ? " (+1d)" : ""}`,
           ].join(" | "),
           metadata: {
             day_id: response.day_id,
@@ -274,4 +316,3 @@ export function usePlanWizard() {
     validate,
   };
 }
-

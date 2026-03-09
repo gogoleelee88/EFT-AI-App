@@ -36,6 +36,14 @@ const WEEKDAYS = [
   { value: 6, label: "Sat" },
 ];
 
+const HHMM_RX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const parseMinutes = (value: string): number | null => {
+  const match = value.match(HHMM_RX);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+};
+
 const missionLabel = (type: MissionConfig["type"]): string => {
   if (type === "photo") return "Photo verification";
   if (type === "location") return "Location verification";
@@ -52,7 +60,12 @@ const AlarmSettingStep: React.FC<AlarmSettingStepProps> = ({
   isGoogleConnected = false,
   privacyMode = "NORMAL",
 }) => {
-  const [time, setTime] = useState(initialAlarm?.time || "19:00");
+  const initialStart = initialAlarm?.start_time || initialAlarm?.time || "19:00";
+  const initialEnd = initialAlarm?.end_time || "20:00";
+
+  const [startTime, setStartTime] = useState(initialStart);
+  const [endTime, setEndTime] = useState(initialEnd);
+  const [endsNextDay, setEndsNextDay] = useState(Boolean(initialAlarm?.ends_next_day));
   const [repeat, setRepeat] = useState<AlarmConfig["repeat"]>(initialAlarm?.repeat || "daily");
   const [customDays, setCustomDays] = useState<number[]>(initialAlarm?.custom_days || []);
   const [error, setError] = useState<string | null>(null);
@@ -76,19 +89,35 @@ const AlarmSettingStep: React.FC<AlarmSettingStepProps> = ({
   };
 
   const handleComplete = async () => {
-    if (!time) {
-      setError("Please choose an alarm time.");
+    const startMinutes = parseMinutes(startTime);
+    const endMinutes = parseMinutes(endTime);
+
+    if (startMinutes == null) {
+      setError("Please choose a valid start time (HH:mm).");
       return;
     }
-    if (repeat === "custom" && customDays.length === 0) {
+    if (endMinutes == null) {
+      setError("Please choose a valid end time (HH:mm).");
+      return;
+    }
+    if (!endsNextDay && endMinutes <= startMinutes) {
+      setError(
+        "End time must be later than start time. Enable 'Ends next day' for overnight schedules."
+      );
+      return;
+    }
+    if ((repeat === "custom" || repeat === "custom_days") && customDays.length === 0) {
       setError("Choose at least one day for custom repeat.");
       return;
     }
 
     const alarm: AlarmConfig = {
-      time,
+      start_time: startTime,
+      end_time: endTime,
+      ends_next_day: endsNextDay,
+      time: startTime,
       repeat,
-      custom_days: repeat === "custom" ? customDays : undefined,
+      custom_days: repeat === "custom" || repeat === "custom_days" ? customDays : undefined,
     };
 
     const resolvedSyncMode: PrivacyMode =
@@ -145,15 +174,36 @@ const AlarmSettingStep: React.FC<AlarmSettingStepProps> = ({
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-gray-800">Alarm Settings</h3>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Alarm time</label>
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Work start time</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Work end time</label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
+
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={endsNextDay}
+              onChange={(e) => setEndsNextDay(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Ends next day
+          </label>
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Repeat</label>
@@ -282,4 +332,3 @@ const AlarmSettingStep: React.FC<AlarmSettingStepProps> = ({
 };
 
 export default AlarmSettingStep;
-

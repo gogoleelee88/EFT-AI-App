@@ -65,6 +65,13 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function redirectToLogin() {
+    const next = encodeURIComponent(
+      window.location.pathname + window.location.search
+    );
+    window.location.href = `/login?next=${next}`;
+  }
+
   // 초기 연결 상태 확인
   useEffect(() => {
     let cancelled = false;
@@ -90,9 +97,16 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
   const connectGoogle = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch(resolveBackendUrl("/api/spec/google/auth"), {
+      const nextPath = window.location.pathname;
+      const authPath = `/api/spec/google/auth?next=${encodeURIComponent(nextPath)}`;
+
+      const res = await fetch(resolveBackendUrl(authPath), {
         credentials: "include",
       });
+      if (res.status === 401 || res.status === 403) {
+        redirectToLogin();
+        return;
+      }
       if (!res.ok) {
         throw new Error(`status ${res.status}`);
       }
@@ -114,6 +128,10 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     try {
       const url = resolveBackendUrl(`/api/spec/google/events?date=${encodeURIComponent(dateIso.slice(0, 10))}`);
       const res = await fetch(url, { credentials: "include" });
+      if (res.status === 401 || res.status === 403) {
+        redirectToLogin();
+        return;
+      }
       if (!res.ok) {
         throw new Error(`status ${res.status}`);
       }
@@ -170,6 +188,10 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
             original_description: args.originalDescription,
           }),
         });
+        if (res.status === 401 || res.status === 403) {
+          redirectToLogin();
+          throw new Error("AUTH_EXPIRED");
+        }
         if (!res.ok) {
           throw new Error(`status ${res.status}`);
         }
@@ -203,6 +225,10 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
             summary: args.summary,
           }),
         });
+        if (res.status === 401 || res.status === 403) {
+          redirectToLogin();
+          throw new Error("AUTH_EXPIRED");
+        }
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.detail || `status ${res.status}`);
@@ -231,4 +257,3 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     updateGoogleEvent,
   };
 }
-

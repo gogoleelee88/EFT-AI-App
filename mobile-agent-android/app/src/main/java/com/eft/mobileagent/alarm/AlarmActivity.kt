@@ -200,7 +200,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
         alarmMissionText.text = getString(R.string.location_mission_title)
         confirmArrivalButton.visibility = View.VISIBLE
         manualDismissButton.visibility = View.GONE
-        alarmNoDismissNote.text = getString(R.string.alarm_no_dismiss_note)
+        alarmNoDismissNote.text = buildAlarmNote(getString(R.string.alarm_no_dismiss_note), job)
 
         val lat = job.targetLatitude
         val lng = job.targetLongitude
@@ -214,11 +214,11 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
         confirmArrivalButton.setOnClickListener { ensureLocationPermissionThenCheck() }
     }
 
-    private fun renderManual(@Suppress("UNUSED_PARAMETER") job: AlarmJob) {
+    private fun renderManual(job: AlarmJob) {
         alarmMissionText.text = getString(R.string.manual_mission_title)
         confirmArrivalButton.visibility = View.GONE
         manualDismissButton.visibility = View.VISIBLE
-        alarmNoDismissNote.text = getString(R.string.manual_dismiss_note)
+        alarmNoDismissNote.text = buildAlarmNote(getString(R.string.manual_dismiss_note), job)
         targetText.text = getString(R.string.manual_target_placeholder)
         resultText.text = getString(R.string.manual_result_prompt)
         resultText.setTextColor(Color.parseColor("#E5E7EB"))
@@ -308,6 +308,13 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
                 }
             }.start()
         }
+
+    private fun buildAlarmNote(base: String, job: AlarmJob): String {
+        val start = job.startTimeLocal?.trim().orEmpty()
+        val end = job.endTimeLocal?.trim().orEmpty()
+        if (start.isBlank() || end.isBlank()) return base
+        val suffix = if (job.endsNextDay) " (+1d)" else ""
+        return "$base\nWork window: $start ~ $end$suffix"
     }
 
     private fun ensureLocationPermissionThenCheck() {

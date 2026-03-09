@@ -164,8 +164,11 @@ export interface PlaceUpdateRequest {
 
 // === 알람 설정 ===
 export interface AlarmConfig {
-  time: string; // "HH:mm"
-  repeat: "daily" | "weekdays" | "weekends" | "custom";
+  start_time: string; // "HH:mm"
+  end_time: string; // "HH:mm"
+  ends_next_day: boolean;
+  time?: string; // legacy alias of start_time
+  repeat: "once" | "daily" | "weekdays" | "weekends" | "custom" | "custom_days";
   custom_days?: number[]; // 0(일)~6(토)
 }
 

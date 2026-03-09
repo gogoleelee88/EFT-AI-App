@@ -265,6 +265,14 @@ def mobile_sync_reminders(
         radius_meters = _optional_float(metadata.get("radius_meters"))
         if radius_meters is not None and radius_meters <= 0:
             radius_meters = None
+        start_time_local = str(metadata.get("alarm_start_time_local") or job.alarm_time_local).strip()
+        raw_end_time_local = metadata.get("alarm_end_time_local")
+        end_time_local = (
+            str(raw_end_time_local).strip()
+            if raw_end_time_local is not None and str(raw_end_time_local).strip()
+            else None
+        )
+        ends_next_day = bool(metadata.get("alarm_ends_next_day"))
 
         alarms.append(
             {
@@ -274,6 +282,9 @@ def mobile_sync_reminders(
                 "plan_date": str(job.plan_date),
                 "task_uid": job.task_uid,
                 "alarm_time_local": job.alarm_time_local,
+                "start_time_local": start_time_local,
+                "end_time_local": end_time_local,
+                "ends_next_day": ends_next_day,
                 "repeat_rule": job.repeat_rule,
                 "custom_days": job.custom_days or [],
                 "timezone": job.timezone,

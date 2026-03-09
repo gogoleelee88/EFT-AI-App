@@ -40,6 +40,11 @@ export default function ChatRoomsPage() {
 
   const nextQuery = useMemo(() => encodeURIComponent('/chat/rooms'), []);
 
+  const redirectToLogin = () => {
+    const next = encodeURIComponent('/chat/rooms');
+    window.location.href = `/login?next=${next}`;
+  };
+
   const buildDecisionMirrorUrl = (roomId: string, contactEmail?: string) => {
     const params = new URLSearchParams();
     if (contactEmail) {
@@ -90,6 +95,10 @@ export default function ChatRoomsPage() {
       const response = await fetch('/api/spec/google/auth?next=%2Fchat%2Frooms', {
         credentials: 'include',
       });
+      if (response.status === 401 || response.status === 403) {
+        redirectToLogin();
+        return;
+      }
       if (!response.ok) {
         throw new Error(`${response.status} ${response.statusText}`);
       }

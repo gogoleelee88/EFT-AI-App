@@ -274,9 +274,11 @@ def upsert_jobs_for_day_plan(
         if not isinstance(alarm, dict):
             continue
 
-        alarm_time = str(alarm.get("time") or "").strip()
+        alarm_time = str(alarm.get("start_time") or alarm.get("time") or "").strip()
         if not alarm_time:
             continue
+        alarm_end_time = str(alarm.get("end_time") or "").strip() or None
+        alarm_ends_next_day = bool(alarm.get("ends_next_day"))
 
         repeat_rule = normalize_repeat_rule(str(alarm.get("repeat") or "daily"))
         custom_days = normalize_custom_days(alarm.get("custom_days"))
@@ -343,6 +345,9 @@ def upsert_jobs_for_day_plan(
                 "mission_type": mission_type,
                 "source_type": source_type,
                 "expected_motion": item.get("expected_motion"),
+                "alarm_start_time_local": alarm_time,
+                "alarm_end_time_local": alarm_end_time,
+                "alarm_ends_next_day": alarm_ends_next_day,
             }
             metadata.update(location_target)
             if job is None:

@@ -80,6 +80,9 @@ class AlarmRepository(context: Context) {
                     alarmId = item.getString("alarmId"),
                     triggerAtMillis = item.getLong("triggerAtMillis"),
                     label = item.optString("label", "미션 알람"),
+                    startTimeLocal = item.optString("startTimeLocal", "").ifBlank { null },
+                    endTimeLocal = item.optString("endTimeLocal", "").ifBlank { null },
+                    endsNextDay = item.optBoolean("endsNextDay", false),
                     targetLatitude = if (item.has("targetLatitude") && !item.isNull("targetLatitude")) {
                         item.optDouble("targetLatitude")
                     } else {
@@ -110,6 +113,9 @@ class AlarmRepository(context: Context) {
                     .put("alarmId", job.alarmId)
                     .put("triggerAtMillis", job.triggerAtMillis)
                     .put("label", job.label)
+                    .put("startTimeLocal", job.startTimeLocal)
+                    .put("endTimeLocal", job.endTimeLocal)
+                    .put("endsNextDay", job.endsNextDay)
                     .put("targetLatitude", job.targetLatitude)
                     .put("targetLongitude", job.targetLongitude)
                     .put("radiusMeters", job.radiusMeters.toDouble())

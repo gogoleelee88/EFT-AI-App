@@ -50,6 +50,25 @@ def parse_hhmm(value: str) -> Optional[time]:
     return time(hour=hour, minute=minute)
 
 
+def compute_schedule_duration_minutes(
+    *,
+    start_time_local: str,
+    end_time_local: str,
+    ends_next_day: bool,
+) -> Optional[int]:
+    start = parse_hhmm(start_time_local)
+    end = parse_hhmm(end_time_local)
+    if start is None or end is None:
+        return None
+    start_total = start.hour * 60 + start.minute
+    end_total = end.hour * 60 + end.minute
+    if ends_next_day:
+        return (24 * 60 - start_total) + end_total
+    if end_total <= start_total:
+        return None
+    return end_total - start_total
+
+
 def resolve_timezone(value: Optional[str]) -> ZoneInfo:
     name = (value or DEFAULT_TZ).strip() or DEFAULT_TZ
     try:
@@ -118,4 +137,3 @@ def next_fire_at_utc(
             continue
         return candidate.astimezone(timezone.utc)
     return None
-

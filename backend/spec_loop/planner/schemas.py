@@ -2,7 +2,7 @@
 from datetime import date
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PlanItem(BaseModel):
@@ -66,13 +66,67 @@ class MissionInput(BaseModel):
 class AlarmInput(BaseModel):
     """알람 입력"""
 
-    time: str = Field(..., description="HH:mm 형식")
+    start_time: Optional[str] = Field(None, description="근무 시작 시각 (HH:mm)")
+    end_time: str = Field(..., description="근무 종료 시각 (HH:mm)")
+    ends_next_day: bool = Field(False, description="종료 시각이 다음 날인지 여부")
+    time: Optional[str] = Field(None, description="start_time 레거시 별칭")
     repeat: Literal["once", "daily", "weekdays", "weekends", "custom", "custom_days"] = "daily"
     custom_days: Optional[list[int]] = Field(None, description="커스텀 요일 (0=일~6=토)")
     source_type: Optional[Literal["service", "google"]] = Field(
         default=None,
         description="Reminder source type.",
     )
+
+    @staticmethod
+    def _parse_hhmm(value: str) -> int:
+        parts = value.split(":")
+        if len(parts) != 2:
+            raise ValueError("time must be in HH:mm format")
+        try:
+            hour = int(parts[0])
+            minute = int(parts[1])
+        except ValueError as exc:
+            raise ValueError("time must be in HH:mm format") from exc
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError("time must be in HH:mm format")
+        return hour * 60 + minute
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_alias(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        copied = dict(data)
+        start_raw = str(copied.get("start_time") or "").strip()
+        legacy_time = str(copied.get("time") or "").strip()
+        if not start_raw and legacy_time:
+            copied["start_time"] = legacy_time
+            start_raw = legacy_time
+        if start_raw and not legacy_time:
+            copied["time"] = start_raw
+        return copied
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> "AlarmInput":
+        start_raw = str(self.start_time or "").strip()
+        end_raw = str(self.end_time or "").strip()
+        if not start_raw:
+            raise ValueError("start_time is required")
+        if not end_raw:
+            raise ValueError("end_time is required")
+
+        start_minutes = self._parse_hhmm(start_raw)
+        end_minutes = self._parse_hhmm(end_raw)
+
+        if not self.ends_next_day and end_minutes <= start_minutes:
+            raise ValueError(
+                "end_time must be later than start_time unless ends_next_day is true"
+            )
+
+        self.start_time = start_raw
+        self.end_time = end_raw
+        self.time = start_raw
+        return self
 
 
 class PlanItemWithMission(BaseModel):
