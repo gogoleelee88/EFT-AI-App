@@ -126,7 +126,6 @@ def _upsert_day_plan(db: Session, *, uid: Optional[str], plan_date: date, mode: 
     db.refresh(plan)
     return plan
 
-
 def create_or_update_day_plan(db: Session, body: PlanDayRequest, user_id: Optional[str] = None) -> DayPlan:
     uid = body.user_id or user_id
     existing_ids = [it.task_id for it in body.items if it.task_id is not None]
@@ -292,8 +291,12 @@ def create_or_update_day_plan_with_mission(
                 item_data["missions_combination_mode"] = item.missions_combination_mode
 
         if item.alarm:
+            start_time = item.alarm.start_time or item.alarm.time
             item_data["alarm"] = {
-                "time": item.alarm.time,
+                "start_time": start_time,
+                "end_time": item.alarm.end_time,
+                "ends_next_day": item.alarm.ends_next_day,
+                "time": start_time,
                 "repeat": item.alarm.repeat,
                 "custom_days": item.alarm.custom_days,
                 "source_type": item.alarm.source_type,

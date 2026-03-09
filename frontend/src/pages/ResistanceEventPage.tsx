@@ -157,7 +157,7 @@ const ResistanceEventPage: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate("/work-guide-demo")}
+                onClick={() => navigate("/recover?entry_point=progress_blocked")}
               >
                 막힘가이드
               </Button>

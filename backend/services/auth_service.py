@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,8 @@ from sqlalchemy.exc import IntegrityError
 from config.settings import get_settings
 from backend.models.refresh_token import RefreshToken
 from backend.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -35,6 +38,30 @@ class TokenPair:
     access_expires_at: datetime
     refresh_expires_at: datetime
     refresh_token_id: str
+
+
+class AuthProviderUnavailableError(RuntimeError):
+    pass
+
+
+class AuthInvalidTokenError(ValueError):
+    pass
+
+
+class AuthInvalidClaimsError(ValueError):
+    pass
+
+
+class RefreshTokenInvalidError(ValueError):
+    pass
+
+
+class RefreshTokenExpiredError(RefreshTokenInvalidError):
+    pass
+
+
+class RefreshTokenRevokedError(RefreshTokenInvalidError):
+    pass
 
 
 class AuthService:
@@ -89,13 +116,18 @@ class AuthService:
 
     def verify_firebase_id_token(self, id_token: str) -> Dict[str, Any]:
         if not self._firebase_ready:
-            raise RuntimeError(
+            raise AuthProviderUnavailableError(
                 "Firebase Admin is not initialized. Set FIREBASE_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS."
             )
 
         from firebase_admin import auth as fb_auth
-
-        return fb_auth.verify_id_token(id_token, check_revoked=False)
+        try:
+            return fb_auth.verify_id_token(
+                id_token,
+                check_revoked=bool(self.settings.AUTH_CHECK_REVOKED),
+            )
+        except Exception as exc:
+            raise AuthInvalidTokenError("invalid_id_token") from exc
 
     def upsert_user_from_firebase(self, db: Session, decoded: Dict[str, Any]) -> User:
         firebase_uid = decoded.get("uid")
@@ -104,9 +136,10 @@ class AuthService:
         picture = decoded.get("picture")
 
         if not firebase_uid or not email:
-            raise ValueError("Firebase token missing uid/email")
+            raise AuthInvalidClaimsError("missing_uid_or_email")
 
         normalized_email = email.lower()
+        linked_by = "firebase_uid"
 
         user = db.query(User).filter(User.firebase_uid == firebase_uid).one_or_none()
         if user is None:
@@ -115,7 +148,7 @@ class AuthService:
                 user = User(
                     id=str(uuid4()),
                     firebase_uid=firebase_uid,
-                    email=email,
+                    email=normalized_email,
                     name=name,
                     photo_url=picture,
                     level=1,
@@ -124,13 +157,14 @@ class AuthService:
                 )
                 db.add(user)
             else:
+                linked_by = "email_fallback"
                 user = existing_user
                 user.firebase_uid = firebase_uid
-                user.email = email
+                user.email = normalized_email
                 user.name = name
                 user.photo_url = picture
         else:
-            user.email = email
+            user.email = normalized_email
             user.name = name
             user.photo_url = picture
 
@@ -141,16 +175,20 @@ class AuthService:
             db.rollback()
             existing_user = db.query(User).filter(func.lower(User.email) == normalized_email).one_or_none()
             if existing_user is None:
+                existing_user = db.query(User).filter(User.firebase_uid == firebase_uid).one_or_none()
+            if existing_user is None:
                 raise
 
+            linked_by = "integrity_retry"
             user = existing_user
             user.firebase_uid = firebase_uid
-            user.email = email
+            user.email = normalized_email
             user.name = name
             user.photo_url = picture
             db.commit()
 
         db.refresh(user)
+        logger.info("auth.upsert.linked_by=%s user_id=%s", linked_by, user.id)
         return user
 
     def _require_secret(self) -> str:
@@ -229,26 +267,26 @@ class AuthService:
     def validate_refresh_token(self, db: Session, refresh_jwt: str) -> str:
         payload = self.decode_jwt(refresh_jwt)
         if payload.get("type") != "refresh":
-            raise ValueError("Token type is not refresh")
+            raise RefreshTokenInvalidError("refresh_invalid_type")
 
         user_id = payload.get("sub")
         jti = payload.get("jti")
         sec = payload.get("sec")
         if not user_id or not jti or not sec:
-            raise ValueError("Refresh payload is incomplete")
+            raise RefreshTokenInvalidError("refresh_payload_incomplete")
 
         row = db.query(RefreshToken).filter(RefreshToken.id == jti).one_or_none()
         if row is None:
-            raise ValueError("Refresh token is not registered")
+            raise RefreshTokenInvalidError("refresh_not_registered")
         if row.revoked_at is not None:
-            raise ValueError("Refresh token is revoked")
+            raise RefreshTokenRevokedError("refresh_revoked")
         if row.expires_at < _utcnow():
-            raise ValueError("Refresh token is expired")
+            raise RefreshTokenExpiredError("refresh_expired")
 
         expected = row.token_hash
         actual = _sha256_hex(f"{jti}:{sec}")
         if expected != actual:
-            raise ValueError("Refresh token hash mismatch")
+            raise RefreshTokenInvalidError("refresh_hash_mismatch")
 
         return str(user_id)
 
@@ -268,4 +306,3 @@ class AuthService:
 
         row.revoked_at = _utcnow()
         db.commit()
-

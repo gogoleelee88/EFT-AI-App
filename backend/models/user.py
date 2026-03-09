@@ -1,4 +1,4 @@
-﻿from sqlalchemy import Column, DateTime, Integer, String, Text
+﻿from sqlalchemy import Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.sql import func
 
 from backend.database import Base
@@ -27,4 +27,8 @@ class User(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index("idx_users_email_lower", func.lower(email)),
+    )
 

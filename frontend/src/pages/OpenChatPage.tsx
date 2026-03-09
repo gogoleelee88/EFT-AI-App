@@ -240,7 +240,7 @@ export default function OpenChatPage() {
               감정기록
             </Link>
             <Link
-              to="/work-guide-demo"
+              to="/recover?entry_point=progress_blocked"
               className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600"
             >
               막힘

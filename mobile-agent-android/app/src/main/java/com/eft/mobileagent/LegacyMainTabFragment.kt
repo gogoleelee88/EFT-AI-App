@@ -2,6 +2,7 @@
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
@@ -48,6 +49,9 @@ import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
 import com.eft.mobileagent.behavior.BehaviorQueueRepository
 import com.eft.mobileagent.recovery.EftStrictIntakeBottomSheet
 import com.eft.mobileagent.recovery.EftStrictIntakeChatBottomSheet
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -86,6 +90,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
     private lateinit var behaviorAccessTokenInput: EditText
     private lateinit var loginSyncUserButton: Button
     private lateinit var scanPairingQrButton: Button
+    private lateinit var googleLoginButton: Button
     private lateinit var logoutSyncUserButton: Button
     private lateinit var loginFormContainer: LinearLayout
     private lateinit var editLoginButton: Button
@@ -201,7 +206,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
 
     private companion object {
         const val SOFT_NUDGE_TRIGGER_REASON = "focus_soft_nudge"
-        const val SOFT_NUDGE_QUESTION_TEXT = "�ڸ����� �̵��ϼ̾��. �������Ű���?"
+        const val SOFT_NUDGE_QUESTION_TEXT = "자리에서 이동하셨어요. 괜찮으신가요?"
         const val RECOVERY_PAGE_PATH = "/eft-strict"
         const val RECOVERY_EVENT_PATH = "/api/spec/recovery/events"
         const val LIFECYCLE_RECOVERY_DEBOUNCE_MS = 60_000L
@@ -269,6 +274,34 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             Log.d("QR_LOGIN", "Pairing code parsed: $code")
             syncUserIdInput.setText(code)
             claimPairingAndLogin(code)
+        }
+
+    private val googleSignInLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) {
+                setLoginButtonsEnabled(true)
+                toast(getString(R.string.msg_google_login_cancelled))
+                return@registerForActivityResult
+            }
+
+            val account = try {
+                GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                    .getResult(ApiException::class.java)
+            } catch (e: Exception) {
+                setLoginButtonsEnabled(true)
+                toast(getString(R.string.msg_google_login_failed, e.message ?: "unknown"))
+                return@registerForActivityResult
+            }
+
+            val email = account.email?.trim().orEmpty()
+            if (email.isBlank()) {
+                setLoginButtonsEnabled(true)
+                toast(getString(R.string.msg_google_login_email_missing))
+                return@registerForActivityResult
+            }
+
+            syncUserIdInput.setText(email)
+            loginWithIdentifierAndSync(email)
         }
 
     private fun parsePairingCode(raw: String): String? {
@@ -350,6 +383,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         behaviorAccessTokenInput = view.findViewById(R.id.behaviorAccessTokenInput)
         loginSyncUserButton = view.findViewById(R.id.loginSyncUserButton)
         scanPairingQrButton = view.findViewById(R.id.scanPairingQrButton)
+        googleLoginButton = view.findViewById(R.id.googleLoginButton)
         logoutSyncUserButton = view.findViewById(R.id.logoutSyncUserButton)
         loginFormContainer = view.findViewById(R.id.loginFormContainer)
         editLoginButton = view.findViewById(R.id.editLoginButton)
@@ -436,6 +470,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             claimPairingAndLogin(code)
         }
         scanPairingQrButton.setOnClickListener { startQrScan() }
+        googleLoginButton.setOnClickListener { startGoogleLogin() }
         logoutSyncUserButton.setOnClickListener {
             logoutSyncUser()
         }
@@ -1086,6 +1121,130 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         }.start()
     }
 
+    private fun setLoginButtonsEnabled(enabled: Boolean) {
+        loginSyncUserButton.isEnabled = enabled
+        scanPairingQrButton.isEnabled = enabled
+        googleLoginButton.isEnabled = enabled
+    }
+
+    private fun googleSignInClient() =
+        GoogleSignIn.getClient(
+            requireContext(),
+            GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestEmail()
+                .build(),
+        )
+
+    private fun startGoogleLogin() {
+        setLoginButtonsEnabled(false)
+        runCatching {
+            googleSignInLauncher.launch(googleSignInClient().signInIntent)
+        }.onFailure {
+            setLoginButtonsEnabled(true)
+            toast(getString(R.string.msg_google_login_failed, it.message ?: "unknown"))
+        }
+    }
+
+    private fun loginWithIdentifierAndSync(identifier: String) {
+        val trimmed = identifier.trim()
+        if (trimmed.isBlank()) {
+            setLoginButtonsEnabled(true)
+            toast(getString(R.string.msg_google_login_email_missing))
+            return
+        }
+
+        val baseUrl = ReminderSyncManager.normalizeBaseUrl(BuildConfig.BACKEND_BASE_URL)
+        if (baseUrl == null) {
+            setLoginButtonsEnabled(true)
+            toast(getString(R.string.msg_sync_backend_url_required))
+            return
+        }
+        backendBaseUrlInput.setText(baseUrl)
+        val previousUserId = ReminderSyncManager.loadConfig(requireContext())?.userId
+
+        loginWithUserResolver(
+            baseUrl = baseUrl,
+            previousUserId = previousUserId,
+            errorResId = R.string.msg_google_login_failed,
+        ) {
+            ReminderSyncClient(baseUrl).login(trimmed).userId
+        }
+    }
+
+    private fun loginWithUserResolver(
+        baseUrl: String,
+        previousUserId: String?,
+        errorResId: Int,
+        resolver: () -> String,
+    ) {
+        setLoginButtonsEnabled(false)
+        Thread {
+            val result = runCatching {
+                val userId = resolver()
+                val syncResult = syncAfterLogin(baseUrl, userId)
+                Pair(userId, syncResult)
+            }
+
+            runOnUiThreadSafe {
+                setLoginButtonsEnabled(true)
+                result.onSuccess { (userId, syncResult) ->
+                    onLoginAndSyncSuccess(userId, previousUserId, syncResult)
+                }.onFailure { err ->
+                    toast(getString(errorResId, err.message ?: "unknown"))
+                }
+            }
+        }.start()
+    }
+
+    private fun syncAfterLogin(baseUrl: String, userId: String): com.eft.mobileagent.alarm.ReminderSyncSummary {
+        ReminderSyncManager.saveConfig(requireContext(), baseUrl, userId)
+        ReminderSyncWorkScheduler.ensurePeriodicSync(requireContext())
+        ReminderSyncWorkScheduler.triggerImmediateSync(requireContext())
+        return ReminderSyncManager.syncNow(
+            context = requireContext(),
+            baseUrl = baseUrl,
+            userId = userId,
+            limit = 80,
+        )
+    }
+
+    private fun onLoginAndSyncSuccess(
+        userId: String,
+        previousUserId: String?,
+        syncResult: com.eft.mobileagent.alarm.ReminderSyncSummary,
+    ) {
+        syncUserIdInput.setText(userId)
+        if (previousUserId != null && previousUserId != userId) {
+            behaviorQueueRepository.clearAll()
+        }
+        refreshLoginStatusUi(userId)
+        refreshAlarmSummaryUi()
+        behaviorConfigStore.saveAccessToken(behaviorAccessTokenInput.text?.toString())
+        BehaviorAgentController.start(requireContext())
+        refreshBehaviorStatusUi()
+
+        val behaviorStartedMessage = "Behavior auto-started"
+        if (syncResult.skippedCount > 0) {
+            toast(
+                "${getString(R.string.msg_login_success, userId)} / " +
+                    getString(
+                        R.string.msg_sync_success_with_skip_detail,
+                        syncResult.scheduledCount,
+                        syncResult.skippedCount,
+                        syncResult.skippedPastCount,
+                        syncResult.skippedMissingTargetCount,
+                    ) +
+                    " / $behaviorStartedMessage",
+            )
+        } else {
+            toast(
+                "${getString(R.string.msg_login_success, userId)} / " +
+                    getString(R.string.msg_sync_success, syncResult.scheduledCount) +
+                    " / $behaviorStartedMessage",
+            )
+        }
+    }
+
     private fun claimPairingAndLogin(code: String) {
         val pairingCode = code.trim()
         if (pairingCode.isBlank()) {
@@ -1101,66 +1260,17 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         backendBaseUrlInput.setText(baseUrl)
         val previousUserId = ReminderSyncManager.loadConfig(requireContext())?.userId
 
-        loginSyncUserButton.isEnabled = false
-        scanPairingQrButton.isEnabled = false
-        Thread {
-            val result = runCatching {
-                val userId = ReminderSyncClient(baseUrl).claimPairing(pairingCode)
-                ReminderSyncManager.saveConfig(requireContext(), baseUrl, userId)
-                ReminderSyncWorkScheduler.ensurePeriodicSync(requireContext())
-                ReminderSyncWorkScheduler.triggerImmediateSync(requireContext())
-                val syncResult = ReminderSyncManager.syncNow(
-                    context = requireContext(),
-                    baseUrl = baseUrl,
-                    userId = userId,
-                    limit = 80,
-                )
-                Pair(userId, syncResult)
-            }
-
-            runOnUiThreadSafe {
-                loginSyncUserButton.isEnabled = true
-                scanPairingQrButton.isEnabled = true
-                result.onSuccess { (userId, syncResult) ->
-                    syncUserIdInput.setText(userId)
-                    if (previousUserId != null && previousUserId != userId) {
-                        behaviorQueueRepository.clearAll()
-                    }
-                    refreshLoginStatusUi(userId)
-                    refreshAlarmSummaryUi()
-                    behaviorConfigStore.saveAccessToken(behaviorAccessTokenInput.text?.toString())
-                    BehaviorAgentController.start(requireContext())
-                    refreshBehaviorStatusUi()
-
-                    val behaviorStartedMessage = "Behavior auto-started"
-                    if (syncResult.skippedCount > 0) {
-                        toast(
-                            "${getString(R.string.msg_login_success, userId)} / " +
-                                getString(
-                                    R.string.msg_sync_success_with_skip_detail,
-                                    syncResult.scheduledCount,
-                                    syncResult.skippedCount,
-                                    syncResult.skippedPastCount,
-                                    syncResult.skippedMissingTargetCount,
-                                ) +
-                                " / $behaviorStartedMessage",
-                        )
-                    } else {
-                        toast(
-                            "${getString(R.string.msg_login_success, userId)} / " +
-                                getString(R.string.msg_sync_success, syncResult.scheduledCount) +
-                                " / $behaviorStartedMessage",
-                        )
-                    }
-                }.onFailure { err ->
-                    val message = err.message ?: "unknown"
-                    toast(getString(R.string.msg_login_failed, message))
-                }
-            }
-        }.start()
+        loginWithUserResolver(
+            baseUrl = baseUrl,
+            previousUserId = previousUserId,
+            errorResId = R.string.msg_login_failed,
+        ) {
+            ReminderSyncClient(baseUrl).claimPairing(pairingCode)
+        }
     }
 
     private fun logoutSyncUser() {
+        runCatching { googleSignInClient().signOut() }
         BehaviorAgentController.stop(requireContext())
         ReminderSyncManager.clearConfig(requireContext())
         behaviorConfigStore.saveAccessToken(null)
@@ -1783,7 +1893,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             query = query,
         )
         if (candidates.isEmpty()) {
-            toast("���� ������ URL �ĺ��� �����ϴ�.")
+            toast("복구 페이지 URL 후보를 찾지 못했어요.")
             return
         }
 
@@ -1800,7 +1910,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             startActivity(intent)
         } catch (e: Exception) {
-            toast("�� ���� ������ ���� ����: ${e.message ?: "unknown"}")
+            toast("복구 페이지를 열지 못했어요: ${e.message ?: "unknown"}")
         }
     }
 
@@ -1892,7 +2002,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             reasonText.visibility = View.GONE
         } else {
             reasonText.visibility = View.VISIBLE
-            reasonText.text = "�ٰ�: ${question.triggerReasons.joinToString(", ")}"
+            reasonText.text = "근거 신호: ${question.triggerReasons.joinToString(", ")}"
         }
 
         val isBusy = behaviorQuestionBusy
@@ -1900,8 +2010,8 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         buttons.forEach { it.isEnabled = !isBusy }
 
         if (question.isSoftNudge) {
-            workButton.text = "�����ƿ�, ������ �̷���"
-            restButton.text = "��� ���߰� ȸ���ҰԿ�"
+            workButton.text = "괜찮아요, 하던 일을 이어갈게요"
+            restButton.text = "잠깐 쉬고 회복할게요"
             moveButton.visibility = View.GONE
             exerciseButton.visibility = View.GONE
             otherButton.visibility = View.GONE
@@ -1913,8 +2023,8 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
                 handleSoftNudgeNeedRecovery()
             }
         } else {
-            workButton.text = "�����ƿ�, ���"
-            restButton.text = "������ �޽�"
+            workButton.text = "괜찮아요, 계속해요"
+            restButton.text = "잠깐 멈출게요"
             moveButton.visibility = View.VISIBLE
             exerciseButton.visibility = View.VISIBLE
             otherButton.visibility = View.VISIBLE
@@ -2149,8 +2259,8 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         val controlsEnabled = !behaviorQuestionBusy && question != null
         val isSoftNudge = question?.isSoftNudge == true
 
-        behaviorAnswerWorkButton.text = if (isSoftNudge) "�����ƿ�" else "work"
-        behaviorAnswerRestButton.text = if (isSoftNudge) "��� ���� �־��" else "rest"
+        behaviorAnswerWorkButton.text = if (isSoftNudge) "괜찮아요" else "work"
+        behaviorAnswerRestButton.text = if (isSoftNudge) "잠깐 쉬어볼게요" else "rest"
 
         behaviorRefreshQuestionButton.isEnabled = !behaviorQuestionBusy
         behaviorAnswerWorkButton.isEnabled = controlsEnabled
@@ -2192,7 +2302,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
 
         if (developerModeTapCount == DEV_MODE_TAP_TARGET - 1) {
             val remain = DEV_MODE_TAP_TARGET - developerModeTapCount
-            toast("������ ������ ${remain}ȸ ���Ҿ��.")
+            toast("개발자 모드까지 ${remain}회 남았어요.")
             return
         }
 
@@ -2202,7 +2312,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
                 isDeveloperModeEnabled = true
                 prefs.edit().putBoolean(PREF_KEY_DEVELOPER_MODE, true).apply()
                 refreshDeveloperModeUi()
-                toast("������ ��尡 Ȱ��ȭ�Ǿ����.")
+                toast("개발자 모드가 활성화되었어요.")
             }
             developerModeTapCount = DEV_MODE_TAP_TARGET
         }

@@ -205,6 +205,7 @@ class Settings(BaseSettings):
 
     FIREBASE_PROJECT_ID: Optional[str] = None
     FIREBASE_CREDENTIALS_JSON: Optional[str] = None
+    AUTH_CHECK_REVOKED: bool = Field(False, env="AUTH_CHECK_REVOKED")
 
     NOTION_CLIENT_ID: Optional[str] = None
     NOTION_CLIENT_SECRET: Optional[str] = None

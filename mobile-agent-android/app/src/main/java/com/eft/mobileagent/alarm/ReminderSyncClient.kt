@@ -15,6 +15,9 @@ data class SyncedReminder(
     val taskUid: String,
     val triggerAtMillis: Long,
     val nextFireAtUtcRaw: String,
+    val startTimeLocal: String? = null,
+    val endTimeLocal: String? = null,
+    val endsNextDay: Boolean = false,
     val missionType: AlarmMissionType,
     val sourceType: AlarmSourceType,
     val targetLatitude: Double? = null,
@@ -337,6 +340,13 @@ class ReminderSyncClient(baseUrl: String) {
             }
             val targetLatitude = item.optNullableDouble("target_lat", "targetLatitude")
             val targetLongitude = item.optNullableDouble("target_lng", "targetLongitude")
+            val startTimeLocal = item.optString("start_time_local", item.optString("alarm_time_local", ""))
+                .trim()
+                .ifBlank { null }
+            val endTimeLocal = item.optString("end_time_local", "")
+                .trim()
+                .ifBlank { null }
+            val endsNextDay = item.optBoolean("ends_next_day", false)
             val radiusMeters = (
                 item.optNullableDouble("radius_meters", "radiusMeters")
                     ?.takeIf { it > 0.0 }
@@ -348,6 +358,8 @@ class ReminderSyncClient(baseUrl: String) {
                 "mobile-sync alarm sync_key=$resolvedSyncKey mission_type=${missionType.value} " +
                     "source_type=${sourceType.value} target_lat=${targetLatitude ?: "null"} " +
                     "target_lng=${targetLongitude ?: "null"} radius_meters=$radiusMeters " +
+                    "start_time_local=${startTimeLocal ?: "null"} end_time_local=${endTimeLocal ?: "null"} " +
+                    "ends_next_day=$endsNextDay " +
                     "next_fire_at_utc=${fireAtRaw.ifBlank { "(missing)" }}",
             )
 
@@ -368,6 +380,9 @@ class ReminderSyncClient(baseUrl: String) {
                 taskUid = taskUid,
                 triggerAtMillis = triggerAtMillis,
                 nextFireAtUtcRaw = fireAtRaw,
+                startTimeLocal = startTimeLocal,
+                endTimeLocal = endTimeLocal,
+                endsNextDay = endsNextDay,
                 missionType = missionType,
                 sourceType = sourceType,
                 targetLatitude = targetLatitude,

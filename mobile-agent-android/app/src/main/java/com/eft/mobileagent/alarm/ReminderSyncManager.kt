@@ -196,6 +196,9 @@ object ReminderSyncManager {
                 alarmId = reminder.syncKey,
                 triggerAtMillis = scheduleAt,
                 label = reminder.title.ifBlank { "(no_title)" },
+                startTimeLocal = reminder.startTimeLocal,
+                endTimeLocal = reminder.endTimeLocal,
+                endsNextDay = reminder.endsNextDay,
                 targetLatitude = if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL) {
                     reminder.targetLatitude
                 } else {

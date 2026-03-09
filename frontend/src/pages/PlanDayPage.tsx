@@ -28,7 +28,7 @@ import {
   updateAppOnlyEvent,
   updatePrivacyMappingKey,
 } from "../services/privacySync";
-import type { PlanItemInput, SelectedTask } from "../types/mission";
+import type { AlarmConfig, PlanItemInput, SelectedTask } from "../types/mission";
 import type { PrivacyMode } from "../types/privacy";
 
 type BannerSummary = {
@@ -59,6 +59,60 @@ const formatTimeLabel = (timeValue: number): string => {
   const hour = Math.floor(timeValue);
   const minute = Math.round((timeValue - hour) * 60);
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+};
+
+const HHMM_RX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const parseHhmm = (value: string): { hour: number; minute: number } | null => {
+  const match = value.match(HHMM_RX);
+  if (!match) return null;
+  return { hour: Number(match[1]), minute: Number(match[2]) };
+};
+
+const resolveAlarmWindow = (
+  dateIso: string,
+  alarm: AlarmConfig,
+  fallbackDurationMinutes: number
+): {
+  startIso: string;
+  endIso: string;
+  startLabel: string;
+  endLabel: string;
+  durationMinutes: number;
+} | null => {
+  const startLabel = (alarm.start_time || alarm.time || "").trim();
+  const endLabel = (alarm.end_time || "").trim();
+  const parsedStart = parseHhmm(startLabel);
+  if (!parsedStart) return null;
+
+  const hasExplicitEnd = endLabel.length > 0;
+  const parsedEnd = hasExplicitEnd ? parseHhmm(endLabel) : null;
+  if (hasExplicitEnd && !parsedEnd) return null;
+
+  let durationMinutes = Math.max(1, Math.round(fallbackDurationMinutes));
+  if (parsedEnd) {
+    const startTotal = parsedStart.hour * 60 + parsedStart.minute;
+    const endTotal = parsedEnd.hour * 60 + parsedEnd.minute;
+    if (alarm.ends_next_day) {
+      durationMinutes = (24 * 60 - startTotal) + endTotal;
+    } else {
+      if (endTotal <= startTotal) return null;
+      durationMinutes = endTotal - startTotal;
+    }
+  }
+
+  const start = new Date(dateIso);
+  start.setHours(parsedStart.hour, parsedStart.minute, 0, 0);
+  const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    startLabel,
+    endLabel: parsedEnd
+      ? endLabel
+      : `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`,
+    durationMinutes,
+  };
 };
 
 const PlanDayPage: React.FC = () => {
@@ -407,19 +461,12 @@ const PlanDayPage: React.FC = () => {
       return;
     }
 
-    const timeStr = alarm.time; // "HH:mm"
-    const [hours, minutes] = timeStr.split(":").map(Number);
-    const start = new Date(wizard.state.date);
-    start.setHours(hours, minutes, 0, 0);
-
-    const durationMinutes = task.est_minutes || 30;
-    const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
-    const endIso = end.toISOString();
-    const startIso = start.toISOString();
-    const totalMinutes = hours * 60 + minutes + durationMinutes;
-    const endHour = Math.floor(totalMinutes / 60) % 24;
-    const endMinute = totalMinutes % 60;
-    const endLabel = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+    const window = resolveAlarmWindow(wizard.state.date, alarm, task.est_minutes || 30);
+    if (!window) {
+      alert("Invalid alarm window. Check start/end time and next-day setting.");
+      return;
+    }
+    const { startIso, endIso, startLabel, endLabel, durationMinutes } = window;
     const originalTitle = task.task_title;
     const originalDescription = buildExportDescription();
 
@@ -451,7 +498,7 @@ const PlanDayPage: React.FC = () => {
 
       if (privacyMode === "MASKED") {
         const { maskedTitle, maskedDescription, privacyKey } =
-          createMaskedPayload(timeStr, endLabel);
+          createMaskedPayload(startLabel, endLabel);
         savePrivacyMapping({
           key: privacyKey,
           originalTitle,
@@ -794,7 +841,7 @@ const PlanDayPage: React.FC = () => {
                           Google Calendar에 이벤트 추가
                     </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          이 일정을 ({wizard.state.alarm.time})에 Google Calendar로 추가합니다.
+                          이 일정을 ({wizard.state.alarm.start_time || wizard.state.alarm.time} ~ {wizard.state.alarm.end_time || "--:--"}{wizard.state.alarm.ends_next_day ? " +1d" : ""})에 Google Calendar로 추가합니다.
 
                   </div>
                   </div>

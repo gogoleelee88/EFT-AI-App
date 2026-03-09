@@ -68,6 +68,7 @@
     <string name="msg_sync_success_with_skip_detail">동기화 완료: %1$d건 예약, %2$d건 건너뜀 (지난 시간 %3$d, 위치 미설정 %4$d)</string>
     <string name="msg_sync_failed">동기화 실패: %1$s</string>
     <string name="login_sync_user">로그인</string>
+    <string name="login_google">Google로 로그인</string>
     <string name="pair_scan_qr">QR로 계정 연결</string>
     <string name="msg_pairing_invalid_qr">유효하지 않은 QR 코드입니다.</string>
     <string name="logout_sync_user">연결 해제</string>
@@ -76,6 +77,9 @@
     <string name="msg_login_identifier_required">아이디 또는 이메일을 입력해주세요.</string>
     <string name="msg_login_success">로그인 완료: %1$s</string>
     <string name="msg_login_failed">로그인 실패: %1$s</string>
+    <string name="msg_google_login_failed">Google 로그인 실패: %1$s</string>
+    <string name="msg_google_login_cancelled">Google 로그인이 취소되었습니다.</string>
+    <string name="msg_google_login_email_missing">Google 계정 이메일을 읽지 못했습니다.</string>
     <string name="msg_login_required_for_sync">먼저 로그인해주세요.</string>
     <string name="login_status_not_logged_in">로그인되지 않음</string>
     <string name="login_status_logged_in">로그인됨: %1$s</string>
