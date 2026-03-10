@@ -142,7 +142,9 @@ class ReminderSyncClient(baseUrl: String) {
     fun savePlanDayWithSingleAlarm(
         @Suppress("UNUSED_PARAMETER") userId: String,
         planDate: String,
-        alarmTimeLocal: String,
+        alarmStartTimeLocal: String,
+        alarmEndTimeLocal: String,
+        alarmEndsNextDay: Boolean = false,
         title: String,
         sourceType: AlarmSourceType,
         missionType: AlarmMissionType,
@@ -212,7 +214,10 @@ class ReminderSyncClient(baseUrl: String) {
             .put(
                 "alarm",
                 JSONObject()
-                    .put("time", alarmTimeLocal)
+                    .put("start_time", alarmStartTimeLocal)
+                    .put("end_time", alarmEndTimeLocal)
+                    .put("ends_next_day", alarmEndsNextDay)
+                    .put("time", alarmStartTimeLocal)
                     .put("repeat", "once")
                     .put("source_type", sourceType.value),
             )

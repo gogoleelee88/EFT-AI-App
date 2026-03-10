@@ -34,8 +34,7 @@ object ReminderSyncManager {
         "if (reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL || " +
             "reminder.missionType == AlarmMissionType.TIME_CHECK || " +
             "reminder.missionType == AlarmMissionType.PHOTO || " +
-            "(reminder.missionType == AlarmMissionType.MANUAL_DISMISS && " +
-            "reminder.sourceType == AlarmSourceType.SERVICE))"
+            "reminder.missionType == AlarmMissionType.MANUAL_DISMISS)"
 
     private const val GRACE_MILLIS = 60_000L
     private const val LATE_SCHEDULE_DELAY_MILLIS = 1_000L
@@ -242,8 +241,7 @@ object ReminderSyncManager {
         return reminder.missionType == AlarmMissionType.LOCATION_ARRIVAL ||
             reminder.missionType == AlarmMissionType.TIME_CHECK ||
             reminder.missionType == AlarmMissionType.PHOTO ||
-            (reminder.missionType == AlarmMissionType.MANUAL_DISMISS &&
-                reminder.sourceType == AlarmSourceType.SERVICE)
+            reminder.missionType == AlarmMissionType.MANUAL_DISMISS
     }
 
     private fun scheduleDecisionBranch(deltaMillis: Long, graceMillis: Long): String {

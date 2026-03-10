@@ -13,7 +13,7 @@ import type { PrivacyMode } from "../types/privacy";
 import { savePlanWithMission } from "../services/missionService";
 import { ingestSignal } from "../services/proposalService";
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5; // 5 = ?꾨즺 ?붾㈃
+export type WizardStep = 1 | 2 | 3 | 4 | 5; // 5 = 완료 화면
 
 interface PlanWizardState {
   step: WizardStep;
@@ -131,18 +131,18 @@ export function usePlanWizard() {
     setState((prev) => ({ ...prev, privacy_mode: privacyMode }));
   };
 
-  // === ?꾩껜 ?곗씠??寃利?===
+  // === 전체 데이터 검증 ===
   const validate = (alarm: AlarmConfig | null = state.alarm): string | null => {
     if (!state.task) {
-      return "???쇱쓣 ?좏깮?섍굅???낅젰?섏꽭??";
+      return "작업을 선택하거나 입력하세요.";
     }
 
     if (!state.microAction) {
-      return "誘몄꽭 ?됰룞???좏깮?섍굅???낅젰?섏꽭??";
+      return "미세 행동을 선택하거나 입력하세요.";
     }
 
     if (!alarm) {
-      return "?뚮엺 ?쒓컙???ㅼ젙?섏꽭??";
+      return "알람 시간을 설정하세요.";
     }
 
     const startTime = alarm.start_time || alarm.time || "";
@@ -166,10 +166,10 @@ export function usePlanWizard() {
       return "Custom repeat requires at least one custom day.";
     }
 
-    // ?쒖꽦?붾맂 誘몄뀡???덈뒗吏 ?뺤씤 (?좏깮??
+    // 활성화된 미션이 있는지 확인 (선택 사항)
     const enabledMissions = state.missions.filter((m) => m.enabled);
     if (enabledMissions.length === 0) {
-      console.warn("?쒖꽦?붾맂 誘몄뀡???놁뒿?덈떎. (?좏깮 ?ы빆)");
+      console.warn("활성화된 미션이 없습니다. (선택 사항)");
     }
 
     return null;

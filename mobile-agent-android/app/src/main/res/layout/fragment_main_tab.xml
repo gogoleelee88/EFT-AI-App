@@ -490,12 +490,40 @@
             android:text="@string/alarm_time_title"
             android:textAppearance="?attr/textAppearanceTitleMedium" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/alarm_start_time_title"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
         <TimePicker
             android:id="@+id/timePicker"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:timePickerMode="spinner" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/alarm_end_time_title"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+        <TimePicker
+            android:id="@+id/endTimePicker"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:timePickerMode="spinner" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/alarmEndsNextDaySwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/alarm_ends_next_day" />
 
         <EditText
             android:id="@+id/alarmLabelInput"

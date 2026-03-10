@@ -306,8 +306,10 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
                         resultText.setTextColor(Color.parseColor("#F87171"))
                     }
                 }
-            }.start()
+                }.start()
         }
+
+    }
 
     private fun buildAlarmNote(base: String, job: AlarmJob): String {
         val start = job.startTimeLocal?.trim().orEmpty()
