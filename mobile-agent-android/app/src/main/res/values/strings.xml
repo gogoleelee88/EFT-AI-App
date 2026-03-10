@@ -8,6 +8,10 @@
     <string name="mission_type_location">장소 도착 미션</string>
     <string name="mission_type_manual">수동 끄기</string>
     <string name="alarm_time_title">알람 시간</string>
+    <string name="alarm_start_time_title">시작 시간</string>
+    <string name="alarm_end_time_title">종료 시간</string>
+    <string name="alarm_ends_next_day">자정 넘어 종료(다음 날)</string>
+    <string name="msg_alarm_end_time_invalid">종료 시간은 시작 시간보다 늦어야 합니다. 자정을 넘기면 자정 넘어 종료를 켜주세요.</string>
     <string name="alarm_label_hint">알람 제목 (예: 출근 준비)</string>
     <string name="target_location_not_set">목표 장소가 없습니다. 현재 위치를 먼저 저장하세요.</string>
     <string name="save_current_location">현재 위치를 목표로 저장</string>

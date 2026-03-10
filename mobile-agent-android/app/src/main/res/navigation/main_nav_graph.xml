@@ -35,9 +35,9 @@
 
     <fragment
         android:id="@+id/nav_my_page"
-        android:name="com.eft.mobileagent.MyPageTabFragment"
+        android:name="com.eft.mobileagent.MyFragment"
         android:label="My Page"
-        tools:layout="@layout/fragment_my_page_tab">
+        tools:layout="@layout/fragment_main_tab">
         <argument
             android:name="tabMode"
             app:argType="string"

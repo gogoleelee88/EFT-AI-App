@@ -34,6 +34,16 @@ jobs:
         with:
           node-version: "20.x"
 
+      - name: Prepare APK asset for frontend
+        run: |
+          set -euo pipefail
+          if [ ! -f "mobile-agent-android/apk-share/latest.apk" ]; then
+            echo "Missing mobile-agent-android/apk-share/latest.apk"
+            exit 1
+          fi
+          cp mobile-agent-android/apk-share/latest.apk frontend/public/latest.apk
+          ls -lh frontend/public/latest.apk
+
       - name: Install dependencies (root)
         env:
           NPM_CONFIG_OPTIONAL: "true"
@@ -57,6 +67,11 @@ jobs:
           else
             echo "frontend/public/_redirects not found. Skipping copy."
           fi
+
+      - name: Build sanity check
+        run: |
+          ls -la frontend/dist/
+          ls -lh frontend/dist/latest.apk
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1

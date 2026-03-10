@@ -11,11 +11,19 @@ const candidates = [
 ].filter(Boolean);
 
 const source = candidates.find((candidate) => fs.existsSync(candidate));
+const requireSource =
+  process.env.APK_COPY_REQUIRED === "1" ||
+  process.env.CI === "true" ||
+  process.env.VERCEL === "1";
 
 if (!source) {
-  console.warn(
-    "[copy-latest-apk] source not found; skip copy. set APK_SOURCE_PATH or place file at ../mobile-agent-android/apk-share/latest.apk"
-  );
+  const message =
+    "[copy-latest-apk] source not found. set APK_SOURCE_PATH or place file at ../mobile-agent-android/apk-share/latest.apk";
+  if (requireSource) {
+    console.error(`${message} (required in CI/deploy)`);
+    process.exit(1);
+  }
+  console.warn(`${message} (skip copy in local mode)`);
   process.exit(0);
 }
 

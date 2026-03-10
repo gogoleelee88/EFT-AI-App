@@ -85,6 +85,8 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
 
     private lateinit var datePicker: DatePicker
     private lateinit var timePicker: TimePicker
+    private lateinit var endTimePicker: TimePicker
+    private lateinit var alarmEndsNextDaySwitch: com.google.android.material.switchmaterial.SwitchMaterial
     private lateinit var backendBaseUrlInput: EditText
     private lateinit var syncUserIdInput: EditText
     private lateinit var behaviorAccessTokenInput: EditText
@@ -378,6 +380,9 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         datePicker = view.findViewById(R.id.datePicker)
         timePicker = view.findViewById(R.id.timePicker)
         timePicker.setIs24HourView(true)
+        endTimePicker = view.findViewById(R.id.endTimePicker)
+        endTimePicker.setIs24HourView(true)
+        alarmEndsNextDaySwitch = view.findViewById(R.id.alarmEndsNextDaySwitch)
         backendBaseUrlInput = view.findViewById(R.id.backendBaseUrlInput)
         syncUserIdInput = view.findViewById(R.id.syncUserIdInput)
         behaviorAccessTokenInput = view.findViewById(R.id.behaviorAccessTokenInput)
@@ -602,6 +607,12 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         val todayKst = ZonedDateTime.now(koreaZoneId).toLocalDate()
         datePicker.updateDate(todayKst.year, todayKst.monthValue - 1, todayKst.dayOfMonth)
         datePicker.minDate = todayKst.atStartOfDay(koreaZoneId).toInstant().toEpochMilli()
+
+        val defaultStart = ZonedDateTime.now(koreaZoneId).plusMinutes(1)
+        val defaultEnd = defaultStart.plusHours(1)
+        setTimePickerValue(timePicker, defaultStart.hour, defaultStart.minute)
+        setTimePickerValue(endTimePicker, defaultEnd.hour, defaultEnd.minute)
+        alarmEndsNextDaySwitch.isChecked = false
     }
 
     private fun maybePromptNotificationPermission() {
@@ -763,6 +774,13 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             AlarmSourceType.SERVICE -> getString(R.string.source_service)
         }
         val label = alarmLabelInput.text?.toString()?.trim().orEmpty().ifBlank { fallbackLabel }
+        val alarmStartTimeLocal = selectedAlarmTimeLocal()
+        val alarmEndTimeLocal = selectedAlarmEndTimeLocal()
+        val alarmEndsNextDay = alarmEndsNextDaySwitch.isChecked
+        if (!isAlarmWindowValid(alarmStartTimeLocal, alarmEndTimeLocal, alarmEndsNextDay)) {
+            toast(getString(R.string.msg_alarm_end_time_invalid))
+            return
+        }
 
         val job = AlarmJob(
             alarmId = alarmId,
@@ -785,11 +803,12 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         refreshAlarmSummaryUi()
         toast(getString(R.string.msg_alarm_scheduled, formatTime(triggerAtMillis)))
 
-        val alarmTimeLocal = selectedAlarmTimeLocal()
         saveDayPlanToServerIfConfigured(
             alarmId = alarmId,
             planDate = planDate,
-            alarmTimeLocal = alarmTimeLocal,
+            alarmStartTimeLocal = alarmStartTimeLocal,
+            alarmEndTimeLocal = alarmEndTimeLocal,
+            alarmEndsNextDay = alarmEndsNextDay,
             label = label,
             sourceType = sourceType,
             missionType = missionType,
@@ -808,10 +827,37 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         return String.format(Locale.US, "%02d:%02d", hour, minute)
     }
 
+    private fun selectedAlarmEndTimeLocal(): String {
+        val hour = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) endTimePicker.hour else endTimePicker.currentHour
+        val minute = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) endTimePicker.minute else endTimePicker.currentMinute
+        return String.format(Locale.US, "%02d:%02d", hour, minute)
+    }
+
+    private fun isAlarmWindowValid(startTimeLocal: String, endTimeLocal: String, endsNextDay: Boolean): Boolean {
+        if (endsNextDay) return true
+        return runCatching {
+            val start = LocalTime.parse(startTimeLocal)
+            val end = LocalTime.parse(endTimeLocal)
+            end.isAfter(start)
+        }.getOrDefault(false)
+    }
+
+    private fun setTimePickerValue(picker: TimePicker, hour: Int, minute: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            picker.hour = hour
+            picker.minute = minute
+        } else {
+            picker.currentHour = hour
+            picker.currentMinute = minute
+        }
+    }
+
     private fun saveDayPlanToServerIfConfigured(
         alarmId: String,
         planDate: String,
-        alarmTimeLocal: String,
+        alarmStartTimeLocal: String,
+        alarmEndTimeLocal: String,
+        alarmEndsNextDay: Boolean,
         label: String,
         sourceType: AlarmSourceType,
         missionType: AlarmMissionType,
@@ -836,7 +882,9 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
                 client.savePlanDayWithSingleAlarm(
                     userId = syncConfig.userId,
                     planDate = planDate,
-                    alarmTimeLocal = alarmTimeLocal,
+                    alarmStartTimeLocal = alarmStartTimeLocal,
+                    alarmEndTimeLocal = alarmEndTimeLocal,
+                    alarmEndsNextDay = alarmEndsNextDay,
                     title = label,
                     sourceType = sourceType,
                     missionType = missionType,
