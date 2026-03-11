@@ -40,6 +40,14 @@
             android:turnScreenOn="true" />
 
         <activity
+            android:name=".recovery.RecoveryInterventionHostActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <activity
             android:name=".google.GoogleOAuthCallbackActivity"
             android:exported="true">
             <intent-filter>
@@ -82,6 +90,11 @@
 
         <service
             android:name=".behavior.BehaviorAgentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".focus.FocusRecoveryService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 

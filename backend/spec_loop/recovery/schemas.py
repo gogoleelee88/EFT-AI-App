@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 SessionState = Literal["start", "in_progress", "completed"]
 EntryPoint = Literal["schedule_start", "progress_blocked", "distraction_detected", "session_summary"]
-RecoveryAction = Literal["open_web", "ignore"]
+RecoveryAction = Literal["open_native", "open_web", "ignore"]
 IosSignalType = Literal["background", "screen_off"]
 
 
@@ -22,6 +22,8 @@ class RecoveryEventIn(BaseModel):
     source: Optional[str] = Field(default=None, max_length=32)
     timestamp: Optional[datetime] = None
     cooldown_minutes: Optional[int] = Field(default=None, ge=1, le=180)
+    client_platform: Optional[Literal["android", "web", "ios"]] = Field(default=None)
+    ui_capability: Optional[Literal["native_sheet", "web_route"]] = Field(default=None)
 
     # additive fields (all optional, backward compatible)
     mismatch_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -84,6 +86,7 @@ class RecoveryJournalOut(BaseModel):
     from_ts: datetime
     to_ts: datetime
     total_events: int
+    open_native_count: int
     open_web_count: int
     ignored_count: int
     entry_point_counts: dict[str, int] = Field(default_factory=dict)

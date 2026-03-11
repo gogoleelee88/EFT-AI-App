@@ -164,7 +164,7 @@ def _has_recent_open_event(
     query = db.query(RecoveryEvent).filter(
         RecoveryEvent.user_id == user_id,
         RecoveryEvent.entry_point == entry_point,
-        RecoveryEvent.action == "open_web",
+        RecoveryEvent.action.in_(("open_native", "open_web")),
         RecoveryEvent.created_at >= threshold,
     )
     if schedule_id:
@@ -172,6 +172,14 @@ def _has_recent_open_event(
     else:
         query = query.filter(RecoveryEvent.schedule_id.is_(None))
     return query.first() is not None
+
+
+def _can_open_native(body: RecoveryEventIn) -> bool:
+    return body.client_platform == "android" and body.ui_capability == "native_sheet"
+
+
+def _can_open_web(body: RecoveryEventIn) -> bool:
+    return body.ui_capability == "web_route" or not _can_open_native(body)
 
 
 def _save_event(
@@ -343,7 +351,7 @@ def create_recovery_event(
         distraction_type=distraction_type,
     )
 
-    action = "open_web"
+    action = "open_native" if _can_open_native(body) else "open_web"
     suppressed_reason: Optional[str] = None
     recovery_url: Optional[str] = None
 
@@ -351,16 +359,16 @@ def create_recovery_event(
         action = "ignore"
         suppressed_reason = "summary_only"
 
-    if action == "open_web" and body.confidence is not None and body.confidence < MIN_CONFIDENCE:
+    if action in {"open_native", "open_web"} and body.confidence is not None and body.confidence < MIN_CONFIDENCE:
         action = "ignore"
         suppressed_reason = "low_confidence"
 
-    if action == "open_web" and body.entry_point in {"progress_blocked", "distraction_detected"}:
+    if action in {"open_native", "open_web"} and body.entry_point in {"progress_blocked", "distraction_detected"}:
         if not focus_session_id and not schedule_id:
             action = "ignore"
             suppressed_reason = "no_active_session"
 
-    if action == "open_web":
+    if action in {"open_native", "open_web"}:
         cooldown_minutes = int(body.cooldown_minutes or ENTRY_COOLDOWN_MINUTES.get(body.entry_point, 8))
         if _has_recent_open_event(
             db,
@@ -386,6 +394,9 @@ def create_recovery_event(
         if not recovery_url:
             action = "ignore"
             suppressed_reason = "frontend_url_missing"
+    elif action == "open_native" and not _can_open_native(body):
+        action = "ignore"
+        suppressed_reason = "native_ui_missing"
 
     row = _save_event(
         db,
@@ -501,8 +512,9 @@ def get_recovery_journal(
     )
 
     total_events = len(rows)
+    open_native_count = sum(1 for row in rows if row.action == "open_native")
     open_web_count = sum(1 for row in rows if row.action == "open_web")
-    ignored_count = total_events - open_web_count
+    ignored_count = sum(1 for row in rows if row.action == "ignore")
 
     entry_counter = Counter((row.entry_point or "unknown") for row in rows)
     distraction_counter = Counter(
@@ -559,6 +571,7 @@ def get_recovery_journal(
         from_ts=start,
         to_ts=end,
         total_events=total_events,
+        open_native_count=open_native_count,
         open_web_count=open_web_count,
         ignored_count=ignored_count,
         entry_point_counts=dict(entry_counter),

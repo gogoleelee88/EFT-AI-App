@@ -47,6 +47,7 @@ import com.eft.mobileagent.behavior.BehaviorApiClient
 import com.eft.mobileagent.behavior.BehaviorAgentController
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
 import com.eft.mobileagent.behavior.BehaviorQueueRepository
+import com.eft.mobileagent.focus.FocusRecoveryCoordinator
 import com.eft.mobileagent.recovery.EftStrictIntakeBottomSheet
 import com.eft.mobileagent.recovery.EftStrictIntakeChatBottomSheet
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -489,6 +490,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         }
         behaviorStopButton.setOnClickListener {
             BehaviorAgentController.stop(requireContext())
+            FocusRecoveryCoordinator.stop(requireContext(), "manual_stop")
             stopFocusSession()
             clearRecoveryTrackingState()
             refreshBehaviorStatusUi()
@@ -559,14 +561,14 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         refreshPendingBehaviorQuestion(manual = false)
         startBehaviorQuestionPolling()
         showBehaviorQuestionSheet(currentBehaviorQuestion)
-        startRecoveryTimerIfNeeded()
+        FocusRecoveryCoordinator.restoreIfNeeded(requireContext())
     }
 
     override fun onPause() {
         super.onPause()
         stopBehaviorQuestionPolling()
         behaviorQuestionSheet?.dismiss()
-        triggerDistractionRecoveryFromLifecycle()
+        FocusRecoveryCoordinator.onAppBackgrounded(requireContext())
     }
 
     override fun onDestroyView() {
@@ -1342,9 +1344,12 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         ReminderSyncManager.saveConfig(requireContext(), inputs.baseUrl, inputs.userId)
         behaviorConfigStore.saveAccessToken(inputs.accessToken)
         ReminderSyncWorkScheduler.ensurePeriodicSync(requireContext())
-        BehaviorAgentController.start(requireContext())
         clearRecoveryTrackingState()
-        startFocusSession(inputs)
+        FocusRecoveryCoordinator.startManual(
+            context = requireContext(),
+            scheduleName = resolveScheduleNameForUi(),
+            scheduleId = null,
+        )
         refreshBehaviorStatusUi()
         refreshPendingBehaviorQuestion(manual = false)
         toast("Behavior agent started")
@@ -1511,6 +1516,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         val now = System.currentTimeMillis()
         hasMeaningfulProgress = true
         lastMeaningfulProgressAt = now
+        FocusRecoveryCoordinator.markMeaningfulProgress(requireContext(), "behavior_question")
     }
 
     private fun startRecoveryTimerIfNeeded() {
