@@ -54,6 +54,11 @@
             android:launchMode="singleTop" />
 
         <activity
+            android:name=".recovery.RecoveryPlanActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <activity
             android:name=".google.GoogleOAuthCallbackActivity"
             android:exported="true">
             <intent-filter>

@@ -36,9 +36,9 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
             runOnUiThread {
                 if (!ok) {
                     Toast.makeText(this, "Strict intake save failed", Toast.LENGTH_SHORT).show()
-                } else {
-                    FocusRecoveryCoordinator.markMeaningfulProgress(this, "strict_intake")
                 }
+                FocusRecoveryCoordinator.markMeaningfulProgress(this, "strict_intake")
+                RecoveryPlanActivity.open(this, payload)
                 finish()
             }
         }.start()
@@ -58,25 +58,13 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
             .setTitle("Focus recovery")
             .setMessage(sentence)
             .setPositiveButton("Start recovery") { _, _ ->
-                if (!openRecoveryDestination()) {
-                    showStrictSheet()
-                }
+                showStrictSheet()
             }
             .setNegativeButton("Not now") { _, _ ->
                 finish()
             }
             .setOnCancelListener { finish() }
             .show()
-    }
-
-    private fun openRecoveryDestination(): Boolean {
-        val recoveryUrl = intent.getStringExtra(EXTRA_RECOVERY_URL)
-            ?.trim()
-            ?.ifBlank { null }
-            ?: return false
-        RecoveryWebViewActivity.open(this, recoveryUrl)
-        finish()
-        return true
     }
 
     private fun showStrictSheet() {

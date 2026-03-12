@@ -29,6 +29,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
     private lateinit var progress: LinearProgressIndicator
     private lateinit var errorView: TextView
     private var launchUri: Uri? = null
+    private var pageLoadFailed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +99,12 @@ class RecoveryWebViewActivity : AppCompatActivity() {
             }
         }
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                pageLoadFailed = false
+                progress.isVisible = true
+                errorView.isVisible = false
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
                 val uri = request.url ?: return false
                 if (shouldHandleInternally(uri)) {
@@ -108,6 +115,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
+                if (pageLoadFailed) return
                 progress.isVisible = false
                 errorView.isVisible = false
                 webView.isVisible = true
@@ -119,6 +127,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
                 error: WebResourceError?,
             ) {
                 if (!request.isForMainFrame) return
+                pageLoadFailed = true
                 val description = error?.description?.toString()?.trim().orEmpty()
                 if (description.isNotEmpty()) {
                     showError(description)

@@ -1,6 +1,7 @@
 package com.eft.mobileagent.alarm
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
@@ -17,9 +18,12 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import android.provider.Settings
 import com.eft.mobileagent.R
 import com.eft.mobileagent.behavior.BehaviorApiClient
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
@@ -86,6 +90,13 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
             }
         }
 
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                showNotificationSettingsDialog()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_alarm)
@@ -104,6 +115,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
         scheduler = AlarmScheduler(this)
         validator = LocationMissionValidator(this)
         behaviorConfigStore = BehaviorAgentConfigStore(this)
+        maybePromptRecoveryNotificationPermission()
 
         alarmTitleText = findViewById(R.id.alarmTitleText)
         alarmMissionText = findViewById(R.id.alarmMissionText)
@@ -605,6 +617,67 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
 
     override fun onStrictIntakeCancelled() {
         // no-op: user dismissed the strict intake sheet
+    }
+
+    private fun maybePromptRecoveryNotificationPermission() {
+        if (areNotificationsEnabled()) return
+        AlertDialog.Builder(this)
+            .setTitle("Allow recovery alerts")
+            .setMessage(
+                "Background recovery prompts rely on notifications and full-screen alerts. " +
+                    "Allow notifications so recovery can reopen the app after you leave it.",
+            )
+            .setPositiveButton("Allow") { _, _ ->
+                requestNotificationPermissionIfNeeded()
+            }
+            .setNegativeButton("Later", null)
+            .show()
+    }
+
+    private fun areNotificationsEnabled(): Boolean =
+        NotificationManagerCompat.from(this).areNotificationsEnabled()
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (!areNotificationsEnabled()) {
+                openNotificationSettings()
+            }
+            return
+        }
+        if (
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun showNotificationSettingsDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Enable notifications")
+            .setMessage(
+                "Recovery prompts are hidden while notifications are blocked. " +
+                    "Open notification settings and allow alerts for this app.",
+            )
+            .setPositiveButton("Settings") { _, _ ->
+                openNotificationSettings()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun openNotificationSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+        }
+        runCatching { startActivity(intent) }
     }
 
     private fun toast(msg: String) {

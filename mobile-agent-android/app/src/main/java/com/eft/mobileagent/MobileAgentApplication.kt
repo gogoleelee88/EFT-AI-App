@@ -11,6 +11,11 @@ class MobileAgentApplication : Application(), DefaultLifecycleObserver {
         super<Application>.onCreate()
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         FocusRecoveryCoordinator.restoreIfNeeded(this)
+        FocusRecoveryCoordinator.onProcessForegrounded(this)
+    }
+
+    override fun onStart(owner: LifecycleOwner) {
+        FocusRecoveryCoordinator.onProcessForegrounded(this)
     }
 
     override fun onStop(owner: LifecycleOwner) {
