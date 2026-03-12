@@ -1,8 +1,9 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useEFTScript } from "../contexts/EFTScriptContext";
 import { SlideIntake } from "../components/eft/SlideIntake";
-import type { StrictIntakeInput, ChatResponse } from "../types/serverAI";
+import { resolveBackendUrl } from "../config/api";
+import { useEFTScript } from "../contexts/EFTScriptContext";
+import type { ChatResponse, StrictIntakeInput } from "../types/serverAI";
 
 type PostIntakeChoice = {
   strictIntake: StrictIntakeInput;
@@ -32,6 +33,12 @@ const parseText = (raw: string | null, fallback: string): string => {
   return trimmed.length > 0 ? trimmed : fallback;
 };
 
+const parseBoolean = (raw: string | null): boolean => {
+  if (raw == null) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+};
+
 const toIntensityLabel = (intensity: number): string => {
   if (intensity >= 8) return "강함";
   if (intensity >= 5) return "중간";
@@ -41,19 +48,32 @@ const toIntensityLabel = (intensity: number): string => {
 const buildTestIntake = (sp: URLSearchParams): StrictIntakeInput => {
   const copingAttempt = parseText(
     sp.get("coping_attempt"),
-    parseText(sp.get("behavioral_reaction"), DEFAULT_TEST_INTAKE.behavioral_reaction || "회피적으로 반응")
+    parseText(
+      sp.get("behavioral_reaction"),
+      DEFAULT_TEST_INTAKE.behavioral_reaction || "회피적으로 반응",
+    ),
   );
 
   return {
     core_emotion: parseText(sp.get("core_emotion"), DEFAULT_TEST_INTAKE.core_emotion),
     situation_context: parseText(sp.get("situation_context"), DEFAULT_TEST_INTAKE.situation_context),
     automatic_thought: parseText(sp.get("automatic_thought"), DEFAULT_TEST_INTAKE.automatic_thought),
-    physical_sensation: parseText(sp.get("physical_sensation"), DEFAULT_TEST_INTAKE.physical_sensation || ""),
-    behavioral_reaction: parseText(sp.get("behavioral_reaction"), copingAttempt),
+    physical_sensation: parseText(
+      sp.get("physical_sensation"),
+      DEFAULT_TEST_INTAKE.physical_sensation || "",
+    ),
+    behavioral_reaction: parseText(
+      sp.get("behavioral_reaction"),
+      DEFAULT_TEST_INTAKE.behavioral_reaction || copingAttempt,
+    ),
     intensity: parseNumber(sp.get("intensity"), DEFAULT_TEST_INTAKE.intensity),
-    available_time: sp.get("available_time") ? parseNumber(sp.get("available_time"), DEFAULT_TEST_INTAKE.available_time || 10) : DEFAULT_TEST_INTAKE.available_time,
-    immediate_goal: parseText(sp.get("immediate_goal"), DEFAULT_TEST_INTAKE.immediate_goal || ""),
-    coping_attempt: copingAttempt,
+    available_time: sp.get("available_time")
+      ? parseNumber(sp.get("available_time"), DEFAULT_TEST_INTAKE.available_time ?? 10)
+      : DEFAULT_TEST_INTAKE.available_time,
+    immediate_goal: parseText(
+      sp.get("immediate_goal"),
+      DEFAULT_TEST_INTAKE.immediate_goal || "",
+    ),
   };
 };
 
@@ -68,6 +88,7 @@ const buildMockChatResponse = (intake: StrictIntakeInput): ChatResponse => ({
   eft_recommendations: [],
   suggested_actions: [],
   processing_time: 0,
+  confidence_score: 0.9,
   timestamp: new Date().toISOString(),
   requires_followup: false,
   emergency_detected: false,
@@ -93,14 +114,38 @@ export const EFTStrictPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isDummyModeReady, setIsDummyModeReady] = useState(false);
   const [postChoice, setPostChoice] = useState<PostIntakeChoice | null>(null);
+
   const entrySentence = parseText(
     searchParams.get("sentence") || searchParams.get("entry_sentence"),
     "",
   );
   const entryPoint = parseText(searchParams.get("entry_point"), "");
+  const sessionState = parseText(searchParams.get("session_state"), "");
   const scheduleId = parseText(searchParams.get("schedule_id"), "");
-  const [entryGateOpen, setEntryGateOpen] = useState(entrySentence.length === 0);
-  const planStartResistance = (location.state as { planStartResistance?: string } | undefined)?.planStartResistance;
+  const scheduleName = parseText(searchParams.get("schedule_name"), "");
+  const distractionType = parseText(searchParams.get("distraction_type"), "");
+  const blockedMin = searchParams.get("blocked_min");
+  const recoveryEventId = parseText(searchParams.get("event_id"), "");
+  const nativePrompted =
+    parseBoolean(searchParams.get("native_prompted")) ||
+    parseBoolean(searchParams.get("skip_entry_gate"));
+
+  const [entryGateOpen, setEntryGateOpen] = useState(
+    entrySentence.length === 0 || nativePrompted,
+  );
+  const planStartResistance = (location.state as { planStartResistance?: string } | undefined)
+    ?.planStartResistance;
+
+  const recoveryContextSummary = useMemo(() => {
+    const items: string[] = [];
+    if (scheduleName) items.push(scheduleName);
+    if (blockedMin) items.push(`${blockedMin}분 지연`);
+    if (distractionType) items.push(`${distractionType} 사용 감지`);
+    if (entryPoint === "progress_blocked") items.push("진행 막힘");
+    if (entryPoint === "distraction_detected") items.push("이탈 복귀");
+    if (entryPoint === "schedule_start") items.push("시작 미룸");
+    return items;
+  }, [blockedMin, distractionType, entryPoint, scheduleName]);
 
   const handleSubmit = async (data: StrictIntakeInput) => {
     setLoading(true);
@@ -110,9 +155,14 @@ export const EFTStrictPage: React.FC = () => {
       const strictIntakePayload: Record<string, unknown> = { ...data };
       if (entryPoint) strictIntakePayload.entry_point = entryPoint;
       if (entrySentence) strictIntakePayload.entry_sentence = entrySentence;
+      if (sessionState) strictIntakePayload.session_state = sessionState;
       if (scheduleId) strictIntakePayload.schedule_id = scheduleId;
+      if (scheduleName) strictIntakePayload.schedule_name = scheduleName;
+      if (blockedMin) strictIntakePayload.blocked_min = Number(blockedMin);
+      if (distractionType) strictIntakePayload.distraction_type = distractionType;
+      if (recoveryEventId) strictIntakePayload.event_id = recoveryEventId;
 
-      const response = await fetch("/api/chat", {
+      const response = await fetch(resolveBackendUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -121,7 +171,11 @@ export const EFTStrictPage: React.FC = () => {
         }),
       });
 
-      const result: ChatResponse = await response.json();
+      const result = (await response.json()) as ChatResponse;
+
+      if (!response.ok) {
+        throw new Error(result.response || "요청 처리 중 오류가 발생했습니다.");
+      }
 
       if (result.eft_script) {
         setPostChoice({ strictIntake: data, chatResponse: result });
@@ -138,6 +192,7 @@ export const EFTStrictPage: React.FC = () => {
 
   const applyDummyData = () => {
     const strictIntake = buildTestIntake(searchParams);
+    setStrictIntakeData(strictIntake);
     setPostChoice({
       strictIntake,
       chatResponse: buildMockChatResponse(strictIntake),
@@ -149,12 +204,29 @@ export const EFTStrictPage: React.FC = () => {
     if (!autoQuery || postChoice) return;
 
     const strictIntake = buildTestIntake(searchParams);
+    setStrictIntakeData(strictIntake);
     setPostChoice({
       strictIntake,
       chatResponse: buildMockChatResponse(strictIntake),
     });
     setIsDummyModeReady(true);
-  }, [searchParams, postChoice]);
+  }, [postChoice, searchParams]);
+
+  useEffect(() => {
+    if (!postChoice) return;
+    try {
+      window.EftRecoveryBridge?.onStrictIntakeComplete?.(
+        JSON.stringify({
+          event_id: recoveryEventId || undefined,
+          entry_point: entryPoint || undefined,
+          schedule_id: scheduleId || undefined,
+          schedule_name: scheduleName || undefined,
+        }),
+      );
+    } catch (error) {
+      console.warn("Failed to notify native recovery bridge.", error);
+    }
+  }, [entryPoint, postChoice, recoveryEventId, scheduleId, scheduleName]);
 
   const goToEFTAR = () => {
     if (!postChoice) return;
@@ -258,6 +330,11 @@ export const EFTStrictPage: React.FC = () => {
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-base leading-relaxed text-amber-900">
             {entrySentence}
           </p>
+          {recoveryContextSummary.length > 0 ? (
+            <p className="mt-3 text-sm text-gray-500">
+              {recoveryContextSummary.join(" · ")}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => setEntryGateOpen(true)}
@@ -272,13 +349,34 @@ export const EFTStrictPage: React.FC = () => {
 
   return (
     <div className="flex min-h-screen w-full items-start justify-center bg-gray-50 p-4">
-      <div className="flex w-full max-w-md flex-col md:max-w-2xl lg:max-w-4xl">
+      <div className="flex w-full max-w-md flex-col gap-4 md:max-w-2xl lg:max-w-4xl">
+        {(entrySentence || recoveryContextSummary.length > 0 || strictIntakeData) && (
+          <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
+              Recovery Context
+            </p>
+            {entrySentence ? (
+              <p className="mt-2 text-base leading-relaxed text-gray-800">{entrySentence}</p>
+            ) : null}
+            {recoveryContextSummary.length > 0 ? (
+              <p className="mt-3 text-sm text-gray-500">
+                {recoveryContextSummary.join(" · ")}
+              </p>
+            ) : null}
+            {strictIntakeData ? (
+              <p className="mt-3 text-xs text-gray-400">
+                현재 강도 {strictIntakeData.intensity}/10
+              </p>
+            ) : null}
+          </div>
+        )}
+
         <SlideIntake onComplete={handleSubmit} />
         {!isDummyModeReady && (
           <button
             type="button"
             onClick={applyDummyData}
-            className="mt-6 w-full rounded-xl bg-emerald-500 py-3 text-center font-medium text-white transition hover:bg-emerald-600"
+            className="w-full rounded-xl bg-emerald-500 py-3 text-center font-medium text-white transition hover:bg-emerald-600"
           >
             샘플 데이터로 바로 시작
           </button>

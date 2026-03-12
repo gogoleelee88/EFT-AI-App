@@ -56,7 +56,7 @@ const QUESTION_FLOW: QuestionStep[] = [
     chips: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
   },
   {
-    id: "coping_attempt",
+    id: "behavioral_reaction",
     question: "평소에 이런 감정을 어떻게 다루시나요?",
     subtext: "지금까지 해온 방식을 알려주세요",
     placeholder: "예: 혼자 참음, 운동...",
@@ -184,7 +184,7 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
         automatic_thought: collectedData.automatic_thought || "",
         physical_sensation: collectedData.physical_sensation || "",
         intensity: collectedData.intensity || 5,
-        coping_attempt: collectedData.coping_attempt || "",
+        behavioral_reaction: collectedData.behavioral_reaction || "",
         immediate_goal: answer, // 마지막 입력값
       }
 
@@ -257,7 +257,7 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
       automatic_thought: collectedData.automatic_thought || "",
       physical_sensation: collectedData.physical_sensation || "",
       intensity: collectedData.intensity || 5,
-      coping_attempt: collectedData.coping_attempt || "",
+      behavioral_reaction: collectedData.behavioral_reaction || "",
       immediate_goal: collectedData.immediate_goal || "",
     }
     onComplete(finalData)
@@ -775,7 +775,7 @@ export function SlideIntake({ onComplete }: SlideIntakeProps) {
                                 ? "신체반응"
                                 : key === "intensity"
                                   ? "강도"
-                                  : key === "coping_attempt"
+                                  : key === "behavioral_reaction"
                                     ? "대처방식"
                                     : "목표"}
                       </p>
