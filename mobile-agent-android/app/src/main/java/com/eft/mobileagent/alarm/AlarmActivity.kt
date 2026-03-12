@@ -23,8 +23,10 @@ import androidx.core.content.FileProvider
 import com.eft.mobileagent.R
 import com.eft.mobileagent.behavior.BehaviorApiClient
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
+import com.eft.mobileagent.focus.FocusRecoveryCoordinator
 import com.eft.mobileagent.recovery.EftStrictIntakeBottomSheet
 import com.eft.mobileagent.recovery.EftStrictIntakeChatBottomSheet
+import com.eft.mobileagent.recovery.RecoveryInterventionHostActivity
 import org.json.JSONObject
 import java.io.File
 
@@ -447,6 +449,8 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
                     .put("blocked_min", elapsedMin)
                     .put("confidence", 0.66)
                     .put("source", "android_alarm_timeout")
+                    .put("client_platform", "android")
+                    .put("ui_capability", "native_sheet")
                 val resp = client.post("/api/spec/recovery/events", payload.toString())
                 if (resp.statusCode !in 200..299) return@runCatching null
                 val obj = JSONObject(resp.body)
@@ -457,8 +461,9 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
             }.getOrNull()
 
             runOnUiThread {
-                if (intervention?.action == "open_web") {
-                    showStrictIntakeChatBottomSheet(
+                if (intervention?.action == "open_native" || intervention?.action == "open_web") {
+                    RecoveryInterventionHostActivity.open(
+                        context = this,
                         sessionId = alarmId ?: "android_alarm_${System.currentTimeMillis()}",
                         userId = config.userId,
                         entryPoint = "schedule_start",
@@ -479,6 +484,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
         missionCountDown?.cancel()
         missionCountDown = null
         cleanupPendingPhotoFile()
+        alarm?.let { FocusRecoveryCoordinator.startFromAlarmDismiss(this, it) }
         val id = alarmId ?: return
         scheduler.cancel(id)
         repository.setLastAlarmId(null)
@@ -493,6 +499,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
         missionCountDown?.cancel()
         missionCountDown = null
         cleanupPendingPhotoFile()
+        alarm?.let { FocusRecoveryCoordinator.startFromAlarmDismiss(this, it) }
         val id = alarmId ?: return
         scheduler.cancel(id)
         repository.setLastAlarmId(null)
