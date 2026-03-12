@@ -10,11 +10,12 @@ const LayoutController: React.FC<{ children: React.ReactNode }> = ({ children })
   const navigate = useNavigate();
 
   const isLandingPage = location.pathname === "/";
-  const navRoutes = new Set(["/signal-inbox", "/add-alarm", "/my-page"]);
+  const navRoutes = new Set(["/signal-inbox", "/add-alarm", "/deadline-planner", "/my-page"]);
   const isNavPage = navRoutes.has(location.pathname);
 
   const getActiveTab = (pathname: string) => {
     if (pathname === "/add-alarm") return "addAlarm";
+    if (pathname === "/deadline-planner") return "addAlarm";
     if (pathname === "/my-page") return "myPage";
     return "home";
   };

@@ -12,9 +12,9 @@
         android:layout_height="wrap_content"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
+        app:layout_scrollFlags="scroll|enterAlways"
         app:title="Today Flow"
-        app:titleCentered="false"
-        app:layout_scrollFlags="scroll|enterAlways"/>
+        app:titleCentered="false" />
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/scroll"
@@ -33,9 +33,9 @@
                 android:id="@+id/headerCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
                 app:cardCornerRadius="20dp"
-                app:cardElevation="2dp"
-                android:layout_marginBottom="12dp">
+                app:cardElevation="2dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -49,47 +49,47 @@
                         android:layout_height="wrap_content"
                         android:text="Mar 4, Wed"
                         android:textSize="18sp"
-                        android:textStyle="bold"/>
+                        android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/subtitleText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
+                        android:alpha="0.75"
                         android:text="Your day, merged in one timeline."
-                        android:textSize="13sp"
-                        android:alpha="0.75"/>
+                        android:textSize="13sp" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginTop="12dp">
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
 
                         <com.google.android.material.switchmaterial.SwitchMaterial
                             android:id="@+id/toggleGoogle"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Google"
-                            android:checked="true"/>
+                            android:checked="true"
+                            android:text="Google" />
 
                         <com.google.android.material.switchmaterial.SwitchMaterial
                             android:id="@+id/toggleService"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
                             android:layout_weight="1"
-                            android:text="App-only"
                             android:checked="true"
-                            android:layout_marginStart="12dp"/>
+                            android:text="App-only" />
                     </LinearLayout>
 
                     <LinearLayout
                         android:id="@+id/googleCtaRow"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
                         android:layout_marginTop="8dp"
+                        android:orientation="horizontal"
                         android:visibility="gone">
 
                         <TextView
@@ -97,9 +97,9 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
+                            android:alpha="0.85"
                             android:text="Google is not connected."
-                            android:textSize="13sp"
-                            android:alpha="0.85"/>
+                            android:textSize="13sp" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/googleConnectButton"
@@ -107,9 +107,8 @@
                             android:layout_height="wrap_content"
                             android:text="Connect"
                             app:cornerRadius="14dp"
-                            app:iconPadding="6dp"/>
+                            app:iconPadding="6dp" />
                     </LinearLayout>
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -117,22 +116,22 @@
                 android:id="@+id/nowCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
                 app:cardCornerRadius="16dp"
-                app:cardElevation="0dp"
-                android:layout_marginBottom="10dp">
+                app:cardElevation="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal"
-                    android:padding="12dp"
-                    android:gravity="center_vertical">
+                    android:padding="12dp">
 
                     <View
                         android:id="@+id/nowDot"
                         android:layout_width="10dp"
                         android:layout_height="10dp"
-                        android:background="@drawable/bg_now_dot"/>
+                        android:background="@drawable/bg_now_dot" />
 
                     <TextView
                         android:id="@+id/nowText"
@@ -140,16 +139,16 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="10dp"
                         android:text="NOW 14:03"
-                        android:textStyle="bold"
-                        android:textSize="13sp"/>
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
 
                     <View
                         android:layout_width="0dp"
                         android:layout_height="1dp"
-                        android:layout_weight="1"
                         android:layout_marginStart="10dp"
+                        android:layout_weight="1"
                         android:alpha="0.25"
-                        android:background="@android:color/darker_gray"/>
+                        android:background="@android:color/darker_gray" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -157,18 +156,18 @@
                 android:id="@+id/loadingText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Loading…"
-                android:visibility="gone"
+                android:alpha="0.8"
                 android:padding="12dp"
-                android:alpha="0.8"/>
+                android:text="Loading..."
+                android:visibility="gone" />
 
             <LinearLayout
                 android:id="@+id/emptyState"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
                 android:orientation="vertical"
                 android:padding="18dp"
-                android:gravity="center_horizontal"
                 android:visibility="gone">
 
                 <TextView
@@ -176,15 +175,15 @@
                     android:layout_height="wrap_content"
                     android:text="Nothing scheduled today."
                     android:textSize="16sp"
-                    android:textStyle="bold"/>
+                    android:textStyle="bold" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
+                    android:alpha="0.8"
                     android:text="Turn on Google, or add an App-only alarm."
-                    android:textSize="13sp"
-                    android:alpha="0.8"/>
+                    android:textSize="13sp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/emptyPrimaryCta"
@@ -192,20 +191,19 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:text="Add alarm"
-                    app:cornerRadius="14dp"/>
+                    app:cornerRadius="14dp" />
             </LinearLayout>
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/agendaRecycler"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:overScrollMode="never"
-                android:nestedScrollingEnabled="false"/>
+                android:nestedScrollingEnabled="false"
+                android:overScrollMode="never" />
 
             <View
                 android:layout_width="match_parent"
-                android:layout_height="18dp"/>
+                android:layout_height="18dp" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
-

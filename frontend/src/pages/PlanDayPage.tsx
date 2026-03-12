@@ -18,6 +18,12 @@ import type { ScheduleItem } from "../components/schedule/TimeTable";
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
 import { buildApkDownloadUrl } from "../utils/apkDownload";
 import {
+  addMinutesToKoreaOffsetDateTime,
+  buildKoreaOffsetDateTime,
+  getKoreaTimeLabel,
+  parseKoreaTimeValue,
+} from "../utils/koreaTime";
+import {
   type AppOnlyEvent,
   buildPrivacyKey,
   createAppOnlyEvent,
@@ -50,9 +56,7 @@ type BannerSummary = {
 };
 
 const parseTimeLabel = (timeStr: string): number => {
-  const match = timeStr.match(/(\d{2}):(\d{2})/);
-  if (!match) return 0;
-  return parseInt(match[1]) + parseInt(match[2]) / 60;
+  return parseKoreaTimeValue(timeStr);
 };
 
 const formatTimeLabel = (timeValue: number): string => {
@@ -101,16 +105,20 @@ const resolveAlarmWindow = (
     }
   }
 
-  const start = new Date(dateIso);
-  start.setHours(parsedStart.hour, parsedStart.minute, 0, 0);
-  const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+  const startIso = buildKoreaOffsetDateTime(dateIso, startLabel);
+  if (!startIso) return null;
+
+  const endIso = addMinutesToKoreaOffsetDateTime(startIso, durationMinutes);
+  if (!endIso) return null;
+
+  const resolvedEndLabel = parsedEnd ? endLabel : getKoreaTimeLabel(endIso);
+  if (!resolvedEndLabel) return null;
+
   return {
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
+    startIso,
+    endIso,
     startLabel,
-    endLabel: parsedEnd
-      ? endLabel
-      : `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`,
+    endLabel: resolvedEndLabel,
     durationMinutes,
   };
 };
@@ -137,6 +145,8 @@ const PlanDayPage: React.FC = () => {
 
   // State
   const [showGoogleSection, setShowGoogleSection] = useState(true);
+  const [showGoogleEvents, setShowGoogleEvents] = useState(true);
+  const [showAppEvents, setShowAppEvents] = useState(true);
   const [plannedGoogleSyncMode, setPlannedGoogleSyncMode] =
     useState<PrivacyMode>("NORMAL");
   const [appOnlyEvents, setAppOnlyEvents] = useState<AppOnlyEvent[]>(() =>
@@ -329,22 +339,29 @@ const PlanDayPage: React.FC = () => {
   }, [appOnlyEvents]);
 
   const scheduleItems = useMemo(() => {
-    return [...googleScheduleItems, ...appOnlyScheduleItems].sort(
+    const visibleItems = [
+      ...(showGoogleEvents ? googleScheduleItems : []),
+      ...(showAppEvents ? appOnlyScheduleItems : []),
+    ];
+    return visibleItems.sort(
       (a, b) => a.startTime - b.startTime
     );
-  }, [googleScheduleItems, appOnlyScheduleItems]);
+  }, [appOnlyScheduleItems, googleScheduleItems, showAppEvents, showGoogleEvents]);
 
   // Call Google Calendar API when TimeTable event is updated
   const handleScheduleUpdate = useCallback(
     async (updatedEvent: ScheduleItem, previousEvent?: ScheduleItem) => {
-      const startHour = Math.floor(updatedEvent.startTime);
-      const startMinute = Math.round((updatedEvent.startTime - startHour) * 60);
-      const endTime = updatedEvent.startTime + updatedEvent.duration;
-      const endHour = Math.floor(endTime);
-      const endMinute = Math.round((endTime - endHour) * 60);
+      const startLabel = formatTimeLabel(updatedEvent.startTime);
+      const durationMinutes = Math.max(1, Math.round(updatedEvent.duration * 60));
+      const startIso = buildKoreaOffsetDateTime(wizard.state.date, startLabel);
+      const endIso = startIso
+        ? addMinutesToKoreaOffsetDateTime(startIso, durationMinutes)
+        : null;
 
-      const startIso = `${wizard.state.date}T${String(startHour).padStart(2, "0")}:${String(startMinute).padStart(2, "0")}:00`;
-      const endIso = `${wizard.state.date}T${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}:00`;
+      if (!startIso || !endIso) {
+        console.error("Failed to build Korea schedule timestamps.", updatedEvent);
+        return;
+      }
 
       if (updatedEvent.privacy_mode === "APP_ONLY" || updatedEvent.source === "app") {
         updateAppOnlyEvent(updatedEvent.id, {
@@ -676,6 +693,30 @@ const PlanDayPage: React.FC = () => {
 
             {showGoogleSection && (
               <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowGoogleEvents((prev) => !prev)}
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      showGoogleEvents
+                        ? "border-blue-200 bg-blue-50 text-blue-700"
+                        : "border-gray-200 bg-white text-gray-500"
+                    }`}
+                  >
+                    Google 일정 {googleScheduleItems.length}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAppEvents((prev) => !prev)}
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      showAppEvents
+                        ? "border-slate-200 bg-slate-100 text-slate-700"
+                        : "border-gray-200 bg-white text-gray-500"
+                    }`}
+                  >
+                    앱 일정 {appOnlyScheduleItems.length}
+                  </button>
+                </div>
             {googleError && (
               <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-2 py-1.5">
                 {googleError}
@@ -683,12 +724,12 @@ const PlanDayPage: React.FC = () => {
             )}
 
                 {/* Google events */}
-              {googleLoading && (
+              {googleLoading && showGoogleEvents && (
                   <div className="text-xs text-gray-500 py-2">
                     Google 이벤트 불러오는 중...
                   </div>
               )}
-              {!googleLoading && googleEvents.length === 0 && (
+              {!googleLoading && showGoogleEvents && googleEvents.length === 0 && (
                   <div className="text-xs text-gray-400 py-2">
                   {isConnected
                       ? `${wizard.state.date}: Google 이벤트가 없습니다.`
@@ -704,6 +745,21 @@ const PlanDayPage: React.FC = () => {
                     onUpdateEvent={handleScheduleUpdate}
                   />
                 )}
+                {showAppEvents && appOnlyScheduleItems.length === 0 && (
+                  <div className="text-xs text-gray-400">앱 전용 일정이 아직 없습니다.</div>
+                )}
+                {!showGoogleEvents && !showAppEvents && (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                    표시할 일정을 하나 이상 켜 주세요.
+                  </div>
+                )}
+                {scheduleItems.length === 0 &&
+                  !googleLoading &&
+                  (showGoogleEvents || showAppEvents) && (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                      선택한 소스에 표시할 일정이 없습니다.
+                    </div>
+                  )}
               </>
             )}
                 </div>

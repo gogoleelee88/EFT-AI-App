@@ -12,6 +12,7 @@ import type {
 import type { PrivacyMode } from "../types/privacy";
 import { savePlanWithMission } from "../services/missionService";
 import { ingestSignal } from "../services/proposalService";
+import { todayInKoreaIso } from "../utils/koreaTime";
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5; // 5 = 완료 화면
 
@@ -46,19 +47,6 @@ function normalizeAlarm(alarm: AlarmConfig | null): AlarmConfig | null {
     ends_next_day: Boolean(alarm.ends_next_day),
     time: startTime || undefined,
   };
-}
-
-function todayInKoreaIso(): string {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
 }
 
 export function usePlanWizard() {

@@ -29,6 +29,14 @@ data class SyncLoginUser(
     val userId: String,
     val email: String?,
     val name: String?,
+    val accessToken: String? = null,
+    val refreshToken: String? = null,
+)
+
+data class PairingClaimResult(
+    val userId: String,
+    val accessToken: String?,
+    val refreshToken: String?,
 )
 
 data class PlanDaySaveResult(
@@ -52,7 +60,7 @@ class ReminderSyncClient(baseUrl: String) {
         return null
     }
 
-    fun claimPairing(code: String): String {
+    fun claimPairing(code: String): PairingClaimResult {
         val endpoint = "$normalizedBaseUrl/api/pairing/claim"
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -89,7 +97,11 @@ class ReminderSyncClient(baseUrl: String) {
         if (userId.isBlank()) {
             throw IllegalStateException("invalid_user_id")
         }
-        return userId
+        return PairingClaimResult(
+            userId = userId,
+            accessToken = json.optString("access_token", "").trim().ifBlank { null },
+            refreshToken = json.optString("refresh_token", "").trim().ifBlank { null },
+        )
     }
 
     fun login(identifier: String): SyncLoginUser {
@@ -136,6 +148,8 @@ class ReminderSyncClient(baseUrl: String) {
             userId = userId,
             email = user.optString("email", "").trim().ifBlank { null },
             name = user.optString("name", "").trim().ifBlank { null },
+            accessToken = json.optString("access_token", "").trim().ifBlank { null },
+            refreshToken = json.optString("refresh_token", "").trim().ifBlank { null },
         )
     }
 

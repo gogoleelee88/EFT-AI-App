@@ -26,12 +26,28 @@ def _iso(dt: Optional[datetime]) -> str:
 
 
 def _build_notification_payload(job: ReminderJob) -> dict[str, Any]:
-    title = "誘몄뀡 ?뚮┝"
-    task_title = (job.metadata_json or {}).get("task_title")
-    if task_title:
-        body = f"{task_title} 誘몄뀡???쒖옉?섏꽭??"
+    metadata = job.metadata_json or {}
+    title = str(metadata.get("notification_title") or "오늘의 실행 루틴").strip()
+    body_override = str(metadata.get("notification_body") or "").strip()
+    task_title = str(
+        metadata.get("headline_title")
+        or metadata.get("goal_title")
+        or metadata.get("task_title")
+        or ""
+    ).strip()
+    micro_steps = metadata.get("micro_steps") if isinstance(metadata.get("micro_steps"), list) else []
+    checklist_preview = [str(step).strip() for step in micro_steps if str(step).strip()]
+
+    if body_override:
+        body = body_override
+    elif task_title and checklist_preview:
+        body = f"{task_title} · {checklist_preview[0]}"
+        if len(checklist_preview) > 1:
+            body = f"{body} 외 {len(checklist_preview) - 1}개"
+    elif task_title:
+        body = f"{task_title} 실행 시간이 시작됐습니다."
     else:
-        body = "?ㅼ젙??誘몄뀡 ?쒓컙???섏뿀?듬땲??"
+        body = "오늘의 루틴을 점검할 시간입니다."
 
     return {
         "title": title,
@@ -179,5 +195,4 @@ def process_due_reminders(
         )
 
     return metrics
-
 

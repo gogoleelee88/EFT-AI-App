@@ -1,11 +1,5 @@
-import React from 'react';
-
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  path: string;
-}
+import React from "react";
+import { BellPlus, Inbox, UserRound } from "lucide-react";
 
 interface BottomNavProps {
   activeTab: string;
@@ -13,66 +7,51 @@ interface BottomNavProps {
   className?: string;
 }
 
+const NAV_ITEMS = [
+  {
+    id: "home",
+    label: "신호함",
+    icon: Inbox,
+  },
+  {
+    id: "addAlarm",
+    label: "알람 추가",
+    icon: BellPlus,
+  },
+  {
+    id: "myPage",
+    label: "마이페이지",
+    icon: UserRound,
+  },
+] as const;
+
 const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onTabChange,
-  className = ''
+  className = "",
 }) => {
-  const navItems: NavItem[] = [
-    {
-      id: 'home',
-      label: '홈',
-      path: '/',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-      )
-    },
-    {
-      id: 'addAlarm',
-      label: '알람 추가',
-      path: '/add-alarm',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-        </svg>
-      )
-    },
-    {
-      id: 'myPage',
-      label: '마이페이지',
-      path: '/my-page',
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15M6 20l4-16m4 16l4-16" />
-        </svg>
-      )
-    },
-  ];
-  
   return (
-    <nav className={`bg-white border-t border-purple-100 px-2 py-1 ${className}`}>
-      <div className="flex justify-around">
-        {navItems.map((item) => {
+    <nav
+      className={`border-t border-slate-200 bg-white/95 px-3 py-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur ${className}`}
+    >
+      <div className="mx-auto flex max-w-md justify-around gap-2">
+        {NAV_ITEMS.map((item) => {
           const isActive = activeTab === item.id;
-          
+          const Icon = item.icon;
+
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => onTabChange(item.id)}
-              className={`flex flex-col items-center py-2 px-3 rounded-lg transition-all duration-200 ${
-                isActive 
-                  ? 'text-purple-700 bg-purple-100' 
-                  : 'text-gray-600 hover:text-purple-700 hover:bg-purple-50'
+              className={`flex min-w-[88px] flex-col items-center rounded-2xl px-3 py-2 text-xs font-semibold transition ${
+                isActive
+                  ? "bg-sky-50 text-sky-700"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
-              <div className={`transition-transform duration-200 ${isActive ? 'scale-110' : ''}`}>
-                {item.icon}
-              </div>
-              <span className="text-xs mt-1 font-medium">
-                {item.label}
-              </span>
+              <Icon className={`h-5 w-5 ${isActive ? "scale-105" : ""}`} />
+              <span className="mt-1">{item.label}</span>
             </button>
           );
         })}

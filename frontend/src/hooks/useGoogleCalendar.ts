@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { PrivacyMode } from "../types/privacy";
 import { resolvePrivacyEvent } from "../services/privacySync";
 import { resolveBackendUrl } from "@/config/api";
+import { todayInKoreaIso } from "../utils/koreaTime";
 
 export interface GoogleCalendarEvent {
   id: string;
@@ -43,19 +44,6 @@ interface UseGoogleCalendarResult {
     endIso: string;
     summary?: string;
   }) => Promise<void>;
-}
-
-function todayInKoreaIso(): string {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
 }
 
 export function useGoogleCalendar(): UseGoogleCalendarResult {

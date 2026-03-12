@@ -6,6 +6,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
+data class GoogleCalendarConnectionState(
+    val connected: Boolean,
+    val status: String?,
+)
+
 class CalendarOverlayApiClient(baseUrl: String) {
     private val normalizedBaseUrl = baseUrl.trim().removeSuffix("/")
 
@@ -44,6 +49,41 @@ class CalendarOverlayApiClient(baseUrl: String) {
         return json.optJSONArray("items").toJsonObjectList()
     }
 
+    fun fetchGoogleConnectionState(accessToken: String?): GoogleCalendarConnectionState {
+        val (statusCode, body) = get(
+            path = "/api/spec/google/mobile/status",
+            accessToken = accessToken,
+        )
+        if (statusCode !in 200..299) {
+            throw IllegalStateException("HTTP $statusCode: $body")
+        }
+        val json = JSONObject(body)
+        return GoogleCalendarConnectionState(
+            connected = json.optBoolean("connected", false),
+            status = json.optString("status", "").trim().ifBlank { null },
+        )
+    }
+
+    fun fetchGoogleAuthUrl(
+        accessToken: String,
+        redirectUri: String,
+        nextPath: String = "/calendar",
+    ): String {
+        val encodedNext = URLEncoder.encode(nextPath, Charsets.UTF_8.name())
+        val encodedRedirect = URLEncoder.encode(redirectUri, Charsets.UTF_8.name())
+        val (statusCode, body) = get(
+            path = "/api/spec/google/mobile/auth?next=$encodedNext&redirect_uri=$encodedRedirect",
+            accessToken = accessToken,
+        )
+        if (statusCode !in 200..299) {
+            throw IllegalStateException("HTTP $statusCode: $body")
+        }
+        val json = JSONObject(body)
+        return json.optString("authUrl", "").trim().ifBlank {
+            throw IllegalStateException("missing_auth_url")
+        }
+    }
+
     private fun get(
         path: String,
         accessToken: String?,
@@ -80,4 +120,3 @@ class CalendarOverlayApiClient(baseUrl: String) {
         return out
     }
 }
-

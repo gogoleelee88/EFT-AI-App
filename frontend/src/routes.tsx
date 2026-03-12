@@ -25,7 +25,6 @@ import PlanDayPage from "./pages/PlanDayPage";
 import InstallGuidePage from "./pages/InstallGuidePage";
 import CheckinRebalancePage from "./pages/CheckinRebalancePage";
 import ResistanceEventPage from "./pages/ResistanceEventPage";
-import ProfileSetupPage from "./pages/ProfileSetupPage";
 import SignalInboxPage from "./pages/SignalInboxPage";
 import MorningBriefPage from "./pages/MorningBriefPage";
 import ExecuteBoardPage from "./pages/ExecuteBoardPage";
@@ -44,6 +43,9 @@ import OpenChatPage from "./pages/OpenChatPage";
 import ConditionHubPage from "./pages/ConditionHubPage";
 import ConditionModulePage from "./pages/ConditionModulePage";
 import WorkGuideDemoPage from "./pages/WorkGuideDemoPage";
+import AddAlarmPage from "./pages/AddAlarmPage";
+import DeadlinePlannerPage from "./pages/DeadlinePlannerPage";
+import MyPage from "./pages/MyPage";
 import { Routes, Route, Navigate } from "react-router-dom";
 
 export default function AppRoutes() {
@@ -53,9 +55,10 @@ export default function AppRoutes() {
       <Route path="/mobile-link" element={<MobileLinkPage />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/plan/day" element={<PlanDayPage />} />
-      <Route path="/profile-setup" element={<ProfileSetupPage />} />
-      <Route path="/my-page" element={<ProfileSetupPage />} />
-      <Route path="/add-alarm" element={<PlanDayPage />} />
+      <Route path="/profile-setup" element={<MyPage />} />
+      <Route path="/my-page" element={<MyPage />} />
+      <Route path="/add-alarm" element={<AddAlarmPage />} />
+      <Route path="/deadline-planner" element={<DeadlinePlannerPage />} />
       <Route path="/signal-inbox" element={<SignalInboxPage />} />
       <Route path="/morning-brief" element={<MorningBriefPage />} />
       <Route path="/execute-board" element={<ExecuteBoardPage />} />
