@@ -25,13 +25,17 @@
             android:orientation="vertical">
 
             <TextView
-                android:text="EFT Strict 기록"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EFT strict recovery"
                 android:textColor="#111827"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:text="막힘 순간을 기록합니다"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Answer one prompt at a time and return to your task."
                 android:textColor="#6B7280"
                 android:textSize="12sp" />
         </LinearLayout>

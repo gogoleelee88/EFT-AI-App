@@ -1,36 +1,54 @@
 export class TTSService {
-  private synthesis: SpeechSynthesis;
+  private synthesis: SpeechSynthesis | null;
   private voice: SpeechSynthesisVoice | null = null;
 
   constructor() {
-    this.synthesis = window.speechSynthesis;
+    this.synthesis =
+      typeof window !== 'undefined' && 'speechSynthesis' in window
+        ? window.speechSynthesis ?? null
+        : null;
     this.initVoice();
   }
 
   private initVoice(): void {
-    const voices = this.synthesis.getVoices();
-    
-    // 한국어 음성 찾기
-    this.voice = voices.find(voice => 
-      voice.lang.startsWith('ko') && voice.name.includes('Korean')
-    ) || voices.find(voice => voice.lang.startsWith('ko')) || voices[0] || null;
+    if (!this.synthesis) return;
 
-    // 음성이 로드되지 않았다면 이벤트 리스너 등록
+    const voices = (() => {
+      try {
+        return this.synthesis?.getVoices() ?? [];
+      } catch {
+        return [];
+      }
+    })();
+
+    this.voice =
+      voices.find((voice) => voice.lang.startsWith('ko') && voice.name.includes('Korean')) ||
+      voices.find((voice) => voice.lang.startsWith('ko')) ||
+      voices[0] ||
+      null;
+
     if (!this.voice && voices.length === 0) {
-      this.synthesis.addEventListener('voiceschanged', () => {
-        this.initVoice();
-      }, { once: true });
+      this.synthesis.addEventListener(
+        'voiceschanged',
+        () => {
+          this.initVoice();
+        },
+        { once: true },
+      );
     }
   }
 
   speak(text: string, options?: { rate?: number; pitch?: number; volume?: number }): void {
-    // 기존 음성 중단
+    if (!this.synthesis || typeof SpeechSynthesisUtterance === 'undefined') {
+      return;
+    }
+
     this.synthesis.cancel();
 
     if (!text.trim()) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
-    
+
     if (this.voice) {
       utterance.voice = this.voice;
     }
@@ -44,15 +62,16 @@ export class TTSService {
   }
 
   stop(): void {
+    if (!this.synthesis) return;
     this.synthesis.cancel();
   }
 
   get isSupported(): boolean {
-    return 'speechSynthesis' in window;
+    return this.synthesis != null && typeof SpeechSynthesisUtterance !== 'undefined';
   }
 
   get isSpeaking(): boolean {
-    return this.synthesis.speaking;
+    return this.synthesis?.speaking ?? false;
   }
 }
 

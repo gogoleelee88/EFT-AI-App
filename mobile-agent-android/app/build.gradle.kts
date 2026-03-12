@@ -21,6 +21,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BACKEND_BASE_URL", "\"https://eft-ai-app.onrender.com\"")
+        buildConfigField("String", "RECOVERY_WEB_BASE_URL", "\"https://eft-ai-app-frontend-4ia5.vercel.app\"")
         buildConfigField("String", "COMPLETION_EVENT_PATH", "\"/api/push/metrics\"")
     }
 

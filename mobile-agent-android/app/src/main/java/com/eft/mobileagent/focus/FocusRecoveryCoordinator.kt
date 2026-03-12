@@ -1,12 +1,17 @@
 package com.eft.mobileagent.focus
 
 import android.content.Context
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import com.eft.mobileagent.BuildConfig
 import com.eft.mobileagent.alarm.AlarmJob
 import com.eft.mobileagent.alarm.ReminderSyncManager
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
 import com.eft.mobileagent.behavior.BehaviorAgentController
 import com.eft.mobileagent.behavior.BehaviorApiClient
 import com.eft.mobileagent.recovery.EftStrictIntakeBottomSheet
+import com.eft.mobileagent.recovery.RecoveryInterventionHostActivity
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -51,35 +56,43 @@ internal data class FocusTimerConfig(
 object FocusRecoveryCoordinator {
     fun startFromAlarmDismiss(context: Context, job: AlarmJob) {
         val appContext = context.applicationContext
-        val inputs = resolveInputs(appContext) ?: return
         val scheduleId = resolveScheduleId(job)
         val scheduleName = resolveScheduleName(job.label)
+        val inputs = resolveInputs(appContext)
+        val timerConfig = loadTimerConfig(appContext)
+        FocusRecoveryStore(appContext).save(
+            FocusRecoveryState(
+                focusSessionId = null,
+                userId = inputs?.userId,
+                scheduleId = scheduleId,
+                scheduleName = scheduleName,
+                startedAtMs = System.currentTimeMillis(),
+                stage = FocusStage.ARMED_AFTER_ALARM,
+                lastMeaningfulProgressAtMs = 0L,
+                lastRealtimePromptAtMs = 0L,
+                snoozeRealtimeUntilAtMs = 0L,
+                lastLifecycleRecoveryEventAtMs = 0L,
+                lastProgressBlockedEventAtMs = 0L,
+                scheduleStartEventSent = false,
+                sensitivity = timerConfig.sensitivity,
+                usageStatsEnabled = isUsageStatsEnabled(appContext),
+            ),
+        )
         BehaviorAgentController.start(appContext)
+        FocusRecoveryService.startTracking(appContext)
+        if (inputs == null) return
         Thread {
             val focusSessionId = createRemoteFocusSession(
                 inputs = inputs,
                 scheduleId = scheduleId,
                 scheduleType = "focus",
             )
-            FocusRecoveryStore(appContext).save(
-                FocusRecoveryState(
-                    focusSessionId = focusSessionId,
-                    userId = inputs.userId,
-                    scheduleId = scheduleId,
-                    scheduleName = scheduleName,
-                    startedAtMs = System.currentTimeMillis(),
-                    stage = FocusStage.ARMED_AFTER_ALARM,
-                    lastMeaningfulProgressAtMs = 0L,
-                    lastRealtimePromptAtMs = 0L,
-                    snoozeRealtimeUntilAtMs = 0L,
-                    lastLifecycleRecoveryEventAtMs = 0L,
-                    lastProgressBlockedEventAtMs = 0L,
-                    scheduleStartEventSent = false,
-                    sensitivity = loadTimerConfig(appContext).sensitivity,
-                    usageStatsEnabled = isUsageStatsEnabled(appContext),
-                ),
-            )
-            FocusRecoveryService.startTracking(appContext)
+            FocusRecoveryStore(appContext).update { current ->
+                current?.copy(
+                    focusSessionId = focusSessionId ?: current.focusSessionId,
+                    userId = current.userId ?: inputs.userId,
+                )
+            }
         }.start()
     }
 
@@ -89,33 +102,41 @@ object FocusRecoveryCoordinator {
         scheduleId: String?,
     ) {
         val appContext = context.applicationContext
-        val inputs = resolveInputs(appContext) ?: return
+        val inputs = resolveInputs(appContext)
+        val timerConfig = loadTimerConfig(appContext)
+        FocusRecoveryStore(appContext).save(
+            FocusRecoveryState(
+                focusSessionId = null,
+                userId = inputs?.userId,
+                scheduleId = scheduleId?.trim()?.ifBlank { null },
+                scheduleName = resolveScheduleName(scheduleName),
+                startedAtMs = System.currentTimeMillis(),
+                stage = FocusStage.WORKING,
+                lastMeaningfulProgressAtMs = 0L,
+                lastRealtimePromptAtMs = 0L,
+                snoozeRealtimeUntilAtMs = 0L,
+                lastLifecycleRecoveryEventAtMs = 0L,
+                lastProgressBlockedEventAtMs = 0L,
+                scheduleStartEventSent = false,
+                sensitivity = timerConfig.sensitivity,
+                usageStatsEnabled = isUsageStatsEnabled(appContext),
+            ),
+        )
         BehaviorAgentController.start(appContext)
+        FocusRecoveryService.startTracking(appContext)
+        if (inputs == null) return
         Thread {
             val focusSessionId = createRemoteFocusSession(
                 inputs = inputs,
                 scheduleId = scheduleId,
                 scheduleType = "focus",
             )
-            FocusRecoveryStore(appContext).save(
-                FocusRecoveryState(
-                    focusSessionId = focusSessionId,
-                    userId = inputs.userId,
-                    scheduleId = scheduleId?.trim()?.ifBlank { null },
-                    scheduleName = resolveScheduleName(scheduleName),
-                    startedAtMs = System.currentTimeMillis(),
-                    stage = FocusStage.WORKING,
-                    lastMeaningfulProgressAtMs = 0L,
-                    lastRealtimePromptAtMs = 0L,
-                    snoozeRealtimeUntilAtMs = 0L,
-                    lastLifecycleRecoveryEventAtMs = 0L,
-                    lastProgressBlockedEventAtMs = 0L,
-                    scheduleStartEventSent = false,
-                    sensitivity = loadTimerConfig(appContext).sensitivity,
-                    usageStatsEnabled = isUsageStatsEnabled(appContext),
-                ),
-            )
-            FocusRecoveryService.startTracking(appContext)
+            FocusRecoveryStore(appContext).update { current ->
+                current?.copy(
+                    focusSessionId = focusSessionId ?: current.focusSessionId,
+                    userId = current.userId ?: inputs.userId,
+                )
+            }
         }.start()
     }
 
@@ -145,8 +166,49 @@ object FocusRecoveryCoordinator {
         FocusRecoveryService.markProgress(appContext, source)
     }
 
+    fun onProcessForegrounded(context: Context) {
+        backgroundCheckHandler.removeCallbacksAndMessages(null)
+        backgroundCheckRunnable = null
+        processInForeground = true
+    }
+
     fun onAppBackgrounded(context: Context) {
-        FocusRecoveryService.onAppBackgrounded(context.applicationContext)
+        val appContext = context.applicationContext
+        backgroundCheckHandler.removeCallbacksAndMessages(null)
+        backgroundCheckRunnable = null
+        processInForeground = false
+
+        val state = FocusRecoveryStore(appContext).load() ?: return
+        val elapsed = System.currentTimeMillis() - state.startedAtMs
+        val delayMs = (BACKGROUND_GRACE_MS - elapsed).coerceAtLeast(0L)
+        val runnable = Runnable {
+            backgroundCheckRunnable = null
+            if (processInForeground) return@Runnable
+            val current = FocusRecoveryStore(appContext).load() ?: return@Runnable
+            val now = System.currentTimeMillis()
+            if (now - current.lastLifecycleRecoveryEventAtMs < LIFECYCLE_RECOVERY_DEBOUNCE_MS) return@Runnable
+            FocusRecoveryStore(appContext).update { latest ->
+                latest?.copy(
+                    stage = FocusStage.BLOCKED,
+                    lastRealtimePromptAtMs = maxOf(latest.lastRealtimePromptAtMs, now),
+                    lastLifecycleRecoveryEventAtMs = now,
+                )
+            }
+            dispatchLifecycleRecovery(
+                context = appContext,
+                state = current,
+                request = RecoveryDispatchRequest(
+                    entryPoint = "distraction_detected",
+                    sessionState = "in_progress",
+                    blockedMin = null,
+                    distractionType = "AppBackground",
+                    confidence = 0.72,
+                    source = "android_lifecycle",
+                ),
+            )
+        }
+        backgroundCheckRunnable = runnable
+        backgroundCheckHandler.postDelayed(runnable, delayMs)
     }
 
     internal fun activeState(context: Context): FocusRecoveryState? =
@@ -158,7 +220,8 @@ object FocusRecoveryCoordinator {
         request: RecoveryDispatchRequest,
     ): RecoveryInterventionUi? {
         val appContext = context.applicationContext
-        val inputs = resolveInputs(appContext) ?: return null
+        val fallback = buildFallbackIntervention(appContext, state, request)
+        val inputs = resolveInputs(appContext) ?: return fallback
         val userId = state.userId ?: inputs.userId
         val client = BehaviorApiClient(baseUrl = inputs.baseUrl, accessToken = inputs.accessToken)
         val payload = JSONObject()
@@ -179,9 +242,9 @@ object FocusRecoveryCoordinator {
 
         val response = runCatching {
             client.post(RECOVERY_EVENT_PATH, payload.toString())
-        }.getOrNull() ?: return null
-        if (response.statusCode !in 200..299) return null
-        return parseRecoveryIntervention(response.body)
+        }.getOrNull() ?: return fallback
+        if (response.statusCode !in 200..299) return fallback
+        return parseRecoveryIntervention(response.body) ?: fallback
     }
 
     internal fun sendSessionSummary(
@@ -337,6 +400,114 @@ object FocusRecoveryCoordinator {
     internal fun resolveScheduleName(raw: String?): String =
         raw?.trim()?.takeIf { it.isNotEmpty() } ?: "업무 세션"
 
+    private fun dispatchLifecycleRecovery(
+        context: Context,
+        state: FocusRecoveryState,
+        request: RecoveryDispatchRequest,
+    ) {
+        val appContext = context.applicationContext
+        Thread {
+            val intervention = postRecoveryEvent(
+                context = appContext,
+                state = state,
+                request = request,
+            ) ?: return@Thread
+            if (intervention.action !in setOf("open_native", "open_web")) return@Thread
+            val current = FocusRecoveryStore(appContext).load() ?: state
+            RecoveryInterventionHostActivity.openFromBackground(
+                context = appContext,
+                sessionId = current.focusSessionId ?: "android_recovery_${System.currentTimeMillis()}",
+                userId = current.userId,
+                entryPoint = request.entryPoint,
+                scheduleName = current.scheduleName,
+                focusSessionId = current.focusSessionId,
+                distractionType = request.distractionType,
+                blockedMin = request.blockedMin,
+                entrySentence = intervention.entrySentence,
+                recoveryUrl = intervention.recoveryUrl,
+            )
+        }.start()
+    }
+
+    private fun buildFallbackIntervention(
+        context: Context,
+        state: FocusRecoveryState,
+        request: RecoveryDispatchRequest,
+    ): RecoveryInterventionUi {
+        val entrySentence = buildFallbackEntrySentence(request)
+        val recoveryUrl = buildFallbackRecoveryUrl(context, state, request, entrySentence)
+        return RecoveryInterventionUi(
+            action = if (recoveryUrl.isNullOrBlank()) "open_native" else "open_web",
+            recoveryUrl = recoveryUrl,
+            entrySentence = entrySentence,
+        )
+    }
+
+    private fun buildFallbackEntrySentence(request: RecoveryDispatchRequest): String {
+        return when (request.entryPoint) {
+            "schedule_start" -> "Your focus start slipped. What is blocking you right now?"
+            "progress_blocked" -> "You have been stuck for a while. What is the blocker right now?"
+            else -> when (request.distractionType) {
+                "AppBackground" -> "You left the app. What pulled you away?"
+                null -> "You drifted off schedule. What pulled you away?"
+                else -> "A distraction was detected (${request.distractionType}). What pulled you away?"
+            }
+        }
+    }
+
+    private fun buildFallbackRecoveryUrl(
+        context: Context,
+        state: FocusRecoveryState,
+        request: RecoveryDispatchRequest,
+        entrySentence: String,
+    ): String? {
+        val candidateBases = LinkedHashSet<String>()
+        BuildConfig.RECOVERY_WEB_BASE_URL.trim().ifBlank { null }?.let {
+            candidateBases.add(it.removeSuffix("/"))
+        }
+        resolveInputs(context)?.baseUrl?.let { baseApiUrl ->
+            candidateBases.addAll(buildRecoveryBaseCandidates(baseApiUrl))
+        }
+        val base = candidateBases.firstOrNull() ?: return null
+        return Uri.parse(base)
+            .buildUpon()
+            .path(RECOVERY_PAGE_PATH)
+            .appendQueryParameter("entry_point", request.entryPoint)
+            .appendQueryParameter("session_state", request.sessionState)
+            .appendQueryParameter("entry_sentence", entrySentence)
+            .appendQueryParameter("schedule_name", state.scheduleName ?: "Focus session")
+            .appendQueryParameter("schedule_id", state.scheduleId)
+            .appendQueryParameter("focus_session_id", state.focusSessionId)
+            .appendQueryParameter("distraction_type", request.distractionType)
+            .apply {
+                request.blockedMin?.let { appendQueryParameter("blocked_min", it.toString()) }
+            }
+            .build()
+            .toString()
+    }
+
+    private fun buildRecoveryBaseCandidates(baseApiUrl: String): List<String> {
+        val uri = runCatching { URI(baseApiUrl) }.getOrNull() ?: return emptyList()
+        val scheme = uri.scheme ?: return emptyList()
+        val host = uri.host ?: return emptyList()
+
+        val ports = LinkedHashSet<String>()
+        if (uri.port > 0) {
+            ports.add(uri.port.toString())
+        }
+        ports.addAll(RECOVERY_WEB_PORT_CANDIDATES)
+
+        return ports.map { port ->
+            if (port == "80" && scheme.equals("http", ignoreCase = true)) {
+                "$scheme://$host"
+            } else if (port == "443" && scheme.equals("https", ignoreCase = true)) {
+                "$scheme://$host"
+            } else {
+                "$scheme://$host:$port"
+            }
+        }
+    }
+
     private fun createRemoteFocusSession(
         inputs: FocusStartInputs,
         scheduleId: String?,
@@ -392,5 +563,17 @@ object FocusRecoveryCoordinator {
         return job.alarmId.trim().ifBlank { null }
     }
 
+    private val backgroundCheckHandler = Handler(Looper.getMainLooper())
+
+    @Volatile
+    private var backgroundCheckRunnable: Runnable? = null
+
+    @Volatile
+    private var processInForeground: Boolean = true
+
+    private const val BACKGROUND_GRACE_MS = 20_000L
+    private const val LIFECYCLE_RECOVERY_DEBOUNCE_MS = 60_000L
+    private const val RECOVERY_PAGE_PATH = "/eft-strict"
+    private val RECOVERY_WEB_PORT_CANDIDATES = listOf("8787", "4173", "5173", "80", "443")
     private const val RECOVERY_EVENT_PATH = "/api/spec/recovery/events"
 }
