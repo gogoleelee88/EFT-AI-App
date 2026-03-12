@@ -75,3 +75,42 @@ def test_android_native_recovery_still_requires_active_session_context(monkeypat
         assert out.suppressed_reason == "no_active_session"
     finally:
         session.close()
+
+
+def test_android_native_recovery_includes_eft_strict_url_when_frontend_available(monkeypatch):
+    session = _new_session()
+    try:
+        monkeypatch.setattr(focus_service, "_resolve_expected_motion_from_schedule", lambda *args, **kwargs: None)
+        monkeypatch.setattr(recovery_service, "_resolve_frontend_base_url", lambda: "https://app.example.com")
+
+        focus_service.create_focus_session(
+            session,
+            user_id="u1",
+            schedule_id="task-1",
+            mission_run_id=None,
+            schedule_type="focus",
+            auto_end_existing=True,
+        )
+
+        out = recovery_service.create_recovery_event(
+            session,
+            RecoveryEventIn(
+                user_id="u1",
+                schedule_id="task-1",
+                session_state="in_progress",
+                entry_point="distraction_detected",
+                distraction_type="YouTube",
+                confidence=0.84,
+                client_platform="android",
+                ui_capability="native_sheet",
+                source="android_usage_realtime",
+            ),
+        )
+
+        assert out.action == "open_native"
+        assert out.recovery_url is not None
+        assert out.recovery_url.startswith("https://app.example.com/eft-strict?")
+        assert "entry_sentence=" in out.recovery_url
+        assert "schedule_id=task-1" in out.recovery_url
+    finally:
+        session.close()

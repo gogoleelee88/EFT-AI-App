@@ -124,6 +124,7 @@ def _is_local_or_private_host(host: str) -> bool:
 def _build_recovery_url(
     *,
     entry_point: str,
+    session_state: str,
     schedule_id: Optional[str],
     schedule_name: str,
     entry_sentence: str,
@@ -136,7 +137,8 @@ def _build_recovery_url(
         return None
     params = {
         "entry_point": entry_point,
-        "sentence": entry_sentence,
+        "entry_sentence": entry_sentence,
+        "session_state": session_state,
         "schedule_name": schedule_name,
         "event_id": event_id,
     }
@@ -146,7 +148,7 @@ def _build_recovery_url(
         params["blocked_min"] = str(int(blocked_min))
     if distraction_type:
         params["distraction_type"] = distraction_type
-    return f"{base}/recover?{urlencode(params)}"
+    return f"{base}/eft-strict?{urlencode(params)}"
 
 
 def _has_recent_open_event(
@@ -381,9 +383,10 @@ def create_recovery_event(
             action = "ignore"
             suppressed_reason = "cooldown"
 
-    if action == "open_web":
+    if action in {"open_native", "open_web"}:
         recovery_url = _build_recovery_url(
             entry_point=body.entry_point,
+            session_state=body.session_state,
             schedule_id=schedule_id,
             schedule_name=schedule_name,
             entry_sentence=entry_sentence,
@@ -391,6 +394,7 @@ def create_recovery_event(
             distraction_type=distraction_type,
             event_id=event_id,
         )
+    if action == "open_web":
         if not recovery_url:
             action = "ignore"
             suppressed_reason = "frontend_url_missing"

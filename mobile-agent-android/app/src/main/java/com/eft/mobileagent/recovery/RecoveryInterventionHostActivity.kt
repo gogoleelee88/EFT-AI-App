@@ -52,19 +52,31 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
         val sentence = intent.getStringExtra(EXTRA_ENTRY_SENTENCE)
             ?.trim()
             ?.ifBlank { null }
-            ?: "업무가 막힌 지점이 있나요?\n지금 감정을 정리하면 다시 시작하기 쉬워집니다."
+            ?: "You seem blocked right now.\nAnswer one recovery prompt and return to the strict flow."
 
         AlertDialog.Builder(this)
-            .setTitle("회복 루틴")
+            .setTitle("Focus recovery")
             .setMessage(sentence)
-            .setPositiveButton("감정 처리하기") { _, _ ->
-                showStrictSheet()
+            .setPositiveButton("Start recovery") { _, _ ->
+                if (!openRecoveryDestination()) {
+                    showStrictSheet()
+                }
             }
-            .setNegativeButton("지금은 아니에요") { _, _ ->
+            .setNegativeButton("Not now") { _, _ ->
                 finish()
             }
             .setOnCancelListener { finish() }
             .show()
+    }
+
+    private fun openRecoveryDestination(): Boolean {
+        val recoveryUrl = intent.getStringExtra(EXTRA_RECOVERY_URL)
+            ?.trim()
+            ?.ifBlank { null }
+            ?: return false
+        RecoveryWebViewActivity.open(this, recoveryUrl)
+        finish()
+        return true
     }
 
     private fun showStrictSheet() {
@@ -102,6 +114,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
         private const val EXTRA_DISTRACTION_TYPE = "distraction_type"
         private const val EXTRA_BLOCKED_MIN = "blocked_min"
         private const val EXTRA_ENTRY_SENTENCE = "entry_sentence"
+        private const val EXTRA_RECOVERY_URL = "recovery_url"
         private const val LAUNCH_NOTIFICATION_CHANNEL_ID = "focus_recovery_intervention"
         private const val LAUNCH_NOTIFICATION_ID = 44022
 
@@ -115,6 +128,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
             distractionType: String?,
             blockedMin: Int?,
             entrySentence: String?,
+            recoveryUrl: String?,
         ): Intent {
             return Intent(context, RecoveryInterventionHostActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -125,6 +139,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
                 .putExtra(EXTRA_FOCUS_SESSION_ID, focusSessionId)
                 .putExtra(EXTRA_DISTRACTION_TYPE, distractionType)
                 .putExtra(EXTRA_ENTRY_SENTENCE, entrySentence)
+                .putExtra(EXTRA_RECOVERY_URL, recoveryUrl)
                 .apply {
                     if (blockedMin != null) {
                         putExtra(EXTRA_BLOCKED_MIN, blockedMin)
@@ -142,6 +157,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
             distractionType: String?,
             blockedMin: Int?,
             entrySentence: String?,
+            recoveryUrl: String?,
         ) {
             val intent = buildIntent(
                 context = context,
@@ -153,6 +169,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
                 distractionType = distractionType,
                 blockedMin = blockedMin,
                 entrySentence = entrySentence,
+                recoveryUrl = recoveryUrl,
             )
             context.startActivity(intent)
         }
@@ -167,6 +184,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
             distractionType: String?,
             blockedMin: Int?,
             entrySentence: String?,
+            recoveryUrl: String?,
         ) {
             val appContext = context.applicationContext
             val intent = buildIntent(
@@ -179,6 +197,7 @@ class RecoveryInterventionHostActivity : AppCompatActivity(), EftStrictIntakeCha
                 distractionType = distractionType,
                 blockedMin = blockedMin,
                 entrySentence = entrySentence,
+                recoveryUrl = recoveryUrl,
             )
             showLaunchNotification(
                 context = appContext,

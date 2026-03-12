@@ -265,6 +265,7 @@ class FocusRecoveryService : Service() {
                         distractionType = request.distractionType,
                         blockedMin = request.blockedMin,
                         entrySentence = intervention.entrySentence,
+                        recoveryUrl = intervention.recoveryUrl,
                     )
                 }
             } finally {

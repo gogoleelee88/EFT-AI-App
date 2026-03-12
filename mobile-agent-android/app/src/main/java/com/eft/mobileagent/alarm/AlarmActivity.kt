@@ -62,6 +62,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
     private data class RecoveryInterventionUi(
         val action: String,
         val entrySentence: String?,
+        val recoveryUrl: String?,
     )
 
     private val takePictureLauncher =
@@ -457,6 +458,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
                 RecoveryInterventionUi(
                     action = obj.optString("action", "ignore").ifBlank { "ignore" },
                     entrySentence = obj.optString("entry_sentence").trim().ifBlank { null },
+                    recoveryUrl = obj.optString("recovery_url").trim().ifBlank { null },
                 )
             }.getOrNull()
 
@@ -472,6 +474,7 @@ class AlarmActivity : AppCompatActivity(), EftStrictIntakeChatBottomSheet.Listen
                         distractionType = "alarm_timeout",
                         blockedMin = elapsedMin,
                         entrySentence = intervention.entrySentence,
+                        recoveryUrl = intervention.recoveryUrl,
                     )
                 } else {
                     toast("Recovery action unavailable")
