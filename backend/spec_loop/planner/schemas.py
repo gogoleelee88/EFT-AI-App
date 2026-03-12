@@ -24,6 +24,7 @@ class PlanItem(BaseModel):
     )
     planned_block_minutes: int = Field(..., ge=1)
     micro_steps: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PlanDayRequest(BaseModel):
@@ -145,6 +146,7 @@ class PlanItemWithMission(BaseModel):
     )
     planned_block_minutes: int = Field(..., ge=1)
     micro_steps: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     # 🆕 신규 필드 (선택적)
     micro_action: Optional[MicroActionInput] = None

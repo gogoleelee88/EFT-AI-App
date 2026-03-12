@@ -348,7 +348,24 @@ def upsert_jobs_for_day_plan(
                 "alarm_start_time_local": alarm_time,
                 "alarm_end_time_local": alarm_end_time,
                 "alarm_ends_next_day": alarm_ends_next_day,
+                "micro_steps": item.get("micro_steps")
+                if isinstance(item.get("micro_steps"), list)
+                else [],
             }
+            item_metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+            if item_metadata:
+                metadata["item_metadata"] = item_metadata
+                for field in (
+                    "goal_plan_id",
+                    "goal_title",
+                    "notification_title",
+                    "notification_body",
+                    "headline_title",
+                    "headline_subtitle",
+                ):
+                    value = item_metadata.get(field)
+                    if value is not None:
+                        metadata[field] = value
             metadata.update(location_target)
             if job is None:
                 job = ReminderJob(

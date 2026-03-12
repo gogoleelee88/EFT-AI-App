@@ -164,6 +164,7 @@ def create_or_update_day_plan(db: Session, body: PlanDayRequest, user_id: Option
                 "resistance_level": item.resistance_level,
                 "planned_block_minutes": item.planned_block_minutes,
                 "micro_steps": item.micro_steps,
+                "metadata": dict(item.metadata or {}),
             }
         )
 
@@ -245,6 +246,7 @@ def create_or_update_day_plan_with_mission(
             "resistance_level": item.resistance_level,
             "planned_block_minutes": item.planned_block_minutes,
             "micro_steps": item.micro_steps,
+            "metadata": dict(item.metadata or {}),
         }
 
         if item.micro_action:

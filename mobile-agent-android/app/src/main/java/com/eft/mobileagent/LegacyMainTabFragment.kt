@@ -163,6 +163,11 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         val accessToken: String?,
     )
 
+    private data class LoginResolvedUser(
+        val userId: String,
+        val accessToken: String? = null,
+    )
+
     private data class BehaviorQuestionUi(
         val questionId: Int,
         val questionText: String,
@@ -568,7 +573,6 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         super.onPause()
         stopBehaviorQuestionPolling()
         behaviorQuestionSheet?.dismiss()
-        FocusRecoveryCoordinator.onAppBackgrounded(requireContext())
     }
 
     override fun onDestroyView() {
@@ -1127,7 +1131,11 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             applyDeveloperModeVisibility(false)
             return
         }
-        loggedInUserStatusView.text = getString(R.string.login_status_logged_in_auto_sync, trimmed)
+        val hasSecureAccess = behaviorConfigStore.loadAccessToken()?.trim()?.isNotEmpty() == true
+        val baseStatus = getString(R.string.login_status_logged_in_auto_sync, trimmed)
+        loggedInUserStatusView.text =
+            if (hasSecureAccess) "$baseStatus / Secure calendar enabled"
+            else "$baseStatus / App sync only"
         applyDeveloperModeVisibility(true)
     }
 
@@ -1217,7 +1225,11 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             previousUserId = previousUserId,
             errorResId = R.string.msg_google_login_failed,
         ) {
-            ReminderSyncClient(baseUrl).login(trimmed).userId
+            val login = ReminderSyncClient(baseUrl).login(trimmed)
+            LoginResolvedUser(
+                userId = login.userId,
+                accessToken = login.accessToken,
+            )
         }
     }
 
@@ -1225,20 +1237,25 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         baseUrl: String,
         previousUserId: String?,
         errorResId: Int,
-        resolver: () -> String,
+        resolver: () -> LoginResolvedUser,
     ) {
         setLoginButtonsEnabled(false)
         Thread {
             val result = runCatching {
-                val userId = resolver()
-                val syncResult = syncAfterLogin(baseUrl, userId)
-                Pair(userId, syncResult)
+                val login = resolver()
+                val syncResult = syncAfterLogin(baseUrl, login.userId)
+                Pair(login, syncResult)
             }
 
             runOnUiThreadSafe {
                 setLoginButtonsEnabled(true)
-                result.onSuccess { (userId, syncResult) ->
-                    onLoginAndSyncSuccess(userId, previousUserId, syncResult)
+                result.onSuccess { (login, syncResult) ->
+                    onLoginAndSyncSuccess(
+                        userId = login.userId,
+                        previousUserId = previousUserId,
+                        syncResult = syncResult,
+                        accessToken = login.accessToken,
+                    )
                 }.onFailure { err ->
                     toast(getString(errorResId, err.message ?: "unknown"))
                 }
@@ -1262,6 +1279,7 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         userId: String,
         previousUserId: String?,
         syncResult: com.eft.mobileagent.alarm.ReminderSyncSummary,
+        accessToken: String? = null,
     ) {
         syncUserIdInput.setText(userId)
         if (previousUserId != null && previousUserId != userId) {
@@ -1269,7 +1287,10 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
         }
         refreshLoginStatusUi(userId)
         refreshAlarmSummaryUi()
-        behaviorConfigStore.saveAccessToken(behaviorAccessTokenInput.text?.toString())
+        val resolvedAccessToken = accessToken?.trim()?.ifBlank { null }
+            ?: behaviorAccessTokenInput.text?.toString()?.trim()?.ifBlank { null }
+        behaviorAccessTokenInput.setText(resolvedAccessToken.orEmpty())
+        behaviorConfigStore.saveAccessToken(resolvedAccessToken)
         BehaviorAgentController.start(requireContext())
         refreshBehaviorStatusUi()
 
@@ -1315,7 +1336,11 @@ abstract class LegacyMainTabFragment : Fragment(), EftStrictIntakeChatBottomShee
             previousUserId = previousUserId,
             errorResId = R.string.msg_login_failed,
         ) {
-            ReminderSyncClient(baseUrl).claimPairing(pairingCode)
+            val login = ReminderSyncClient(baseUrl).claimPairing(pairingCode)
+            LoginResolvedUser(
+                userId = login.userId,
+                accessToken = login.accessToken,
+            )
         }
     }
 

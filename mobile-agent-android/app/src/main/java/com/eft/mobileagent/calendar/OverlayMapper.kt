@@ -1,5 +1,7 @@
 package com.eft.mobileagent.calendar
 
+import com.eft.mobileagent.alarm.AlarmSourceType
+import com.eft.mobileagent.alarm.SyncedReminder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -64,6 +66,27 @@ object OverlayMapper {
             targetLatitude = location?.first,
             targetLongitude = location?.second,
             radiusMeters = location?.third,
+        )
+    }
+
+    fun fromSyncedReminder(reminder: SyncedReminder, dateIso: String): OverlayItem? {
+        val normalizedDate = reminder.planDate.trim()
+        if (normalizedDate.isNotEmpty() && normalizedDate != dateIso) {
+            return null
+        }
+
+        val source = if (reminder.sourceType == AlarmSourceType.GOOGLE) "google" else "service"
+        return OverlayItem(
+            id = "sync:${reminder.syncKey}",
+            source = source,
+            sourceType = reminder.sourceType.value,
+            title = reminder.title.ifBlank { "Untitled" },
+            startMillis = reminder.triggerAtMillis,
+            missionType = reminder.missionType.value,
+            taskUid = reminder.taskUid.ifBlank { null },
+            targetLatitude = reminder.targetLatitude,
+            targetLongitude = reminder.targetLongitude,
+            radiusMeters = reminder.radiusMeters.toDouble(),
         )
     }
 

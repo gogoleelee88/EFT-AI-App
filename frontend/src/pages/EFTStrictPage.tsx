@@ -1,33 +1,31 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { ExecutionRecoveryTimer } from "../components/eft/ExecutionRecoveryTimer";
 import { SlideIntake } from "../components/eft/SlideIntake";
-import { resolveBackendUrl } from "../config/api";
-import { useEFTScript } from "../contexts/EFTScriptContext";
-import type { ChatResponse, StrictIntakeInput } from "../types/serverAI";
+import type { StrictIntakeInput } from "../types/serverAI";
+import {
+  buildExecutionRecoveryPlan,
+  type ExecutionRecoveryPlan,
+} from "../utils/executionRecovery";
 
-type PostIntakeChoice = {
-  strictIntake: StrictIntakeInput;
-  chatResponse: ChatResponse;
+type QuickRescueInput = {
+  emotion: string;
+  situation: string;
 };
 
-const DEFAULT_TEST_INTAKE: StrictIntakeInput = {
-  core_emotion: "불안",
-  situation_context: "업무 스트레스로 인해 긴장감이 계속되고 있어요",
-  automatic_thought: "나는 실수할까 봐 계속 불안해요",
-  physical_sensation: "어깨와 목이 뭉치고 숨이 답답해요",
-  behavioral_reaction: "말을 아끼고 회피적으로 반응하게 돼요",
-  intensity: 6,
-  available_time: 10,
-  immediate_goal: "긴장 완화",
-};
+type FlowPhase = "intake" | "response" | "timer" | "success";
 
-const parseNumber = (raw: string | null, fallback: number): number => {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(1, Math.min(10, Math.round(n)));
-};
+const EMOTION_CHIPS = [
+  "anxious",
+  "blocked",
+  "tired",
+  "avoidant",
+  "overwhelmed",
+  "frustrated",
+  "distracted",
+];
 
-const parseText = (raw: string | null, fallback: string): string => {
+const parseText = (raw: string | null, fallback = ""): string => {
   if (raw == null) return fallback;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : fallback;
@@ -39,92 +37,38 @@ const parseBoolean = (raw: string | null): boolean => {
   return normalized === "1" || normalized === "true" || normalized === "yes";
 };
 
-const toIntensityLabel = (intensity: number): string => {
-  if (intensity >= 8) return "강함";
-  if (intensity >= 5) return "중간";
-  return "약함";
+const openExternal = (href?: string) => {
+  if (!href) return;
+  window.open(href, "_blank", "noopener,noreferrer");
 };
-
-const buildTestIntake = (sp: URLSearchParams): StrictIntakeInput => {
-  const copingAttempt = parseText(
-    sp.get("coping_attempt"),
-    parseText(
-      sp.get("behavioral_reaction"),
-      DEFAULT_TEST_INTAKE.behavioral_reaction || "회피적으로 반응",
-    ),
-  );
-
-  return {
-    core_emotion: parseText(sp.get("core_emotion"), DEFAULT_TEST_INTAKE.core_emotion),
-    situation_context: parseText(sp.get("situation_context"), DEFAULT_TEST_INTAKE.situation_context),
-    automatic_thought: parseText(sp.get("automatic_thought"), DEFAULT_TEST_INTAKE.automatic_thought),
-    physical_sensation: parseText(
-      sp.get("physical_sensation"),
-      DEFAULT_TEST_INTAKE.physical_sensation || "",
-    ),
-    behavioral_reaction: parseText(
-      sp.get("behavioral_reaction"),
-      DEFAULT_TEST_INTAKE.behavioral_reaction || copingAttempt,
-    ),
-    intensity: parseNumber(sp.get("intensity"), DEFAULT_TEST_INTAKE.intensity),
-    available_time: sp.get("available_time")
-      ? parseNumber(sp.get("available_time"), DEFAULT_TEST_INTAKE.available_time ?? 10)
-      : DEFAULT_TEST_INTAKE.available_time,
-    immediate_goal: parseText(
-      sp.get("immediate_goal"),
-      DEFAULT_TEST_INTAKE.immediate_goal || "",
-    ),
-  };
-};
-
-const buildMockChatResponse = (intake: StrictIntakeInput): ChatResponse => ({
-  response: "임시 응답: EFT 스크립트 생성 완료",
-  emotion_analysis: {
-    primary_emotion: "anxiety",
-    intensity: intake.intensity / 10,
-    confidence: 0.9,
-    triggers: ["product-test"],
-  },
-  eft_recommendations: [],
-  suggested_actions: [],
-  processing_time: 0,
-  confidence_score: 0.9,
-  timestamp: new Date().toISOString(),
-  requires_followup: false,
-  emergency_detected: false,
-  professional_referral: false,
-  response_id: `mock-${Date.now()}`,
-  eft_script: {
-    setup_phrase: `지금 떠오르는 ${intake.core_emotion} 감정에 맞춰, 천천히 호흡하며 다음 문장을 반복해보세요.`,
-    focus_words: ["지금", intake.core_emotion, "감정", "괜찮아요"],
-    target_emotion: intake.core_emotion,
-    intensity_label: toIntensityLabel(intake.intensity),
-    round_phrases: ["지금 괜찮습니다.", "이 감정은 지나갈 거예요."],
-    situation_summary: intake.situation_context,
-    recommended_duration: 6,
-  },
-});
 
 export const EFTStrictPage: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { setEftScript } = useEFTScript();
-  const [strictIntakeData, setStrictIntakeData] = useState<StrictIntakeInput | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [isDummyModeReady, setIsDummyModeReady] = useState(false);
-  const [postChoice, setPostChoice] = useState<PostIntakeChoice | null>(null);
+  const [quickInput, setQuickInput] = useState<QuickRescueInput>({
+    emotion: parseText(searchParams.get("emotion") || searchParams.get("core_emotion"), "anxious"),
+    situation: parseText(
+      searchParams.get("situation") ||
+        searchParams.get("situation_context") ||
+        searchParams.get("sentence") ||
+        searchParams.get("entry_sentence"),
+      "",
+    ),
+  });
+  const [showDeepHelp, setShowDeepHelp] = useState(false);
+  const [quickError, setQuickError] = useState("");
+  const [phase, setPhase] = useState<FlowPhase>("intake");
+  const [recoveryPlan, setRecoveryPlan] = useState<ExecutionRecoveryPlan | null>(null);
+  const [activePrompt, setActivePrompt] = useState<QuickRescueInput | null>(null);
 
   const entrySentence = parseText(
     searchParams.get("sentence") || searchParams.get("entry_sentence"),
     "",
   );
   const entryPoint = parseText(searchParams.get("entry_point"), "");
-  const sessionState = parseText(searchParams.get("session_state"), "");
   const scheduleId = parseText(searchParams.get("schedule_id"), "");
   const scheduleName = parseText(searchParams.get("schedule_name"), "");
   const distractionType = parseText(searchParams.get("distraction_type"), "");
-  const blockedMin = searchParams.get("blocked_min");
+  const blockedMin = parseText(searchParams.get("blocked_min"), "");
   const recoveryEventId = parseText(searchParams.get("event_id"), "");
   const nativePrompted =
     parseBoolean(searchParams.get("native_prompted")) ||
@@ -133,87 +77,20 @@ export const EFTStrictPage: React.FC = () => {
   const [entryGateOpen, setEntryGateOpen] = useState(
     entrySentence.length === 0 || nativePrompted,
   );
-  const planStartResistance = (location.state as { planStartResistance?: string } | undefined)
-    ?.planStartResistance;
 
   const recoveryContextSummary = useMemo(() => {
     const items: string[] = [];
     if (scheduleName) items.push(scheduleName);
-    if (blockedMin) items.push(`${blockedMin}분 지연`);
-    if (distractionType) items.push(`${distractionType} 사용 감지`);
-    if (entryPoint === "progress_blocked") items.push("진행 막힘");
-    if (entryPoint === "distraction_detected") items.push("이탈 복귀");
-    if (entryPoint === "schedule_start") items.push("시작 미룸");
+    if (blockedMin) items.push(`${blockedMin} min blocked`);
+    if (distractionType) items.push(`${distractionType} distraction`);
+    if (entryPoint === "progress_blocked") items.push("progress blocked");
+    if (entryPoint === "distraction_detected") items.push("distraction detected");
+    if (entryPoint === "schedule_start") items.push("delayed start");
     return items;
   }, [blockedMin, distractionType, entryPoint, scheduleName]);
 
-  const handleSubmit = async (data: StrictIntakeInput) => {
-    setLoading(true);
-    setStrictIntakeData(data);
-
-    try {
-      const strictIntakePayload: Record<string, unknown> = { ...data };
-      if (entryPoint) strictIntakePayload.entry_point = entryPoint;
-      if (entrySentence) strictIntakePayload.entry_sentence = entrySentence;
-      if (sessionState) strictIntakePayload.session_state = sessionState;
-      if (scheduleId) strictIntakePayload.schedule_id = scheduleId;
-      if (scheduleName) strictIntakePayload.schedule_name = scheduleName;
-      if (blockedMin) strictIntakePayload.blocked_min = Number(blockedMin);
-      if (distractionType) strictIntakePayload.distraction_type = distractionType;
-      if (recoveryEventId) strictIntakePayload.event_id = recoveryEventId;
-
-      const response = await fetch(resolveBackendUrl("/api/chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "EFT STRICT 입력",
-          strict_intake: strictIntakePayload,
-        }),
-      });
-
-      const result = (await response.json()) as ChatResponse;
-
-      if (!response.ok) {
-        throw new Error(result.response || "요청 처리 중 오류가 발생했습니다.");
-      }
-
-      if (result.eft_script) {
-        setPostChoice({ strictIntake: data, chatResponse: result });
-      } else {
-        alert("EFT 스크립트 생성에 실패했습니다.");
-      }
-    } catch (error) {
-      console.error("API 오류:", error);
-      alert("요청 처리 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const applyDummyData = () => {
-    const strictIntake = buildTestIntake(searchParams);
-    setStrictIntakeData(strictIntake);
-    setPostChoice({
-      strictIntake,
-      chatResponse: buildMockChatResponse(strictIntake),
-    });
-  };
-
   useEffect(() => {
-    const autoQuery = searchParams.get("demo") === "1" || searchParams.get("quick") === "1";
-    if (!autoQuery || postChoice) return;
-
-    const strictIntake = buildTestIntake(searchParams);
-    setStrictIntakeData(strictIntake);
-    setPostChoice({
-      strictIntake,
-      chatResponse: buildMockChatResponse(strictIntake),
-    });
-    setIsDummyModeReady(true);
-  }, [postChoice, searchParams]);
-
-  useEffect(() => {
-    if (!postChoice) return;
+    if (!recoveryPlan) return;
     try {
       window.EftRecoveryBridge?.onStrictIntakeComplete?.(
         JSON.stringify({
@@ -221,126 +98,335 @@ export const EFTStrictPage: React.FC = () => {
           entry_point: entryPoint || undefined,
           schedule_id: scheduleId || undefined,
           schedule_name: scheduleName || undefined,
+          quick_rescue: true,
         }),
       );
     } catch (error) {
       console.warn("Failed to notify native recovery bridge.", error);
     }
-  }, [entryPoint, postChoice, recoveryEventId, scheduleId, scheduleName]);
+  }, [entryPoint, recoveryEventId, recoveryPlan, scheduleId, scheduleName]);
 
-  const goToEFTAR = () => {
-    if (!postChoice) return;
-    const { strictIntake, chatResponse } = postChoice;
-    setEftScript({
-      setup_phrase: chatResponse.eft_script!.setup_phrase,
-      focus_words: chatResponse.eft_script!.focus_words,
-      target_emotion: chatResponse.eft_script!.target_emotion,
-      intensity_label: chatResponse.eft_script!.intensity_label,
-      round_phrases: chatResponse.eft_script!.round_phrases,
-    });
-    navigate("/ar-holistic", {
-      state: {
-        strictIntake,
-        intensity_before: strictIntake.intensity,
-        planStartResistance,
-      },
-    });
+  const submitQuickRescue = () => {
+    if (!quickInput.emotion.trim() || !quickInput.situation.trim()) {
+      setQuickError("Enter both your emotion and what you are stuck on.");
+      return;
+    }
+    const prompt = {
+      emotion: quickInput.emotion.trim(),
+      situation: quickInput.situation.trim(),
+    };
+    setQuickError("");
+    setActivePrompt(prompt);
+    setRecoveryPlan(buildExecutionRecoveryPlan(prompt));
+    setPhase("response");
   };
 
-  const goToMeditation = () => {
-    if (!postChoice) return;
-    navigate("/meditation/theme", {
-      state: {
-        strictIntake: postChoice.strictIntake,
-        chatResponse: postChoice.chatResponse,
-        planStartResistance,
-      },
-    });
+  const submitDeepHelp = (data: StrictIntakeInput) => {
+    const prompt = {
+      emotion: data.core_emotion,
+      situation: data.situation_context,
+    };
+    setActivePrompt(prompt);
+    setRecoveryPlan(buildExecutionRecoveryPlan(prompt));
+    setPhase("response");
+    setShowDeepHelp(false);
   };
 
-  if (loading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: "100vh",
-          fontSize: "20px",
-          color: "#fd6f22",
-          flexDirection: "column",
-          gap: "20px",
-        }}
-      >
-        <div
-          style={{
-            width: "50px",
-            height: "50px",
-            border: "4px solid #fd6f2220",
-            borderTop: "4px solid #fd6f22",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-          }}
-        />
-        EFT 스크립트 생성 중입니다...
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
+  const startTimer = () => {
+    if (!recoveryPlan) return;
+    setPhase("timer");
+  };
+
+  const continueWithNextMove = () => {
+    if (!recoveryPlan) return;
+    setRecoveryPlan({
+      ...recoveryPlan,
+      microAction: {
+        ...recoveryPlan.microAction,
+        instruction: recoveryPlan.microAction.nextInstruction,
+        fallbackInstruction: recoveryPlan.microAction.instruction,
+      },
+    });
+    setPhase("timer");
+  };
+
+  const renderQuickRescue = () => (
+    <div className="w-full max-w-xl rounded-[28px] border border-orange-100 bg-white/95 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+      <div className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-orange-700">
+        Quick Rescue
       </div>
-    );
-  }
+      <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-900">
+        Restart action before your brain negotiates again.
+      </h1>
+      <p className="mt-3 text-sm leading-6 text-slate-600">
+        Name the feeling. Name the stuck point. The app will shrink the next move for you.
+      </p>
 
-  if (postChoice) {
-    return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 p-4">
-        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-lg">
-          <h2 className="text-center text-lg font-bold text-gray-800">입력 완료</h2>
-          <p className="mt-2 text-center text-sm text-gray-500">
-            감정 입력이 완료되면 바로 다음 단계로 이동해 주세요.
+      <div className="mt-6">
+        <label className="text-sm font-semibold text-slate-800">What are you feeling right now?</label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {EMOTION_CHIPS.map((emotion) => {
+            const selected = quickInput.emotion.toLowerCase() === emotion;
+            return (
+              <button
+                key={emotion}
+                type="button"
+                onClick={() => setQuickInput((current) => ({ ...current, emotion }))}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  selected
+                    ? "bg-slate-900 text-white"
+                    : "border border-slate-200 bg-slate-50 text-slate-700 hover:border-orange-300 hover:text-slate-900"
+                }`}
+              >
+                {emotion}
+              </button>
+            );
+          })}
+        </div>
+        <input
+          value={quickInput.emotion}
+          onChange={(event) =>
+            setQuickInput((current) => ({ ...current, emotion: event.target.value }))
+          }
+          className="mt-3 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-orange-400 focus:bg-white"
+          placeholder="anxious"
+        />
+      </div>
+
+      <div className="mt-5">
+        <label className="text-sm font-semibold text-slate-800">What are you stuck on right now?</label>
+        <textarea
+          value={quickInput.situation}
+          onChange={(event) =>
+            setQuickInput((current) => ({ ...current, situation: event.target.value }))
+          }
+          className="mt-3 min-h-32 w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-base leading-6 text-slate-900 outline-none transition focus:border-orange-400 focus:bg-white"
+          placeholder="I am stuck implementing Google login"
+        />
+      </div>
+
+      {quickError ? (
+        <p className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {quickError}
+        </p>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={submitQuickRescue}
+        className="mt-6 w-full rounded-2xl bg-orange-500 px-4 py-4 text-base font-semibold text-white transition hover:bg-orange-400"
+      >
+        Start recovery
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setShowDeepHelp((current) => !current)}
+        className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-base font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+      >
+        {showDeepHelp ? "Back to quick rescue" : "Need deeper help?"}
+      </button>
+
+      {showDeepHelp ? (
+        <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Deep Intake
           </p>
-          <div className="mt-6 flex flex-col gap-3">
+          <SlideIntake onComplete={submitDeepHelp} />
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const renderResponseScreen = () => {
+    if (!recoveryPlan) return null;
+
+    return (
+      <div className="w-full max-w-3xl rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-[0_30px_80px_rgba(15,23,42,0.10)]">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-orange-700">
+            AI Recovery
+          </div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-slate-600">
+            {recoveryPlan.emotionLabel} · {recoveryPlan.frictionLabel}
+          </div>
+        </div>
+
+        <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-900">
+          {recoveryPlan.resetMessage}
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{recoveryPlan.resetDetail}</p>
+
+        {activePrompt ? (
+          <div className="mt-5 rounded-3xl border border-orange-100 bg-orange-50/70 p-4 text-sm leading-6 text-slate-700">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
+              Your stuck moment
+            </div>
+            <div className="mt-2">
+              <span className="font-semibold text-slate-900">{activePrompt.emotion}</span>
+              <span className="mx-2 text-slate-400">/</span>
+              <span>{activePrompt.situation}</span>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">EFT</div>
+            <h3 className="mt-3 text-xl font-bold text-slate-900">
+              {recoveryPlan.eftRecommendation.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {recoveryPlan.eftRecommendation.subtitle}
+            </p>
+            <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
+              {recoveryPlan.eftRecommendation.tappingPoints.join(" -> ")}
+            </div>
+            <div className="mt-4 text-sm font-semibold text-orange-700">
+              {recoveryPlan.eftRecommendation.actionLabel} · {recoveryPlan.eftRecommendation.durationLabel}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Meditation
+            </div>
+            <h3 className="mt-3 text-xl font-bold text-slate-900">
+              {recoveryPlan.meditationRecommendation.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {recoveryPlan.meditationRecommendation.subtitle}
+            </p>
             <button
               type="button"
-              onClick={goToEFTAR}
-              className="w-full rounded-xl bg-amber-500 py-4 text-center font-medium text-white transition hover:bg-amber-600"
+              onClick={() => openExternal(recoveryPlan.meditationRecommendation.href)}
+              className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-orange-300 hover:text-slate-900"
             >
-              EFT AR (즉시 시작)
+              {recoveryPlan.meditationRecommendation.actionLabel} ·{" "}
+              {recoveryPlan.meditationRecommendation.durationLabel}
             </button>
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+              Battle Mode
+            </div>
+            <h3 className="mt-3 text-xl font-bold text-slate-900">
+              {recoveryPlan.battleModeRecommendation.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {recoveryPlan.battleModeRecommendation.subtitle}
+            </p>
+            <div className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-orange-200">
+              {recoveryPlan.battleModeRecommendation.trackLabel}
+            </div>
             <button
               type="button"
-              onClick={goToMeditation}
-              className="w-full rounded-xl border-2 border-indigo-200 bg-indigo-50 py-4 text-center font-medium text-indigo-700 transition hover:bg-indigo-100"
+              onClick={() => openExternal(recoveryPlan.battleModeRecommendation.href)}
+              className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-orange-300 hover:text-slate-900"
             >
-              유튜브 명상 (바로 이동)
+              {recoveryPlan.battleModeRecommendation.actionLabel} ·{" "}
+              {recoveryPlan.battleModeRecommendation.durationLabel}
             </button>
           </div>
         </div>
+
+        <div className="mt-6 rounded-[28px] border border-orange-200 bg-slate-950 p-6 text-white">
+          <div className="text-xs font-semibold uppercase tracking-[0.28em] text-orange-200">
+            First move
+          </div>
+          <p className="mt-4 text-2xl font-bold">{recoveryPlan.microAction.instruction}</p>
+          <p className="mt-3 text-sm leading-6 text-slate-300">{recoveryPlan.microAction.doneWhen}</p>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={startTimer}
+            className="flex-1 rounded-2xl bg-orange-500 px-4 py-4 text-base font-semibold text-white transition hover:bg-orange-400"
+          >
+            Start 2-minute recovery
+          </button>
+          <button
+            type="button"
+            onClick={() => setPhase("intake")}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-base font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Change input
+          </button>
+        </div>
       </div>
     );
-  }
+  };
+
+  const renderSuccessScreen = () => {
+    if (!recoveryPlan) return null;
+    return (
+      <div className="w-full max-w-xl rounded-[32px] border border-emerald-100 bg-white/95 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+        <div className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">
+          Momentum Restored
+        </div>
+        <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-900">
+          You restarted action with one visible move.
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          Keep the chain alive while the task feels lighter than it did two minutes ago.
+        </p>
+        <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Next tiny move
+          </div>
+          <p className="mt-3 text-2xl font-bold text-slate-900">
+            {recoveryPlan.microAction.nextInstruction}
+          </p>
+        </div>
+        <div className="mt-6 flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={continueWithNextMove}
+            className="w-full rounded-2xl bg-slate-900 px-4 py-4 text-base font-semibold text-white transition hover:bg-slate-800"
+          >
+            Give me the next tiny move
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPhase("intake");
+              setRecoveryPlan(null);
+            }}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-base font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            Back to quick rescue
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   if (!entryGateOpen) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 p-4">
-        <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-lg">
-          <h1 className="text-lg font-bold text-gray-900">현재 상태</h1>
-          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-base leading-relaxed text-amber-900">
-            {entrySentence}
-          </p>
-          {recoveryContextSummary.length > 0 ? (
-            <p className="mt-3 text-sm text-gray-500">
-              {recoveryContextSummary.join(" · ")}
+      <div className="flex min-h-screen w-full items-center justify-center bg-[linear-gradient(180deg,#fff7ed_0%,#f8fafc_52%,#e2e8f0_100%)] p-4">
+        <div className="w-full max-w-xl rounded-[32px] border border-orange-100 bg-white/95 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+          <div className="rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-orange-700">
+            Recovery Prompt
+          </div>
+          <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-900">
+            You look stuck. Start the recovery loop.
+          </h1>
+          {entrySentence ? (
+            <p className="mt-4 rounded-3xl border border-orange-100 bg-orange-50/70 p-4 text-base leading-7 text-slate-700">
+              {entrySentence}
             </p>
+          ) : null}
+          {recoveryContextSummary.length > 0 ? (
+            <p className="mt-4 text-sm text-slate-500">{recoveryContextSummary.join(" · ")}</p>
           ) : null}
           <button
             type="button"
             onClick={() => setEntryGateOpen(true)}
-            className="mt-6 w-full rounded-xl bg-amber-500 py-3 text-center font-medium text-white transition hover:bg-amber-600"
+            className="mt-6 w-full rounded-2xl bg-orange-500 px-4 py-4 text-base font-semibold text-white transition hover:bg-orange-400"
           >
-            복귀 개입 시작
+            Start recovery
           </button>
         </div>
       </div>
@@ -348,40 +434,37 @@ export const EFTStrictPage: React.FC = () => {
   }
 
   return (
-    <div className="flex min-h-screen w-full items-start justify-center bg-gray-50 p-4">
-      <div className="flex w-full max-w-md flex-col gap-4 md:max-w-2xl lg:max-w-4xl">
-        {(entrySentence || recoveryContextSummary.length > 0 || strictIntakeData) && (
-          <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
+    <div className="relative flex min-h-screen w-full items-start justify-center bg-[linear-gradient(180deg,#fff7ed_0%,#f8fafc_52%,#e2e8f0_100%)] px-4 py-6">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.16),_transparent_35%),radial-gradient(circle_at_bottom,_rgba(30,41,59,0.08),_transparent_28%)]" />
+      <div className="relative flex w-full max-w-4xl flex-col gap-4">
+        {(entrySentence || recoveryContextSummary.length > 0) && phase === "intake" ? (
+          <div className="w-full rounded-[28px] border border-orange-100 bg-white/85 p-5 shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
               Recovery Context
-            </p>
+            </div>
             {entrySentence ? (
-              <p className="mt-2 text-base leading-relaxed text-gray-800">{entrySentence}</p>
+              <p className="mt-2 text-base leading-7 text-slate-700">{entrySentence}</p>
             ) : null}
             {recoveryContextSummary.length > 0 ? (
-              <p className="mt-3 text-sm text-gray-500">
-                {recoveryContextSummary.join(" · ")}
-              </p>
-            ) : null}
-            {strictIntakeData ? (
-              <p className="mt-3 text-xs text-gray-400">
-                현재 강도 {strictIntakeData.intensity}/10
-              </p>
+              <p className="mt-3 text-sm text-slate-500">{recoveryContextSummary.join(" · ")}</p>
             ) : null}
           </div>
-        )}
+        ) : null}
 
-        <SlideIntake onComplete={handleSubmit} />
-        {!isDummyModeReady && (
-          <button
-            type="button"
-            onClick={applyDummyData}
-            className="w-full rounded-xl bg-emerald-500 py-3 text-center font-medium text-white transition hover:bg-emerald-600"
-          >
-            샘플 데이터로 바로 시작
-          </button>
-        )}
+        {phase === "intake" && renderQuickRescue()}
+        {phase === "response" && renderResponseScreen()}
+        {phase === "success" && renderSuccessScreen()}
       </div>
+
+      {phase === "timer" && recoveryPlan ? (
+        <ExecutionRecoveryTimer
+          instruction={recoveryPlan.microAction.instruction}
+          fallbackInstruction={recoveryPlan.microAction.fallbackInstruction}
+          doneWhen={recoveryPlan.microAction.doneWhen}
+          battleModeLabel={recoveryPlan.battleModeRecommendation.trackLabel}
+          onDone={() => setPhase("success")}
+        />
+      ) : null}
     </div>
   );
 };

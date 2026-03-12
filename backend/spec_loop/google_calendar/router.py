@@ -48,16 +48,6 @@ def _safe_next_path(value: Optional[str], *, default: str = "/plan/day") -> str:
     return path
 router = APIRouter(tags=["google"])
 
-_auth_service: Optional[AuthService] = None
-
-
-def _get_auth_service() -> AuthService:
-    global _auth_service
-    if _auth_service is None:
-        _auth_service = AuthService()
-    return _auth_service
-
-
 def _get_current_user_id(
     access_token: Optional[str] = Cookie(default=None, alias="access_token"),
 ) -> str:
@@ -65,7 +55,7 @@ def _get_current_user_id(
     if not access_token:
         raise HTTPException(status_code=401, detail="濡쒓렇?몄씠 ?꾩슂?⑸땲??")
     try:
-        payload = _get_auth_service().decode_jwt(access_token)
+        payload = AuthService().decode_jwt(access_token)
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="?섎せ???좏겙 ?좏삎?낅땲??")
         user_id = payload.get("sub")
@@ -82,7 +72,7 @@ def _get_current_user_id(
 def google_auth(
     request: Request,
     next: Optional[str] = None,
-    current_user_id: str = Depends(_get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id_spec),
 ):
     """Return Google OAuth URL. Optional `next` controls post-callback frontend redirect."""
     safe_next = (next or "").strip()
@@ -150,7 +140,7 @@ def google_mobile_callback(
 @router.get("/google/status")
 def google_status(
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(_get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id_spec),
 ):
     """?꾩옱 ?ъ슜??Google ?곕룞 ?щ? ?뺤씤."""
     exists = (
@@ -189,7 +179,7 @@ def google_mobile_events(
 def google_events(
     date: date,
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(_get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id_spec),
 ):
     """二쇱뼱吏??좎쭨??Google Calendar ?대깽??諛섑솚."""
     events = fetch_google_events(db, current_user_id, date)
@@ -218,7 +208,7 @@ class ExportResponse(BaseModel):
 def export_task_to_google(
     body: ExportRequest,
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(_get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id_spec),
 ):
     """PlanDay/Task瑜?Google Calendar ?대깽?몃줈 ?대낫?닿린."""
     # Task ?쒕ぉ 媛?몄삤湲?(summary媛 鍮꾩뼱 ?덉쓣 ???ъ슜)
@@ -273,7 +263,7 @@ class UpdateEventResponse(BaseModel):
 def update_google_calendar_event(
     body: UpdateEventRequest,
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(_get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id_spec),
 ):
     """Google Calendar ?대깽???쒓컙/?쒕ぉ ?섏젙."""
     result = update_google_event(
@@ -385,7 +375,7 @@ def _build_free_slots_for_date(
 def suggest_smart_plan(
     body: SmartSuggestRequest,
     db: Session = Depends(get_db),
-    current_user_id: str = Depends(_get_current_user_id),
+    current_user_id: str = Depends(get_current_user_id_spec),
 ):
     """Google ?쇱젙源뚯? 怨좊젮??異붿쿇 ?ㅼ?以??앹꽦 (?⑥닚 greedy)."""
     # 0) ?대떦 ?좎쭨 DayPlan??mode瑜?李멸퀬???섎（ 踰붿쐞 議곗젙 (?놁쑝硫?100 湲곗?)

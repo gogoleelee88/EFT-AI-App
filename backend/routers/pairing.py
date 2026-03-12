@@ -9,6 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.app.services.auth_helpers import get_current_user_id
+from backend.database import get_db
+from services.auth_service import AuthService
+from sqlalchemy.orm import Session
 
 
 router = APIRouter(tags=["pairing"], prefix="/api/pairing")
@@ -72,10 +75,14 @@ class ClaimRequest(BaseModel):
 
 class ClaimResponse(BaseModel):
     user_id: str
+    access_token: str
+    refresh_token: str
+    access_expires_at: str
+    refresh_expires_at: str
 
 
 @router.post("/claim", response_model=ClaimResponse)
-def claim_pairing(req: ClaimRequest) -> ClaimResponse:
+def claim_pairing(req: ClaimRequest, db: Session = Depends(get_db)) -> ClaimResponse:
     _cleanup_expired()
     code = (req.code or "").strip()
     if not code:
@@ -86,4 +93,18 @@ def claim_pairing(req: ClaimRequest) -> ClaimResponse:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
 
     _STORE.pop(code, None)  # one-time use
-    return ClaimResponse(user_id=item["user_id"])
+    auth_service = AuthService()
+    pair = auth_service.mint_token_pair(item["user_id"])
+    auth_service.persist_refresh_token(
+        db=db,
+        user_id=item["user_id"],
+        refresh_jwt=pair.refresh_token,
+        refresh_expires_at=pair.refresh_expires_at,
+    )
+    return ClaimResponse(
+        user_id=item["user_id"],
+        access_token=pair.access_token,
+        refresh_token=pair.refresh_token,
+        access_expires_at=pair.access_expires_at.isoformat(),
+        refresh_expires_at=pair.refresh_expires_at.isoformat(),
+    )
