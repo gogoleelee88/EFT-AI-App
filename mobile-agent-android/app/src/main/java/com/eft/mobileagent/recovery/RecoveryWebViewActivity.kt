@@ -16,6 +16,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import com.eft.mobileagent.R
@@ -30,6 +31,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
     private lateinit var errorView: TextView
     private var launchUri: Uri? = null
     private var pageLoadFailed = false
+    private var allowImmediateExit = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +41,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
         toolbar.title = "Recovery"
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { finish() }
+        toolbar.setNavigationOnClickListener { maybeConfirmExit() }
 
         progress = findViewById(R.id.recoveryProgress)
         errorView = findViewById(R.id.recoveryError)
@@ -50,7 +52,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
-                    finish()
+                    maybeConfirmExit()
                 }
             }
         })
@@ -162,6 +164,20 @@ class RecoveryWebViewActivity : AppCompatActivity() {
         errorView.text = message
     }
 
+    private fun maybeConfirmExit() {
+        if (allowImmediateExit || pageLoadFailed) {
+            finish()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Leave recovery?")
+            .setMessage("If you leave now, the recovery check-in will stop.")
+            .setPositiveButton("Leave") { _, _ -> finish() }
+            .setNegativeButton("Stay", null)
+            .show()
+    }
+
     private fun normalizeLaunchUrl(rawUrl: String?): String? {
         val parsed = rawUrl
             ?.trim()
@@ -200,6 +216,7 @@ class RecoveryWebViewActivity : AppCompatActivity() {
     private inner class RecoveryBridge {
         @JavascriptInterface
         fun onStrictIntakeComplete(payload: String?) {
+            allowImmediateExit = true
             FocusRecoveryCoordinator.markMeaningfulProgress(
                 context = applicationContext,
                 source = "web_strict_intake",
