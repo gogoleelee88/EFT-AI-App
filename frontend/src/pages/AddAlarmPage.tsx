@@ -14,7 +14,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { flushSync } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
 import AlarmSettingStep from "../components/plan/AlarmSettingStep";
 import MicroActionStep from "../components/plan/MicroActionStep";
@@ -24,10 +24,8 @@ import { Button } from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { useAuth } from "../hooks/useAuth";
 import { useGoogleCalendar } from "../hooks/useGoogleCalendar";
+import { useInstallBootstrap } from "../hooks/useInstallBootstrap";
 import { usePlanWizard, type WizardStep } from "../hooks/usePlanWizard";
-import {
-  buildApkDownloadUrl,
-} from "../utils/apkDownload";
 import {
   createAppOnlyEvent,
   createMaskedPayload,
@@ -36,6 +34,11 @@ import {
   savePrivacyMapping,
   type AppOnlyEvent,
 } from "../services/privacySync";
+import {
+  clearAddAlarmDraft,
+  loadAddAlarmDraft,
+  saveAddAlarmDraft,
+} from "../services/plannerClientStateService";
 import type {
   AlarmConfig,
   MissionCombinationMode,
@@ -45,6 +48,7 @@ import type {
   SelectedMicroAction,
   SelectedTask,
 } from "../types/mission";
+import type { AddAlarmDraft } from "../types/plannerClientState";
 import type { PrivacyMode } from "../types/privacy";
 import { PRIVACY_MODE_DESCRIPTIONS, PRIVACY_MODE_LABELS } from "../types/privacy";
 import {
@@ -53,19 +57,7 @@ import {
   parseHhmm,
   resolveAlarmWindow,
 } from "./addAlarm.utils";
-
-type AddAlarmDraft = {
-  date: string;
-  mode: number;
-  step: WizardStep;
-  task: SelectedTask | null;
-  microAction: SelectedMicroAction | null;
-  missions: MissionConfig[];
-  missionCombinationMode: MissionCombinationMode;
-  alarm: AlarmConfig | null;
-  privacyMode: PrivacyMode;
-  updatedAt: string;
-};
+import { buildPlannerHref } from "../utils/plannerRoutes";
 
 type TimelineEntry = {
   id: string;
@@ -77,7 +69,6 @@ type TimelineEntry = {
   source: "google" | "app";
 };
 
-const DRAFT_STORAGE_PREFIX = "eft.add-alarm.draft.v1";
 const STEP_META: Array<{ step: WizardStep; label: string; summary: string }> = [
   { step: 1, label: "할 일", summary: "실행할 작업과 공개 범위를 정합니다." },
   { step: 2, label: "미세 행동", summary: "바로 시작할 수 있는 첫 동작을 만듭니다." },
@@ -85,37 +76,6 @@ const STEP_META: Array<{ step: WizardStep; label: string; summary: string }> = [
   { step: 4, label: "알람", summary: "시간, 반복, 동기화 모드를 확정합니다." },
   { step: 5, label: "완료", summary: "저장 결과와 후속 액션을 확인합니다." },
 ];
-
-const buildDraftKey = (userId: string) => `${DRAFT_STORAGE_PREFIX}:${userId}`;
-
-const readDraft = (userId: string): AddAlarmDraft | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(buildDraftKey(userId));
-    if (!raw) return null;
-    return JSON.parse(raw) as AddAlarmDraft;
-  } catch {
-    return null;
-  }
-};
-
-const writeDraft = (userId: string, draft: AddAlarmDraft) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(buildDraftKey(userId), JSON.stringify(draft));
-  } catch {
-    // Ignore quota or private mode failures.
-  }
-};
-
-const clearDraft = (userId: string) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(buildDraftKey(userId));
-  } catch {
-    // Ignore storage failures.
-  }
-};
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "없음";
@@ -209,10 +169,11 @@ const SummaryRow: React.FC<{
   </div>
 );
 
-const AddAlarmPage: React.FC = () => {
+const AddAlarmPage: React.FC<{ activeDate?: string }> = ({ activeDate }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
-  const wizard = usePlanWizard();
+  const wizard = usePlanWizard(activeDate);
   const {
     isConnected,
     googleEvents,
@@ -233,20 +194,12 @@ const AddAlarmPage: React.FC = () => {
   const [completedPrivacyMode, setCompletedPrivacyMode] =
     useState<PrivacyMode>("NORMAL");
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-
-  const directApkSource = (
-    import.meta.env.VITE_APP_INSTALL_URL ??
-    import.meta.env.VITE_DIRECT_APK_URL ??
-    (typeof window !== "undefined"
-      ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
-      : "")
-  ).trim();
-  const normalizedDirectApkUrl = !directApkSource
-    ? ""
-    : /(?:\/latest\.apk(?:$|\?)|\.apk(?:$|\?))/i.test(directApkSource)
-    ? directApkSource
-    : `${directApkSource.replace(/\/+$/, "")}/latest.apk`;
-  const appInstallUrl = buildApkDownloadUrl(normalizedDirectApkUrl);
+  const {
+    bootstrap: installBootstrap,
+    loading: installBootstrapLoading,
+    warning: installBootstrapWarning,
+  } = useInstallBootstrap();
+  const appInstallUrl = installBootstrap?.installUrl || "";
 
   const planItems: PlanItemInput[] = useMemo(() => {
     const items: PlanItemInput[] = [];
@@ -346,6 +299,9 @@ const AddAlarmPage: React.FC = () => {
     savedPlan: PlanWithMissionResponse,
     alarmOverride?: AlarmConfig
   ) => {
+    if (!user?.uid) {
+      throw new Error("planner_client_state_requires_user");
+    }
     const task = wizard.state.task;
     const microAction = wizard.state.microAction;
     const alarm = alarmOverride ?? wizard.state.alarm;
@@ -373,8 +329,8 @@ const AddAlarmPage: React.FC = () => {
         startIso: resolvedWindow.startIso,
         endIso: resolvedWindow.endIso,
       });
-      saveAppOnlyEvent(appOnlyEvent);
-      setAppOnlyEvents(loadAppOnlyEvents(wizard.state.date));
+      await saveAppOnlyEvent(user.uid, appOnlyEvent);
+      setAppOnlyEvents(await loadAppOnlyEvents(user.uid, wizard.state.date));
       return "앱 전용 일정으로 저장했습니다.";
     }
 
@@ -387,7 +343,7 @@ const AddAlarmPage: React.FC = () => {
         resolvedWindow.startLabel,
         resolvedWindow.endLabel
       );
-      savePrivacyMapping({
+      await savePrivacyMapping(user.uid, {
         key: privacyKey,
         originalTitle,
         originalDescription,
@@ -432,9 +388,17 @@ const AddAlarmPage: React.FC = () => {
       return;
     }
 
-    const draft = readDraft(user.uid);
-    setRestorableDraft(draft && hasDraftContent(draft) ? draft : null);
-    setIsDraftReady(true);
+    let cancelled = false;
+    void (async () => {
+      const draft = await loadAddAlarmDraft<AddAlarmDraft>(user.uid);
+      if (cancelled) return;
+      setRestorableDraft(draft && hasDraftContent(draft) ? draft : null);
+      setIsDraftReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.uid]);
 
   useEffect(() => {
@@ -444,14 +408,29 @@ const AddAlarmPage: React.FC = () => {
   }, [fetchGoogleEvents, isConnected, wizard.state.date]);
 
   useEffect(() => {
-    setAppOnlyEvents(loadAppOnlyEvents(wizard.state.date));
-  }, [wizard.state.date]);
+    if (!user?.uid) {
+      setAppOnlyEvents([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const events = await loadAppOnlyEvents(user.uid, wizard.state.date);
+      if (!cancelled) {
+        setAppOnlyEvents(events);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, wizard.state.date]);
 
   useEffect(() => {
     if (!user?.uid || !isDraftReady) return;
 
     if (wizard.state.step === 5) {
-      clearDraft(user.uid);
+      void clearAddAlarmDraft(user.uid);
       setDraftSavedAt(null);
       return;
     }
@@ -471,13 +450,14 @@ const AddAlarmPage: React.FC = () => {
       };
 
       if (!hasDraftContent(draft)) {
-        clearDraft(user.uid);
+        void clearAddAlarmDraft(user.uid);
         setDraftSavedAt(null);
         return;
       }
 
-      writeDraft(user.uid, draft);
-      setDraftSavedAt(draft.updatedAt);
+      void saveAddAlarmDraft(user.uid, draft).then(() => {
+        setDraftSavedAt(draft.updatedAt);
+      });
     }, 500);
 
     return () => window.clearTimeout(timer);
@@ -540,7 +520,7 @@ const AddAlarmPage: React.FC = () => {
     const savedPlan = await wizard.submit(user.uid, { alarm });
 
     if (user.uid) {
-      clearDraft(user.uid);
+      await clearAddAlarmDraft(user.uid);
       setDraftSavedAt(null);
       setRestorableDraft(null);
     }
@@ -556,7 +536,7 @@ const AddAlarmPage: React.FC = () => {
       );
     }
 
-    setShowInstallGuide(options.syncMode === "APP_ONLY" && Boolean(appInstallUrl));
+    setShowInstallGuide(true);
   };
 
   if (authLoading) {
@@ -695,7 +675,7 @@ const AddAlarmPage: React.FC = () => {
             <button
               type="button"
               onClick={() =>
-                navigate("/deadline-planner", {
+                navigate(buildPlannerHref("deadline", { baseSearchParams: searchParams }), {
                   state: {
                     draftTitle: wizard.state.task?.task_title,
                     draftDate: wizard.state.date,

@@ -18,6 +18,8 @@ import com.eft.mobileagent.alarm.AlarmSourceType
 import com.eft.mobileagent.alarm.ReminderSyncClient
 import com.eft.mobileagent.alarm.ReminderSyncManager
 import com.eft.mobileagent.behavior.BehaviorAgentConfigStore
+import com.eft.mobileagent.planner.PlannerLauncher
+import com.eft.mobileagent.planner.PlannerTab
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.switchmaterial.SwitchMaterial
 import java.time.Instant
@@ -139,9 +141,11 @@ class CalendarOverlayFragment : Fragment(R.layout.fragment_calendar_overlay) {
 
                 if (!accessToken.isNullOrBlank()) {
                     runCatching {
-                        apiClient.fetchServicePlanItems(dateIso = dateIso, accessToken = accessToken)
-                            .mapNotNull { OverlayMapper.fromPlanItem(it, dateIso) }
-                            .filter { it.source != "google" }
+                        loadPlannerServiceItems(
+                            apiClient = apiClient,
+                            dateIso = dateIso,
+                            accessToken = accessToken,
+                        )
                     }.onSuccess { merged += it }
                 } else if (syncConfig != null) {
                     runCatching {
@@ -213,6 +217,27 @@ class CalendarOverlayFragment : Fragment(R.layout.fragment_calendar_overlay) {
         }.start()
     }
 
+    private fun loadPlannerServiceItems(
+        apiClient: CalendarOverlayApiClient,
+        dateIso: String,
+        accessToken: String,
+    ): List<OverlayItem> {
+        val plannerItems = runCatching {
+            apiClient.fetchPlannerWorkspace(dateIso = dateIso, accessToken = accessToken)
+        }.mapCatching { workspace ->
+            OverlayMapper.fromPlannerWorkspace(workspace, dateIso)
+                .filter { it.source != "google" }
+        }.getOrDefault(emptyList())
+
+        if (plannerItems.isNotEmpty()) {
+            return plannerItems
+        }
+
+        return apiClient.fetchServicePlanItems(dateIso = dateIso, accessToken = accessToken)
+            .mapNotNull { OverlayMapper.fromPlanItem(it, dateIso) }
+            .filter { it.source != "google" }
+    }
+
     private fun loadLocalAlarmItems(dateIso: String): List<OverlayItem> {
         val repository = AlarmRepository(requireContext())
         return repository.getAllActiveAlarms().mapNotNull { alarm ->
@@ -275,6 +300,7 @@ class CalendarOverlayFragment : Fragment(R.layout.fragment_calendar_overlay) {
         if (item.taskUid != null) score += 4
         if (item.missionType != null) score += 2
         if (item.description != null) score += 1
+        if (item.id.startsWith("planner:")) score += 3
         if (item.id.startsWith("sync:")) score += 1
         if (item.id.startsWith("google:")) score += 2
         return score
@@ -315,8 +341,7 @@ class CalendarOverlayFragment : Fragment(R.layout.fragment_calendar_overlay) {
     }
 
     private fun navigateToAddAlarm() {
-        val bottomNav = activity?.findViewById<BottomNavigationView>(R.id.bottomNavView)
-        bottomNav?.selectedItemId = R.id.nav_add_alarm
+        navigateToPlannerToday()
     }
 
     private fun navigateToMyPage() {
@@ -334,7 +359,7 @@ class CalendarOverlayFragment : Fragment(R.layout.fragment_calendar_overlay) {
             }
 
             match?.let { repository.setLastAlarmId(it.alarmId) }
-            navigateToAddAlarm()
+            navigateToPlannerToday(taskUid = item.taskUid)
             return
         }
 
@@ -349,6 +374,20 @@ class CalendarOverlayFragment : Fragment(R.layout.fragment_calendar_overlay) {
     private fun isAuthError(err: Throwable): Boolean {
         val message = err.message.orEmpty()
         return message.contains("HTTP 401") || message.contains("HTTP 403")
+    }
+
+    private fun navigateToPlannerToday(taskUid: String? = null) {
+        val opened = PlannerLauncher.open(
+            context = requireContext(),
+            tab = PlannerTab.TODAY,
+            activeDate = selectedDate.toString(),
+            taskUid = taskUid,
+            source = if (taskUid.isNullOrBlank()) "mobile_calendar_empty" else "mobile_calendar_item",
+        )
+        if (!opened) {
+            val bottomNav = activity?.findViewById<BottomNavigationView>(R.id.bottomNavView)
+            bottomNav?.selectedItemId = R.id.nav_add_alarm
+        }
     }
 
     companion object {

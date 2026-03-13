@@ -78,6 +78,8 @@ class OverlayAgendaAdapter(
 
             subText.text = if (item.source == "google") {
                 "Google event"
+            } else if (!item.description.isNullOrBlank()) {
+                item.description
             } else {
                 "App schedule"
             }

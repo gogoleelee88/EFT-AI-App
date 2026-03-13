@@ -26,6 +26,7 @@ from backend.spec_loop.models.push_subscription import PushSubscription
 from backend.spec_loop.models.recovery_event import RecoveryEvent
 from backend.spec_loop.models.idempotency_key import IdempotencyKey
 from backend.spec_loop.models.mission_proof import MissionProof
+from backend.spec_loop.models.planner_client_state import PlannerClientState
 
 __all__ = [
     "Task",
@@ -55,4 +56,5 @@ __all__ = [
     "RecoveryEvent",
     "IdempotencyKey",
     "MissionProof",
+    "PlannerClientState",
 ]

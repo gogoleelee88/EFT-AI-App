@@ -6,6 +6,7 @@ import { useGoogleCalendar } from "../hooks/useGoogleCalendar";
 import { usePlanWizard } from "../hooks/usePlanWizard";
 import { Button } from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import PlannerAssignmentSurface from "../components/planner/PlannerAssignmentSurface";
 import { TodayConditionBanner, type PatchSuggestion } from "../components/spec";
 import StepWizard from "../components/plan/StepWizard";
 import TaskInputStep from "../components/plan/TaskInputStep";
@@ -23,6 +24,7 @@ import {
   getKoreaTimeLabel,
   parseKoreaTimeValue,
 } from "../utils/koreaTime";
+import type { PlannerWorkspaceResponse } from "../services/plannerWorkspaceService";
 import {
   type AppOnlyEvent,
   buildPrivacyKey,
@@ -123,7 +125,19 @@ const resolveAlarmWindow = (
   };
 };
 
-const PlanDayPage: React.FC = () => {
+const PlanDayPage: React.FC<{
+  activeDate?: string;
+  workspace?: PlannerWorkspaceResponse | null;
+  focusedTaskUid?: string | null;
+  workspaceLoading?: boolean;
+  workspaceError?: string | null;
+}> = ({
+  activeDate,
+  workspace = null,
+  focusedTaskUid = null,
+  workspaceLoading = false,
+  workspaceError = null,
+}) => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
 
@@ -141,7 +155,8 @@ const PlanDayPage: React.FC = () => {
   } = useGoogleCalendar();
 
   // Planner wizard state
-  const wizard = usePlanWizard();
+  const wizard = usePlanWizard(activeDate);
+  const userId = user?.uid;
 
   // State
   const [showGoogleSection, setShowGoogleSection] = useState(true);
@@ -149,9 +164,7 @@ const PlanDayPage: React.FC = () => {
   const [showAppEvents, setShowAppEvents] = useState(true);
   const [plannedGoogleSyncMode, setPlannedGoogleSyncMode] =
     useState<PrivacyMode>("NORMAL");
-  const [appOnlyEvents, setAppOnlyEvents] = useState<AppOnlyEvent[]>(() =>
-    loadAppOnlyEvents(wizard.state.date)
-  );
+  const [appOnlyEvents, setAppOnlyEvents] = useState<AppOnlyEvent[]>([]);
   const [bannerSummary, setBannerSummary] = useState<BannerSummary | null>(null);
   const [bannerPatch, setBannerPatch] = useState<PatchSuggestion | null>(null);
   const [bannerPatchLoading, setBannerPatchLoading] = useState(false);
@@ -178,9 +191,14 @@ const PlanDayPage: React.FC = () => {
     return resistanceLevel >= 7 ? "시작했지만 막힘" : "시작 저항";
 };
 
-  const refreshAppOnlyEvents = useCallback(() => {
-    setAppOnlyEvents(loadAppOnlyEvents(wizard.state.date));
-  }, [wizard.state.date]);
+  const refreshAppOnlyEvents = useCallback(async () => {
+    if (!userId) {
+      setAppOnlyEvents([]);
+      return;
+    }
+    const events = await loadAppOnlyEvents(userId, wizard.state.date);
+    setAppOnlyEvents(events);
+  }, [userId, wizard.state.date]);
 
   const planItems: PlanItemInput[] = React.useMemo(() => {
     const items: PlanItemInput[] = [];
@@ -207,13 +225,13 @@ const PlanDayPage: React.FC = () => {
   // Sync Google events when date changes
   useEffect(() => {
     if (isConnected && wizard.state.date) {
-      fetchGoogleEvents(wizard.state.date);
+      void fetchGoogleEvents(wizard.state.date);
     }
   }, [isConnected, wizard.state.date, fetchGoogleEvents]);
 
   useEffect(() => {
-    refreshAppOnlyEvents();
-  }, [wizard.state.date, refreshAppOnlyEvents]);
+    void refreshAppOnlyEvents();
+  }, [refreshAppOnlyEvents]);
 
   useEffect(() => {
     if (wizard.state.step === 1) {
@@ -364,12 +382,13 @@ const PlanDayPage: React.FC = () => {
       }
 
       if (updatedEvent.privacy_mode === "APP_ONLY" || updatedEvent.source === "app") {
-        updateAppOnlyEvent(updatedEvent.id, {
+        if (!userId) return;
+        await updateAppOnlyEvent(userId, updatedEvent.id, {
           startIso,
           endIso,
           date: wizard.state.date,
         });
-        refreshAppOnlyEvents();
+        await refreshAppOnlyEvents();
         return;
       }
 
@@ -399,10 +418,12 @@ const PlanDayPage: React.FC = () => {
           formatTimeLabel(updatedEvent.startTime),
           formatTimeLabel(updatedEvent.startTime + updatedEvent.duration)
         );
-        updatePrivacyMappingKey(prevKey, nextKey);
+        if (userId) {
+          await updatePrivacyMappingKey(userId, prevKey, nextKey);
+        }
       }
     },
-    [refreshAppOnlyEvents, updateGoogleEvent, wizard.state.date]
+    [refreshAppOnlyEvents, updateGoogleEvent, userId, wizard.state.date]
   );
 
   // Google 이벤트 내보내기 설명 생성
@@ -507,8 +528,9 @@ const PlanDayPage: React.FC = () => {
           startIso,
           endIso,
         });
-        saveAppOnlyEvent(appOnlyEvent);
-        refreshAppOnlyEvents();
+        if (!userId) return;
+        await saveAppOnlyEvent(userId, appOnlyEvent);
+        await refreshAppOnlyEvents();
         alert("앱 전용으로 저장했습니다.");
         return;
       }
@@ -516,7 +538,8 @@ const PlanDayPage: React.FC = () => {
       if (privacyMode === "MASKED") {
         const { maskedTitle, maskedDescription, privacyKey } =
           createMaskedPayload(startLabel, endLabel);
-        savePrivacyMapping({
+        if (!userId) return;
+        await savePrivacyMapping(userId, {
           key: privacyKey,
           originalTitle,
           originalDescription,
@@ -550,14 +573,12 @@ const PlanDayPage: React.FC = () => {
       }
 
       alert("Google Calendar에 동기화했습니다.");
-      fetchGoogleEvents(wizard.state.date);
+      void fetchGoogleEvents(wizard.state.date);
     } catch (err) {
       console.error("Google Calendar 동기화 오류:", err);
     }
   };
 
-  // Use authenticated user ID
-  const userId = user?.uid;
   const exportLabel =
     wizard.state.privacy_mode === "APP_ONLY" ? "앱에 저장" : "Google에 추가";
 
@@ -654,6 +675,14 @@ const PlanDayPage: React.FC = () => {
           </Card>
         </div>
       )}
+
+      <PlannerAssignmentSurface
+        workspace={workspace}
+        activeDate={activeDate || wizard.state.date}
+        focusedTaskUid={focusedTaskUid}
+        loading={workspaceLoading}
+        error={workspaceError}
+      />
 
       {/* Google Calendar section (collapsible) */}
       <div className="max-w-2xl mx-auto px-4 py-4">

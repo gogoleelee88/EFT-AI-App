@@ -12,7 +12,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import Card from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -27,6 +27,7 @@ import {
   toChecklistEditorText,
 } from "../utils/deadlinePlanner";
 import { todayInKoreaIso } from "../utils/koreaTime";
+import { buildPlannerHref } from "../utils/plannerRoutes";
 
 type PlannerLocationState = {
   draftTitle?: string;
@@ -38,10 +39,13 @@ type PlannerLocationState = {
 const plannerInputClassName =
   "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100";
 
-const buildEmptyDraft = (state?: PlannerLocationState): DeadlineGoalDraft => ({
+const buildEmptyDraft = (
+  state?: PlannerLocationState,
+  activeDate: string = todayInKoreaIso()
+): DeadlineGoalDraft => ({
   title: state?.draftTitle || "",
-  startDate: state?.draftDate || todayInKoreaIso(),
-  deadlineDate: state?.draftDate || todayInKoreaIso(),
+  startDate: state?.draftDate || activeDate,
+  deadlineDate: state?.draftDate || activeDate,
   windowStartTime: state?.draftStartTime || "19:00",
   windowEndTime: state?.draftEndTime || "20:30",
   endsNextDay: false,
@@ -82,15 +86,15 @@ const PlannerBadge: React.FC<{
 
 const GoalCard: React.FC<{
   plan: DeadlineGoalPlan;
+  focusDate: string;
   onEdit: (plan: DeadlineGoalPlan) => void;
-  onDelete: (planId: string) => void;
-  onToggle: (planId: string, itemId: string) => void;
-  onPullForward: (planId: string) => void;
-}> = ({ plan, onEdit, onDelete, onToggle, onPullForward }) => {
-  const todayIso = todayInKoreaIso();
-  const summary = buildGoalSummary(plan, todayIso);
-  const agenda = getGoalAgendaForDate(plan, todayIso);
-  const completedTodayItems = (plan.assignments[todayIso] || [])
+  onDelete: (planId: string) => Promise<unknown> | void;
+  onToggle: (planId: string, itemId: string) => Promise<unknown> | void;
+  onPullForward: (planId: string) => Promise<unknown> | void;
+}> = ({ plan, focusDate, onEdit, onDelete, onToggle, onPullForward }) => {
+  const summary = buildGoalSummary(plan, focusDate);
+  const agenda = getGoalAgendaForDate(plan, focusDate);
+  const completedTodayItems = (plan.assignments[focusDate] || [])
     .filter((itemId) => Boolean(plan.completionLog[itemId]))
     .map((itemId) => plan.items.find((item) => item.id === itemId))
     .filter((item): item is DeadlineGoalPlan["items"][number] => Boolean(item));
@@ -140,7 +144,13 @@ const GoalCard: React.FC<{
               수정
             </span>
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => onDelete(plan.id)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void onDelete(plan.id);
+            }}
+          >
             <span className="inline-flex items-center gap-2 text-rose-600">
               <Trash2 className="h-4 w-4" />
               삭제
@@ -159,7 +169,9 @@ const GoalCard: React.FC<{
             <button
               key={item.id}
               type="button"
-              onClick={() => onToggle(plan.id, item.id)}
+              onClick={() => {
+                void onToggle(plan.id, item.id);
+              }}
               className="flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-sky-300 hover:bg-sky-50"
             >
               <div
@@ -190,7 +202,9 @@ const GoalCard: React.FC<{
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onToggle(plan.id, item.id)}
+                onClick={() => {
+                  void onToggle(plan.id, item.id);
+                }}
                 className="flex w-full items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left transition hover:bg-emerald-100"
               >
                 <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 bg-emerald-500 text-white">
@@ -219,7 +233,13 @@ const GoalCard: React.FC<{
                 내일 분량 {agenda.nextItems.length}개 중 일부를 지금 당겨올 수 있습니다.
               </div>
             </div>
-            <Button variant="primary" size="sm" onClick={() => onPullForward(plan.id)}>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                void onPullForward(plan.id);
+              }}
+            >
               내일 분량 당겨오기
             </Button>
           </div>
@@ -229,15 +249,20 @@ const GoalCard: React.FC<{
   );
 };
 
-const DeadlinePlannerPage: React.FC = () => {
+const DeadlinePlannerPage: React.FC<{ activeDate?: string }> = ({
+  activeDate = todayInKoreaIso(),
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { plans, summaries, requestNotificationPermission, saveGoal, toggleItem, pullForward, removeGoal } =
-    useDeadlineGoals(user?.uid);
+    useDeadlineGoals(user?.uid, activeDate);
 
   const state = (location.state as PlannerLocationState | null) || null;
-  const [draft, setDraft] = useState<DeadlineGoalDraft>(() => buildEmptyDraft(state || undefined));
+  const [draft, setDraft] = useState<DeadlineGoalDraft>(() =>
+    buildEmptyDraft(state || undefined, activeDate)
+  );
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
@@ -275,7 +300,7 @@ const DeadlinePlannerPage: React.FC = () => {
   };
 
   const resetDraft = () => {
-    setDraft(buildEmptyDraft());
+    setDraft(buildEmptyDraft(undefined, activeDate));
     setEditingPlanId(null);
     setSaveNotice(null);
   };
@@ -291,11 +316,11 @@ const DeadlinePlannerPage: React.FC = () => {
       return;
     }
 
-    const savedPlan = saveGoal(draft, editingPlan);
+    const savedPlan = await saveGoal(draft, editingPlan);
     if (!savedPlan) return;
     setSaveNotice(editingPlan ? "체크리스트를 갱신했습니다." : "마감 플랜을 저장했습니다.");
     setEditingPlanId(null);
-    setDraft(buildEmptyDraft());
+    setDraft(buildEmptyDraft(undefined, activeDate));
     await requestNotificationPermission();
   };
 
@@ -317,17 +342,17 @@ const DeadlinePlannerPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDelete = (planId: string) => {
+  const handleDelete = async (planId: string) => {
     if (!window.confirm("이 마감 플랜을 삭제할까요?")) return;
-    removeGoal(planId);
+    await removeGoal(planId);
     if (editingPlanId === planId) {
       resetDraft();
     }
   };
 
-  const handlePullForward = (planId: string) => {
+  const handlePullForward = async (planId: string) => {
     if (!window.confirm("남는 시간에 내일 분량을 앞으로 당길까요?")) return;
-    pullForward(planId);
+    await pullForward(planId);
   };
 
   if (authLoading) {
@@ -420,7 +445,9 @@ const DeadlinePlannerPage: React.FC = () => {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             <button
               type="button"
-              onClick={() => navigate("/add-alarm")}
+              onClick={() =>
+                navigate(buildPlannerHref("alarm", { baseSearchParams: searchParams }))
+              }
               className="rounded-[28px] border border-slate-200 bg-white/85 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
             >
               <div className="flex items-center justify-between">
@@ -670,6 +697,7 @@ const DeadlinePlannerPage: React.FC = () => {
                     <GoalCard
                       key={plan.id}
                       plan={plan}
+                      focusDate={activeDate}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
                       onToggle={toggleItem}

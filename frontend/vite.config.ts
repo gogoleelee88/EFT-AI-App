@@ -10,6 +10,34 @@ const __dirname = path.dirname(__filename)
 const API_PROXY_TARGET = (process.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '')
 const WS_PROXY_TARGET = API_PROXY_TARGET.replace(/^https:/, 'ws:').replace(/^http:/, 'ws:')
 
+const resolveManualChunk = (id: string) => {
+  if (!id.includes('node_modules')) {
+    return undefined
+  }
+
+  if (id.includes('firebase')) {
+    return 'firebase-vendor'
+  }
+
+  if (id.includes('@mediapipe') || id.includes('react-webcam')) {
+    return 'vision-vendor'
+  }
+
+  if (id.includes('@react-three') || id.includes(`${path.sep}three${path.sep}`)) {
+    return 'three-vendor'
+  }
+
+  if (id.includes('framer-motion') || id.includes('lucide-react') || id.includes('@radix-ui')) {
+    return 'ui-vendor'
+  }
+
+  if (id.includes('recharts')) {
+    return 'charts-vendor'
+  }
+
+  return 'vendor'
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   define: {
@@ -117,11 +145,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          // 'ai-vendor': ['@huggingface/transformers'],
-          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-          'react-vendor': ['react', 'react-dom', 'react-router-dom']
-        }
+        manualChunks: resolveManualChunk,
       }
     }
   },
