@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "EFT AI Application with AR/VR support",
   "private": true,
+  "packageManager": "npm@10.8.2",
   "scripts": {
-    "preinstall": "node ./scripts/ensure-registry.js",
-    "fix:registry": "node ./scripts/ensure-registry.js",
+    "fix:registry": "node ./scripts/ensure-registry.js --apply",
     "test:npm-registry": "node ./scripts/check-npm-registry.js",
     "dev": "npm run frontend",
     "backend": "cd backend && npm run dev",
@@ -28,8 +28,8 @@
     "backend"
   ],
   "engines": {
-    "node": ">=18.18.0",
-    "npm": ">=9.0.0"
+    "node": "20.x",
+    "npm": "10.x"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-x64-gnu": "^4.54.0"
