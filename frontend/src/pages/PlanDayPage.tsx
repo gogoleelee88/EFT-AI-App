@@ -25,6 +25,7 @@ import {
   parseKoreaTimeValue,
 } from "../utils/koreaTime";
 import type { PlannerWorkspaceResponse } from "../services/plannerWorkspaceService";
+import { PLANNER_CLIENT_STATE_CHANGED_EVENT } from "../services/plannerClientStateService";
 import {
   type AppOnlyEvent,
   buildPrivacyKey,
@@ -232,6 +233,29 @@ const PlanDayPage: React.FC<{
   useEffect(() => {
     void refreshAppOnlyEvents();
   }, [refreshAppOnlyEvents]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const handlePlannerStateChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (!detail?.userId || detail.userId !== userId) {
+        return;
+      }
+      void refreshAppOnlyEvents();
+    };
+
+    window.addEventListener(
+      PLANNER_CLIENT_STATE_CHANGED_EVENT,
+      handlePlannerStateChanged as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        PLANNER_CLIENT_STATE_CHANGED_EVENT,
+        handlePlannerStateChanged as EventListener
+      );
+    };
+  }, [refreshAppOnlyEvents, userId]);
 
   useEffect(() => {
     if (wizard.state.step === 1) {
