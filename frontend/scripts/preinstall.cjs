@@ -3,10 +3,16 @@ const fs = require('fs');
 const path = require('path');
 
 const optional = String(process.env.ESLINT_OPTIONAL || '').toLowerCase() === 'true';
+const ciRuntime = Boolean(process.env.CI || process.env.VERCEL);
 const root = path.resolve(__dirname, '..');
 const pkgPath = path.join(root, 'package.json');
 const backupPath = path.join(root, 'package.json.eslint-backup');
 const removedPath = path.join(root, '.eslint-optional-removed.json');
+
+if (optional && ciRuntime) {
+  console.warn('[preinstall] ESLINT_OPTIONAL requested in CI/Vercel; skipping package.json mutation.');
+  process.exit(0);
+}
 
 if (!optional) {
   if (fs.existsSync(backupPath)) {

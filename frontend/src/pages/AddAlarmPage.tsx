@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -7,14 +7,13 @@ import {
   CheckCircle2,
   Clock3,
   CloudOff,
-  Download,
   LoaderCircle,
   Lock,
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
 import { flushSync } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
 import AlarmSettingStep from "../components/plan/AlarmSettingStep";
 import MicroActionStep from "../components/plan/MicroActionStep";
@@ -24,10 +23,8 @@ import { Button } from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import { useAuth } from "../hooks/useAuth";
 import { useGoogleCalendar } from "../hooks/useGoogleCalendar";
+import { useInstallBootstrap } from "../hooks/useInstallBootstrap";
 import { usePlanWizard, type WizardStep } from "../hooks/usePlanWizard";
-import {
-  buildApkDownloadUrl,
-} from "../utils/apkDownload";
 import {
   createAppOnlyEvent,
   createMaskedPayload,
@@ -36,6 +33,11 @@ import {
   savePrivacyMapping,
   type AppOnlyEvent,
 } from "../services/privacySync";
+import {
+  clearAddAlarmDraft,
+  loadAddAlarmDraft,
+  saveAddAlarmDraft,
+} from "../services/plannerClientStateService";
 import type {
   AlarmConfig,
   MissionCombinationMode,
@@ -45,6 +47,7 @@ import type {
   SelectedMicroAction,
   SelectedTask,
 } from "../types/mission";
+import type { AddAlarmDraft } from "../types/plannerClientState";
 import type { PrivacyMode } from "../types/privacy";
 import { PRIVACY_MODE_DESCRIPTIONS, PRIVACY_MODE_LABELS } from "../types/privacy";
 import {
@@ -53,19 +56,7 @@ import {
   parseHhmm,
   resolveAlarmWindow,
 } from "./addAlarm.utils";
-
-type AddAlarmDraft = {
-  date: string;
-  mode: number;
-  step: WizardStep;
-  task: SelectedTask | null;
-  microAction: SelectedMicroAction | null;
-  missions: MissionConfig[];
-  missionCombinationMode: MissionCombinationMode;
-  alarm: AlarmConfig | null;
-  privacyMode: PrivacyMode;
-  updatedAt: string;
-};
+import { buildPlannerHref } from "../utils/plannerRoutes";
 
 type TimelineEntry = {
   id: string;
@@ -77,45 +68,13 @@ type TimelineEntry = {
   source: "google" | "app";
 };
 
-const DRAFT_STORAGE_PREFIX = "eft.add-alarm.draft.v1";
 const STEP_META: Array<{ step: WizardStep; label: string; summary: string }> = [
-  { step: 1, label: "할 일", summary: "실행할 작업과 공개 범위를 정합니다." },
-  { step: 2, label: "미세 행동", summary: "바로 시작할 수 있는 첫 동작을 만듭니다." },
-  { step: 3, label: "미션", summary: "증빙 방식과 완료 조건을 설계합니다." },
+  { step: 1, label: "작업", summary: "실행할 작업과 공개 범위를 먼저 정합니다." },
+  { step: 2, label: "미세 행동", summary: "바로 시작할 수 있는 첫 행동을 좁혀 줍니다." },
+  { step: 3, label: "미션", summary: "지속 방식과 완료 조건을 단계별로 정리합니다." },
   { step: 4, label: "알람", summary: "시간, 반복, 동기화 모드를 확정합니다." },
-  { step: 5, label: "완료", summary: "저장 결과와 후속 액션을 확인합니다." },
+  { step: 5, label: "완료", summary: "저장 결과와 다음 액션을 확인합니다." },
 ];
-
-const buildDraftKey = (userId: string) => `${DRAFT_STORAGE_PREFIX}:${userId}`;
-
-const readDraft = (userId: string): AddAlarmDraft | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(buildDraftKey(userId));
-    if (!raw) return null;
-    return JSON.parse(raw) as AddAlarmDraft;
-  } catch {
-    return null;
-  }
-};
-
-const writeDraft = (userId: string, draft: AddAlarmDraft) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(buildDraftKey(userId), JSON.stringify(draft));
-  } catch {
-    // Ignore quota or private mode failures.
-  }
-};
-
-const clearDraft = (userId: string) => {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(buildDraftKey(userId));
-  } catch {
-    // Ignore storage failures.
-  }
-};
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return "없음";
@@ -152,8 +111,8 @@ const hasDraftContent = (draft: AddAlarmDraft) =>
   );
 
 const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
-  if (resistanceLevel == null) return "시작 저항";
-  return resistanceLevel >= 7 ? "시작했지만 막힘" : "시작 저항";
+  if (resistanceLevel == null) return "시작 저항 보통";
+  return resistanceLevel >= 7 ? "시작 저항 높음" : "시작 저항 보통";
 };
 
 const StepPill: React.FC<{
@@ -209,10 +168,11 @@ const SummaryRow: React.FC<{
   </div>
 );
 
-const AddAlarmPage: React.FC = () => {
+const AddAlarmPage: React.FC<{ activeDate?: string }> = ({ activeDate }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
-  const wizard = usePlanWizard();
+  const wizard = usePlanWizard(activeDate);
   const {
     isConnected,
     googleEvents,
@@ -233,20 +193,11 @@ const AddAlarmPage: React.FC = () => {
   const [completedPrivacyMode, setCompletedPrivacyMode] =
     useState<PrivacyMode>("NORMAL");
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-
-  const directApkSource = (
-    import.meta.env.VITE_APP_INSTALL_URL ??
-    import.meta.env.VITE_DIRECT_APK_URL ??
-    (typeof window !== "undefined"
-      ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
-      : "")
-  ).trim();
-  const normalizedDirectApkUrl = !directApkSource
-    ? ""
-    : /(?:\/latest\.apk(?:$|\?)|\.apk(?:$|\?))/i.test(directApkSource)
-    ? directApkSource
-    : `${directApkSource.replace(/\/+$/, "")}/latest.apk`;
-  const appInstallUrl = buildApkDownloadUrl(normalizedDirectApkUrl);
+  const {
+    bootstrap: installBootstrap,
+    loading: installBootstrapLoading,
+    warning: installBootstrapWarning,
+  } = useInstallBootstrap();
 
   const planItems: PlanItemInput[] = useMemo(() => {
     const items: PlanItemInput[] = [];
@@ -346,11 +297,14 @@ const AddAlarmPage: React.FC = () => {
     savedPlan: PlanWithMissionResponse,
     alarmOverride?: AlarmConfig
   ) => {
+    if (!user?.uid) {
+      throw new Error("planner_client_state_requires_user");
+    }
     const task = wizard.state.task;
     const microAction = wizard.state.microAction;
     const alarm = alarmOverride ?? wizard.state.alarm;
     if (!task || !alarm) {
-      return "작업과 알람 정보가 모두 저장된 뒤 동기화할 수 있습니다.";
+      return "작업과 알람 정보가 모두 있어야 일정을 저장할 수 있습니다.";
     }
 
     const resolvedWindow = resolveAlarmWindow(
@@ -373,8 +327,8 @@ const AddAlarmPage: React.FC = () => {
         startIso: resolvedWindow.startIso,
         endIso: resolvedWindow.endIso,
       });
-      saveAppOnlyEvent(appOnlyEvent);
-      setAppOnlyEvents(loadAppOnlyEvents(wizard.state.date));
+      await saveAppOnlyEvent(user.uid, appOnlyEvent);
+      setAppOnlyEvents(await loadAppOnlyEvents(user.uid, wizard.state.date));
       return "앱 전용 일정으로 저장했습니다.";
     }
 
@@ -387,7 +341,7 @@ const AddAlarmPage: React.FC = () => {
         resolvedWindow.startLabel,
         resolvedWindow.endLabel
       );
-      savePrivacyMapping({
+      await savePrivacyMapping(user.uid, {
         key: privacyKey,
         originalTitle,
         originalDescription,
@@ -408,7 +362,7 @@ const AddAlarmPage: React.FC = () => {
         originalDescription,
       });
       await fetchGoogleEvents(wizard.state.date);
-      return "Google Calendar에 마스킹 동기화했습니다.";
+      return "Google Calendar에 마스킹 일정으로 동기화했습니다.";
     }
 
     await exportToGoogle({
@@ -422,7 +376,7 @@ const AddAlarmPage: React.FC = () => {
       originalDescription,
     });
     await fetchGoogleEvents(wizard.state.date);
-    return "Google Calendar에 일정 추가를 완료했습니다.";
+    return "Google Calendar에 일정을 추가했습니다.";
   };
 
   useEffect(() => {
@@ -432,9 +386,17 @@ const AddAlarmPage: React.FC = () => {
       return;
     }
 
-    const draft = readDraft(user.uid);
-    setRestorableDraft(draft && hasDraftContent(draft) ? draft : null);
-    setIsDraftReady(true);
+    let cancelled = false;
+    void (async () => {
+      const draft = await loadAddAlarmDraft<AddAlarmDraft>(user.uid);
+      if (cancelled) return;
+      setRestorableDraft(draft && hasDraftContent(draft) ? draft : null);
+      setIsDraftReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user?.uid]);
 
   useEffect(() => {
@@ -444,14 +406,29 @@ const AddAlarmPage: React.FC = () => {
   }, [fetchGoogleEvents, isConnected, wizard.state.date]);
 
   useEffect(() => {
-    setAppOnlyEvents(loadAppOnlyEvents(wizard.state.date));
-  }, [wizard.state.date]);
+    if (!user?.uid) {
+      setAppOnlyEvents([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const events = await loadAppOnlyEvents(user.uid, wizard.state.date);
+      if (!cancelled) {
+        setAppOnlyEvents(events);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, wizard.state.date]);
 
   useEffect(() => {
     if (!user?.uid || !isDraftReady) return;
 
     if (wizard.state.step === 5) {
-      clearDraft(user.uid);
+      void clearAddAlarmDraft(user.uid);
       setDraftSavedAt(null);
       return;
     }
@@ -471,13 +448,14 @@ const AddAlarmPage: React.FC = () => {
       };
 
       if (!hasDraftContent(draft)) {
-        clearDraft(user.uid);
+        void clearAddAlarmDraft(user.uid);
         setDraftSavedAt(null);
         return;
       }
 
-      writeDraft(user.uid, draft);
-      setDraftSavedAt(draft.updatedAt);
+      void saveAddAlarmDraft(user.uid, draft).then(() => {
+        setDraftSavedAt(draft.updatedAt);
+      });
     }, 500);
 
     return () => window.clearTimeout(timer);
@@ -540,7 +518,7 @@ const AddAlarmPage: React.FC = () => {
     const savedPlan = await wizard.submit(user.uid, { alarm });
 
     if (user.uid) {
-      clearDraft(user.uid);
+      await clearAddAlarmDraft(user.uid);
       setDraftSavedAt(null);
       setRestorableDraft(null);
     }
@@ -556,7 +534,7 @@ const AddAlarmPage: React.FC = () => {
       );
     }
 
-    setShowInstallGuide(options.syncMode === "APP_ONLY" && Boolean(appInstallUrl));
+    setShowInstallGuide(true);
   };
 
   if (authLoading) {
@@ -618,8 +596,8 @@ const AddAlarmPage: React.FC = () => {
                     Add Alarm
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                    할 일, 미세 행동, 검증 미션, 동기화 정책을 분리해서 설계하는
-                    실행 전용 페이지입니다.
+                    작업, 미세 행동, 검증 미션, 동기화 정책을 분리해서 단계별로
+                    설정하는 실행 전용 페이지입니다.
                   </p>
                 </div>
               </div>
@@ -630,7 +608,7 @@ const AddAlarmPage: React.FC = () => {
                     Sync
                   </div>
                   <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {isConnected ? "Google 연결됨" : "앱 전용 저장 가능"}
+                    {isConnected ? "Google 연결됨" : "앱 전용 저장"}
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -666,10 +644,10 @@ const AddAlarmPage: React.FC = () => {
                 <ArrowRight className="h-4 w-4 text-slate-400" />
               </div>
               <div className="mt-4 text-sm font-semibold text-slate-900">
-                마이페이지 열기
+                마이페이지 가기
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                목표/강점 정보를 먼저 정리하면 알람 제안 품질이 좋아집니다.
+                목표와 강점 정보를 먼저 정리하면 알람 제안 정확도가 더 좋아집니다.
               </div>
             </button>
 
@@ -688,14 +666,14 @@ const AddAlarmPage: React.FC = () => {
                 신호함에서 데이터 보기
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                저장된 신호, 회복 로그, 행동 질문을 확인할 수 있습니다.
+                저장한 신호, 반복 로그, 행동 질문을 한곳에서 확인할 수 있습니다.
               </div>
             </button>
 
             <button
               type="button"
               onClick={() =>
-                navigate("/deadline-planner", {
+                navigate(buildPlannerHref("deadline", { baseSearchParams: searchParams }), {
                   state: {
                     draftTitle: wizard.state.task?.task_title,
                     draftDate: wizard.state.date,
@@ -717,7 +695,7 @@ const AddAlarmPage: React.FC = () => {
                 마감 플랜 만들기
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                마감일과 하루 가능 시간을 기준으로 일일 체크리스트와 부화 확률을 함께 관리합니다.
+                마감일과 가용 시간을 기준으로 오늘 체크리스트와 주간 계획을 함께 관리합니다.
               </div>
             </button>
           </div>
@@ -734,7 +712,7 @@ const AddAlarmPage: React.FC = () => {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setRestorableDraft(null)}>
-                  무시
+                  臾댁떆
                 </Button>
                 <Button
                   variant="primary"
@@ -843,7 +821,7 @@ const AddAlarmPage: React.FC = () => {
                       </div>
                       <div className="text-sm leading-6 text-emerald-800">
                         {flowNotice ||
-                          "저장 후 동기화 상태를 확인했습니다. 아래 요약에서 세부 내용을 점검하세요."}
+                          "저장 후 동기화 상태를 확인했습니다. 아래 요약에서 다음 작업을 이어가세요."}
                       </div>
                     </div>
                   </div>
@@ -923,7 +901,7 @@ const AddAlarmPage: React.FC = () => {
                     실행 요약
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    현재 선택한 정보와 운영 상태를 실시간으로 확인합니다.
+                    현재 선택한 정보와 동기화 상태를 실시간으로 확인합니다.
                   </p>
                 </div>
                 {!isConnected ? (
@@ -947,18 +925,18 @@ const AddAlarmPage: React.FC = () => {
                 />
                 <SummaryRow
                   label="작업"
-                  value={wizard.state.task?.task_title || "아직 선택되지 않음"}
+                  value={wizard.state.task?.task_title || "아직 선택하지 않음"}
                 />
                 <SummaryRow
                   label="미세 행동"
-                  value={wizard.state.microAction?.name || "아직 선택되지 않음"}
+                  value={wizard.state.microAction?.name || "아직 선택하지 않음"}
                 />
                 <SummaryRow
                   label="알람"
                   value={
                     wizard.state.alarm
                       ? `${wizard.state.alarm.start_time} - ${wizard.state.alarm.end_time}`
-                      : "아직 설정되지 않음"
+                      : "아직 설정하지 않음"
                   }
                 />
               </div>
@@ -993,7 +971,7 @@ const AddAlarmPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">
-                    일정 레일
+                    일정 타임라인
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     같은 날짜의 Google 일정과 앱 전용 일정을 함께 봅니다.
@@ -1050,30 +1028,24 @@ const AddAlarmPage: React.FC = () => {
                     시간 충돌 가능성
                   </div>
                   <div className="mt-2 text-xs leading-5 text-amber-800">
-                    현재 알람 시간이 아래 일정과 겹칠 수 있습니다:{" "}
+                    현재 알람 시간대가 아래 일정과 겹칠 수 있습니다:{" "}
                     {scheduleConflicts.map((entry) => entry.title).join(", ")}
                   </div>
                 </div>
               )}
             </Card>
 
-            {(showInstallGuide || completedPrivacyMode === "APP_ONLY") && appInstallUrl && (
+            {(showInstallGuide || completedPrivacyMode === "APP_ONLY") &&
+              (installBootstrapLoading || installBootstrap) && (
               <div className="space-y-3">
                 <AlarmInstallGuide
-                  title="앱 전용 알람은 앱 설치 시 가장 안정적입니다"
-                  description="앱 전용 저장은 브라우저보다 설치형 앱에서 더 안정적으로 동작합니다. 필요하면 지금 설치 링크를 사용해 주세요."
-                  installUrl={appInstallUrl}
+                  title="앱 전용 알람은 모바일에서 더 안정적입니다"
+                  description="앱 전용 모드는 브라우저보다 기기 알림에 더 안정적으로 동작합니다. 필요하면 지금 설치 링크를 사용해 주세요."
+                  bootstrap={installBootstrap}
+                  loading={installBootstrapLoading}
+                  warning={installBootstrapWarning}
                   className="rounded-[32px]"
                 />
-                <a
-                  href={appInstallUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-sky-300 hover:text-sky-700"
-                >
-                  <Download className="h-4 w-4" />
-                  APK 직접 열기
-                </a>
               </div>
             )}
 
@@ -1082,7 +1054,7 @@ const AddAlarmPage: React.FC = () => {
               <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
                 <p className="flex items-start gap-2">
                   <Clock3 className="mt-0.5 h-4 w-4 text-slate-400" />
-                  초안은 자동 저장되며, 저장 완료 후에는 로컬 초안을 비웁니다.
+                  초안은 자동 저장되며 저장 완료 이후에는 로컬 초안을 비웁니다.
                 </p>
                 <p className="flex items-start gap-2">
                   {isConnected ? (
@@ -1090,11 +1062,11 @@ const AddAlarmPage: React.FC = () => {
                   ) : (
                     <CloudOff className="mt-0.5 h-4 w-4 text-slate-400" />
                   )}
-                  Google 연결이 없어도 `앱 전용` 모드로 저장은 가능합니다.
+                  Google 연결이 없어도 `앱 전용` 모드로 로컬 일정을 관리할 수 있습니다.
                 </p>
                 <p className="flex items-start gap-2">
                   <Smartphone className="mt-0.5 h-4 w-4 text-slate-400" />
-                  모바일에서 앱 설치가 되어 있으면 앱 전용 알람 전달 안정성이 가장 높습니다.
+                  모바일에서 앱이 설치되어 있으면 앱 전용 알람 전달 안정성이 더 높습니다.
                 </p>
               </div>
             </Card>

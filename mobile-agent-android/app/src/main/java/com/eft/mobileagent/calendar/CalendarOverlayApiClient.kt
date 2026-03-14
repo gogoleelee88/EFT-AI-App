@@ -49,6 +49,21 @@ class CalendarOverlayApiClient(baseUrl: String) {
         return json.optJSONArray("items").toJsonObjectList()
     }
 
+    fun fetchPlannerWorkspace(
+        dateIso: String,
+        accessToken: String?,
+    ): JSONObject {
+        val encoded = URLEncoder.encode(dateIso, Charsets.UTF_8.name())
+        val (statusCode, body) = get(
+            path = "/api/spec/plan/workspace?active_date=$encoded",
+            accessToken = accessToken,
+        )
+        if (statusCode !in 200..299) {
+            throw IllegalStateException("HTTP $statusCode: $body")
+        }
+        return JSONObject(body)
+    }
+
     fun fetchGoogleConnectionState(accessToken: String?): GoogleCalendarConnectionState {
         val (statusCode, body) = get(
             path = "/api/spec/google/mobile/status",

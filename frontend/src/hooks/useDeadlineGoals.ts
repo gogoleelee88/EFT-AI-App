@@ -48,33 +48,36 @@ const maybeShowNotification = async (title: string, body: string) => {
   }
 };
 
-export function useDeadlineGoals(userId?: string) {
+export function useDeadlineGoals(
+  userId?: string,
+  focusDate: string = todayInKoreaIso()
+) {
   const [plans, setPlans] = useState<DeadlineGoalPlan[]>([]);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!userId) {
       setPlans([]);
-      return [];
+      return [] as DeadlineGoalPlan[];
     }
-    const nextPlans = listDeadlineGoals(userId);
+    const nextPlans = await listDeadlineGoals(userId);
     setPlans(nextPlans);
     return nextPlans;
   }, [userId]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !userId) return;
 
     const handleStorageChange = () => {
-      refresh();
+      void refresh();
     };
     const handleCustomChange = (event: Event) => {
       const detail = (event as CustomEvent<{ userId?: string }>).detail;
       if (!detail?.userId || detail.userId === userId) {
-        refresh();
+        void refresh();
       }
     };
 
@@ -95,28 +98,38 @@ export function useDeadlineGoals(userId?: string) {
   useEffect(() => {
     if (typeof window === "undefined" || !userId) return;
 
-    const now = Date.now();
-    const sessionKey = `${TOUCH_SESSION_PREFIX}:${userId}`;
-    const lastTouchedAt = Number(window.sessionStorage.getItem(sessionKey) || "0");
-    if (now - lastTouchedAt < TOUCH_INTERVAL_MS) return;
+    let cancelled = false;
+    void (async () => {
+      const now = Date.now();
+      const sessionKey = `${TOUCH_SESSION_PREFIX}:${userId}`;
+      const lastTouchedAt = Number(window.sessionStorage.getItem(sessionKey) || "0");
+      if (now - lastTouchedAt < TOUCH_INTERVAL_MS) return;
 
-    const touchedPlans = touchGoalPlans(listDeadlineGoals(userId));
-    if (touchedPlans.length > 0) {
-      writeDeadlineGoals(userId, touchedPlans);
-      setPlans(touchedPlans);
-    }
-    window.sessionStorage.setItem(sessionKey, String(now));
+      const currentPlans = await listDeadlineGoals(userId);
+      const touchedPlans = touchGoalPlans(currentPlans);
+      if (touchedPlans.length > 0) {
+        await writeDeadlineGoals(userId, touchedPlans);
+        if (!cancelled) {
+          setPlans(touchedPlans);
+        }
+      }
+      window.sessionStorage.setItem(sessionKey, String(now));
 
-    const todayIso = todayInKoreaIso();
-    touchedPlans.forEach((plan) => {
-      const driftMessage = buildGoalDriftMessage(plan, todayIso);
-      if (!driftMessage) return;
-      const noticeKey = `${DRIFT_NOTICE_PREFIX}:${userId}:${plan.id}:${todayIso}`;
-      if (window.localStorage.getItem(noticeKey)) return;
-      const notification = buildLocalGoalNotification(plan, todayIso);
-      void maybeShowNotification(notification.title, notification.body);
-      window.localStorage.setItem(noticeKey, new Date().toISOString());
-    });
+      const todayIso = todayInKoreaIso();
+      touchedPlans.forEach((plan) => {
+        const driftMessage = buildGoalDriftMessage(plan, todayIso);
+        if (!driftMessage) return;
+        const noticeKey = `${DRIFT_NOTICE_PREFIX}:${userId}:${plan.id}:${todayIso}`;
+        if (window.localStorage.getItem(noticeKey)) return;
+        const notification = buildLocalGoalNotification(plan, todayIso);
+        void maybeShowNotification(notification.title, notification.body);
+        window.localStorage.setItem(noticeKey, new Date().toISOString());
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   const requestNotificationPermission = useCallback(async () => {
@@ -127,57 +140,56 @@ export function useDeadlineGoals(userId?: string) {
   }, []);
 
   const saveGoal = useCallback(
-    (draft: DeadlineGoalDraft, existingPlan?: DeadlineGoalPlan | null) => {
+    async (draft: DeadlineGoalDraft, existingPlan?: DeadlineGoalPlan | null) => {
       if (!userId) return null;
       const nextPlan = createDeadlineGoalPlan(draft, { existingPlan });
-      upsertDeadlineGoal(userId, nextPlan);
-      setPlans(listDeadlineGoals(userId));
+      await upsertDeadlineGoal(userId, nextPlan);
+      await refresh();
       return nextPlan;
     },
-    [userId]
+    [refresh, userId]
   );
 
   const toggleItem = useCallback(
-    (planId: string, itemId: string) => {
+    async (planId: string, itemId: string) => {
       if (!userId) return null;
-      const updated = updateDeadlineGoal(userId, planId, (plan) =>
+      const updated = await updateDeadlineGoal(userId, planId, (plan) =>
         toggleGoalChecklistItem(plan, itemId)
       );
-      setPlans(listDeadlineGoals(userId));
+      await refresh();
       return updated;
     },
-    [userId]
+    [refresh, userId]
   );
 
   const pullForward = useCallback(
-    (planId: string, dateIso: string = todayInKoreaIso()) => {
+    async (planId: string, dateIso: string = focusDate) => {
       if (!userId) return null;
-      const updated = updateDeadlineGoal(userId, planId, (plan) =>
+      const updated = await updateDeadlineGoal(userId, planId, (plan) =>
         pullGoalItemsForward(plan, dateIso)
       );
-      setPlans(listDeadlineGoals(userId));
+      await refresh();
       return updated;
     },
-    [userId]
+    [focusDate, refresh, userId]
   );
 
   const removeGoal = useCallback(
-    (planId: string) => {
+    async (planId: string) => {
       if (!userId) return;
-      deleteDeadlineGoal(userId, planId);
-      setPlans(listDeadlineGoals(userId));
+      await deleteDeadlineGoal(userId, planId);
+      await refresh();
     },
-    [userId]
+    [refresh, userId]
   );
 
-  const todayIso = todayInKoreaIso();
   const todayHeadline = useMemo(
-    () => buildTodayGoalHeadline(plans, todayIso),
-    [plans, todayIso]
+    () => buildTodayGoalHeadline(plans, focusDate),
+    [focusDate, plans]
   );
   const summaries = useMemo(
-    () => plans.map((plan) => buildGoalSummary(plan, todayIso)),
-    [plans, todayIso]
+    () => plans.map((plan) => buildGoalSummary(plan, focusDate)),
+    [focusDate, plans]
   );
 
   return {

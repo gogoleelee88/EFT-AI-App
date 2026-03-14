@@ -59,6 +59,11 @@
             android:launchMode="singleTop" />
 
         <activity
+            android:name=".planner.PlannerWebViewActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
+        <activity
             android:name=".google.GoogleOAuthCallbackActivity"
             android:exported="true">
             <intent-filter>

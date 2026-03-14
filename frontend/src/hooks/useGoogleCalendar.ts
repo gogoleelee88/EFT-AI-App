@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PrivacyMode } from "../types/privacy";
-import { resolvePrivacyEvent } from "../services/privacySync";
+import { primePrivacySyncState, resolvePrivacyEvent } from "../services/privacySync";
 import { resolveBackendUrl } from "@/config/api";
 import { todayInKoreaIso } from "../utils/koreaTime";
+import { useAuth } from "./useAuth";
 
 export interface GoogleCalendarEvent {
   id: string;
@@ -47,6 +48,7 @@ interface UseGoogleCalendarResult {
 }
 
 export function useGoogleCalendar(): UseGoogleCalendarResult {
+  const { user } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -114,6 +116,9 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     setLoading(true);
     setError(null);
     try {
+      if (user?.uid) {
+        await primePrivacySyncState(user.uid);
+      }
       const url = resolveBackendUrl(`/api/spec/google/events?date=${encodeURIComponent(dateIso.slice(0, 10))}`);
       const res = await fetch(url, { credentials: "include" });
       if (res.status === 401 || res.status === 403) {
@@ -125,7 +130,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
       }
       const data = (await res.json()) as GoogleCalendarEvent[];
       const decorated = data.map((event) => {
-        const resolved = resolvePrivacyEvent(event);
+        const resolved = resolvePrivacyEvent(event, user?.uid);
         if (event.privacy_mode === "MASKED" && event.display_title) {
           return {
             ...resolved,
@@ -144,7 +149,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.uid]);
 
   const exportToGoogle = useCallback(
     async (args: {

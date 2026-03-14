@@ -90,6 +90,49 @@ object OverlayMapper {
         )
     }
 
+    fun fromPlannerWorkspace(
+        workspace: JSONObject,
+        dateIso: String,
+    ): List<OverlayItem> {
+        val policiesByAssignmentId = mutableMapOf<String, JSONObject>()
+        val policiesByTaskUid = mutableMapOf<String, JSONObject>()
+        val executionStatesByAssignmentId = mutableMapOf<String, JSONObject>()
+
+        workspace.optJSONArray("alarm_policies").forEachObject { policy ->
+            val assignmentId = policy.optString("assignment_id", "").trim()
+            if (assignmentId.isNotBlank() && !policiesByAssignmentId.containsKey(assignmentId)) {
+                policiesByAssignmentId[assignmentId] = policy
+            }
+
+            val taskUid = policy.optString("task_uid", "").trim()
+            if (taskUid.isNotBlank() && !policiesByTaskUid.containsKey(taskUid)) {
+                policiesByTaskUid[taskUid] = policy
+            }
+        }
+
+        workspace.optJSONArray("execution_states").forEachObject { state ->
+            val assignmentId = state.optString("assignment_id", "").trim()
+            if (assignmentId.isNotBlank() && !executionStatesByAssignmentId.containsKey(assignmentId)) {
+                executionStatesByAssignmentId[assignmentId] = state
+            }
+        }
+
+        val items = mutableListOf<OverlayItem>()
+        workspace.optJSONArray("daily_assignments").forEachObject { assignment ->
+            val overlayItem = fromPlannerAssignment(
+                assignment = assignment,
+                dateIso = dateIso,
+                policiesByAssignmentId = policiesByAssignmentId,
+                policiesByTaskUid = policiesByTaskUid,
+                executionStatesByAssignmentId = executionStatesByAssignmentId,
+            )
+            if (overlayItem != null) {
+                items += overlayItem
+            }
+        }
+        return items
+    }
+
     private fun normalizeMissionType(missions: JSONArray?): String? {
         val firstEnabled = firstEnabledMission(missions) ?: return null
         return when ((firstEnabled.optString("type", "")).trim().lowercase()) {
@@ -140,10 +183,120 @@ object OverlayMapper {
         }.getOrNull()
     }
 
+    private fun fromPlannerAssignment(
+        assignment: JSONObject,
+        dateIso: String,
+        policiesByAssignmentId: Map<String, JSONObject>,
+        policiesByTaskUid: Map<String, JSONObject>,
+        executionStatesByAssignmentId: Map<String, JSONObject>,
+    ): OverlayItem? {
+        val assignmentId = assignment.optString("assignment_id", "").trim()
+        val taskUid = assignment.optString("task_uid", "").trim()
+        val policy = policiesByAssignmentId[assignmentId]
+            ?: policiesByTaskUid[taskUid]
+        val timeRaw = policy?.optString("start_time", "")?.trim().orEmpty()
+        if (timeRaw.isBlank()) return null
+
+        val date = runCatching { LocalDate.parse(dateIso) }.getOrNull() ?: return null
+        val time = runCatching { LocalTime.parse(timeRaw) }.getOrNull() ?: return null
+        val startDateTime = LocalDateTime.of(date, time)
+        val startMillis = startDateTime.atZone(koreaZoneId).toInstant().toEpochMilli()
+        val endMillis = parsePlannerEndMillis(date, time, policy)
+        val sourceType = policy?.optString("source_type", "service")
+            .orEmpty()
+            .trim()
+            .lowercase()
+            .ifBlank { "service" }
+        val source = if (sourceType == "google") "google" else "service"
+        val title = assignment.optString("title", "").trim().ifBlank { "Planner item" }
+        val description = buildPlannerDescription(
+            assignment = assignment,
+            policy = policy,
+            executionState = executionStatesByAssignmentId[assignmentId],
+        )
+
+        return OverlayItem(
+            id = "planner:${assignmentId.ifBlank { taskUid.ifBlank { title } }}",
+            source = source,
+            sourceType = sourceType,
+            title = title,
+            startMillis = startMillis,
+            endMillis = endMillis,
+            taskUid = taskUid.ifBlank { null },
+            description = description,
+        )
+    }
+
+    private fun parsePlannerEndMillis(
+        date: LocalDate,
+        startTime: LocalTime,
+        policy: JSONObject?,
+    ): Long? {
+        val endRaw = policy?.optString("end_time", "")?.trim().orEmpty()
+        if (endRaw.isBlank()) return null
+
+        val endTime = runCatching { LocalTime.parse(endRaw) }.getOrNull() ?: return null
+        val endsNextDay = policy?.optBoolean("ends_next_day", false) ?: false
+        if (!endsNextDay && !endTime.isAfter(startTime)) {
+            return null
+        }
+
+        val endDateTime = LocalDateTime.of(
+            if (endsNextDay) date.plusDays(1) else date,
+            endTime,
+        )
+        return endDateTime.atZone(koreaZoneId).toInstant().toEpochMilli()
+    }
+
+    private fun buildPlannerDescription(
+        assignment: JSONObject,
+        policy: JSONObject?,
+        executionState: JSONObject?,
+    ): String? {
+        val parts = mutableListOf<String>()
+        val status = executionState?.optString("status", "")
+            ?.trim()
+            ?.ifBlank { null }
+            ?: assignment.optString("status", "").trim().ifBlank { null }
+            ?: policy?.optString("state", "")?.trim()?.ifBlank { null }
+        formatPlannerStatus(status)?.let(parts::add)
+
+        val plannedMinutes = assignment.optInt("planned_minutes", 0)
+        if (plannedMinutes > 0) {
+            parts += "${plannedMinutes}m"
+        }
+
+        return parts.joinToString(" | ").ifBlank { null }
+    }
+
+    private fun formatPlannerStatus(raw: String?): String? {
+        val normalized = raw?.trim().orEmpty()
+        if (normalized.isBlank()) {
+            return null
+        }
+        return normalized
+            .split('_')
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { token ->
+                token.lowercase().replaceFirstChar { ch ->
+                    if (ch.isLowerCase()) ch.titlecase() else ch.toString()
+                }
+            }
+            .ifBlank { null }
+    }
+
     private fun JSONObject.optDoubleOrNull(key: String): Double? {
         if (!has(key) || isNull(key)) return null
         val value = optDouble(key, Double.NaN)
         if (value.isNaN() || value.isInfinite()) return null
         return value
+    }
+
+    private inline fun JSONArray?.forEachObject(block: (JSONObject) -> Unit) {
+        val array = this ?: return
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            block(item)
+        }
     }
 }

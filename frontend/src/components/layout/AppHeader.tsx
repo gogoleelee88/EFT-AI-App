@@ -1,17 +1,20 @@
 import { CheckCircle2, Egg, Sparkles } from "lucide-react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { useDeadlineGoals } from "../../hooks/useDeadlineGoals";
 import useInstallPrompt from "../../hooks/useInstallPrompt";
 import { useAuth } from "../../hooks/useAuth";
+import { buildPlannerHref } from "../../utils/plannerRoutes";
 
 const LINK_CLASS =
   "rounded-full px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900";
 
 export default function AppHeader() {
+  const location = useLocation();
   const { supported, promptInstall } = useInstallPrompt();
   const { user } = useAuth();
   const { todayHeadline, toggleItem, pullForward } = useDeadlineGoals(user?.uid);
+  const plannerSearchParams = location.pathname === "/planner" ? location.search : undefined;
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
@@ -25,23 +28,15 @@ export default function AppHeader() {
                   `${LINK_CLASS} ${isActive ? "bg-sky-50 text-sky-700" : ""}`
                 }
               >
-                시그널
+                신호함
               </NavLink>
               <NavLink
-                to="/add-alarm"
+                to={buildPlannerHref("alarm", { baseSearchParams: plannerSearchParams })}
                 className={({ isActive }) =>
                   `${LINK_CLASS} ${isActive ? "bg-sky-50 text-sky-700" : ""}`
                 }
               >
-                알람
-              </NavLink>
-              <NavLink
-                to="/deadline-planner"
-                className={({ isActive }) =>
-                  `${LINK_CLASS} ${isActive ? "bg-sky-50 text-sky-700" : ""}`
-                }
-              >
-                마감 플랜
+                플래너
               </NavLink>
               <NavLink
                 to="/my-page"
@@ -103,7 +98,9 @@ export default function AppHeader() {
                 </div>
 
                 <Link
-                  to="/deadline-planner"
+                  to={buildPlannerHref("deadline", {
+                    baseSearchParams: plannerSearchParams,
+                  })}
                   className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
                 >
                   전체 목표 보기
@@ -115,7 +112,9 @@ export default function AppHeader() {
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => toggleItem(todayHeadline.plan.id, item.id)}
+                    onClick={() => {
+                      void toggleItem(todayHeadline.plan.id, item.id);
+                    }}
                     className="flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-left transition hover:border-sky-300 hover:bg-sky-50"
                   >
                     <div
@@ -130,7 +129,7 @@ export default function AppHeader() {
                     <div className="flex-1">
                       <div className="text-sm font-medium text-slate-900">{item.title}</div>
                       <div className="mt-1 text-xs text-slate-500">
-                        {item.estMinutes}분 · {item.lane === "overdue" ? "이월됨" : "오늘 분량"}
+                        {item.estMinutes}분 · {item.lane === "overdue" ? "이월 분량" : "오늘 분량"}
                       </div>
                     </div>
                   </button>
@@ -159,12 +158,12 @@ export default function AppHeader() {
                       type="button"
                       onClick={() => {
                         if (window.confirm("내일 분량을 오늘로 당길까요?")) {
-                          pullForward(todayHeadline.plan.id);
+                          void pullForward(todayHeadline.plan.id);
                         }
                       }}
                       className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
                     >
-                      내일 분량 당겨오기
+                      내일 분량 당기기
                     </button>
                   </div>
                 )}

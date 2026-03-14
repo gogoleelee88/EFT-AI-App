@@ -49,12 +49,12 @@ function normalizeAlarm(alarm: AlarmConfig | null): AlarmConfig | null {
   };
 }
 
-export function usePlanWizard() {
-  const today = todayInKoreaIso();
+export function usePlanWizard(initialDate: string = todayInKoreaIso()) {
+  const plannerDate = initialDate || todayInKoreaIso();
 
   const [state, setState] = useState<PlanWizardState>({
     step: 1,
-    date: today,
+    date: plannerDate,
     mode: 100,
     task: null,
     microAction: null,
@@ -264,7 +264,7 @@ export function usePlanWizard() {
   const reset = () => {
     setState({
       step: 1,
-      date: today,
+      date: plannerDate,
       mode: 100,
       task: null,
       microAction: null,

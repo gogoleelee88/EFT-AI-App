@@ -1,10 +1,10 @@
+import {
+  loadPlannerClientState,
+  updatePlannerClientState,
+} from "./plannerClientStateService";
 import type { DeadlineGoalPlan } from "../types/deadlinePlanner";
 
 export const DEADLINE_GOALS_CHANGED_EVENT = "eft:deadline-goals:changed";
-
-const STORAGE_PREFIX = "eft.deadline-goals.v1";
-
-const buildStorageKey = (userId: string) => `${STORAGE_PREFIX}:${userId}`;
 
 const sortPlans = (plans: DeadlineGoalPlan[]) =>
   [...plans].sort((left, right) => {
@@ -23,39 +23,43 @@ const emitChanged = (userId: string) => {
   );
 };
 
-export const listDeadlineGoals = (userId: string): DeadlineGoalPlan[] => {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(buildStorageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as DeadlineGoalPlan[];
-    return sortPlans(Array.isArray(parsed) ? parsed : []);
-  } catch {
-    return [];
-  }
+export const listDeadlineGoals = async (userId: string): Promise<DeadlineGoalPlan[]> => {
+  if (!userId) return [];
+  const snapshot = await loadPlannerClientState(userId);
+  return sortPlans(snapshot.deadline_goals);
 };
 
-export const writeDeadlineGoals = (userId: string, plans: DeadlineGoalPlan[]) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(buildStorageKey(userId), JSON.stringify(sortPlans(plans)));
+export const writeDeadlineGoals = async (
+  userId: string,
+  plans: DeadlineGoalPlan[]
+): Promise<DeadlineGoalPlan[]> => {
+  if (!userId) return [];
+  const snapshot = await updatePlannerClientState(userId, (current) => ({
+    ...current,
+    deadline_goals: sortPlans(plans),
+  }));
   emitChanged(userId);
+  return sortPlans(snapshot.deadline_goals);
 };
 
-export const upsertDeadlineGoal = (userId: string, nextPlan: DeadlineGoalPlan) => {
-  const existing = listDeadlineGoals(userId);
+export const upsertDeadlineGoal = async (
+  userId: string,
+  nextPlan: DeadlineGoalPlan
+): Promise<DeadlineGoalPlan> => {
+  const existing = await listDeadlineGoals(userId);
   const nextPlans = existing.some((plan) => plan.id === nextPlan.id)
     ? existing.map((plan) => (plan.id === nextPlan.id ? nextPlan : plan))
     : [nextPlan, ...existing];
-  writeDeadlineGoals(userId, nextPlans);
+  await writeDeadlineGoals(userId, nextPlans);
   return nextPlan;
 };
 
-export const updateDeadlineGoal = (
+export const updateDeadlineGoal = async (
   userId: string,
   planId: string,
   updater: (plan: DeadlineGoalPlan) => DeadlineGoalPlan
-) => {
-  const existing = listDeadlineGoals(userId);
+): Promise<DeadlineGoalPlan | null> => {
+  const existing = await listDeadlineGoals(userId);
   let updatedPlan: DeadlineGoalPlan | null = null;
   const nextPlans = existing.map((plan) => {
     if (plan.id !== planId) return plan;
@@ -63,11 +67,16 @@ export const updateDeadlineGoal = (
     return updatedPlan;
   });
   if (!updatedPlan) return null;
-  writeDeadlineGoals(userId, nextPlans);
+  await writeDeadlineGoals(userId, nextPlans);
   return updatedPlan;
 };
 
-export const deleteDeadlineGoal = (userId: string, planId: string) => {
-  const nextPlans = listDeadlineGoals(userId).filter((plan) => plan.id !== planId);
-  writeDeadlineGoals(userId, nextPlans);
+export const deleteDeadlineGoal = async (
+  userId: string,
+  planId: string
+): Promise<void> => {
+  const nextPlans = (await listDeadlineGoals(userId)).filter(
+    (plan) => plan.id !== planId
+  );
+  await writeDeadlineGoals(userId, nextPlans);
 };

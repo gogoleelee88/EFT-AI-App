@@ -164,3 +164,36 @@ class PlanDayWithMissionRequest(BaseModel):
     user_id: Optional[str] = None
     client_request_id: Optional[str] = None
     expected_version: Optional[int] = None
+
+
+class PlannerWorkspaceResponse(BaseModel):
+    workspace_id: str
+    user_id: str
+    timezone: str
+    active_date: date
+    version: int = 0
+    updated_at: Optional[str] = None
+    source: dict[str, Any] = Field(default_factory=dict)
+    deadlines: list[dict[str, Any]] = Field(default_factory=list)
+    goal_items: list[dict[str, Any]] = Field(default_factory=list)
+    daily_assignments: list[dict[str, Any]] = Field(default_factory=list)
+    alarm_policies: list[dict[str, Any]] = Field(default_factory=list)
+    execution_states: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PlannerClientStateResponse(BaseModel):
+    user_id: str
+    version: int = 0
+    updated_at: Optional[str] = None
+    deadline_goals: list[dict[str, Any]] = Field(default_factory=list)
+    privacy_mappings: list[dict[str, Any]] = Field(default_factory=list)
+    app_only_events: list[dict[str, Any]] = Field(default_factory=list)
+    add_alarm_draft: Optional[dict[str, Any]] = None
+
+
+class PlannerClientStateUpsertRequest(BaseModel):
+    expected_version: Optional[int] = None
+    deadline_goals: list[dict[str, Any]] = Field(default_factory=list)
+    privacy_mappings: list[dict[str, Any]] = Field(default_factory=list)
+    app_only_events: list[dict[str, Any]] = Field(default_factory=list)
+    add_alarm_draft: Optional[dict[str, Any]] = None

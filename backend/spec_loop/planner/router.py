@@ -7,19 +7,60 @@ from backend.database import get_db
 from backend.spec_loop.authz import get_current_user_spec
 from backend.spec_loop.models.day_plan import DayPlan
 from backend.spec_loop.planner.schemas import (
+    PlannerClientStateResponse,
+    PlannerClientStateUpsertRequest,
+    PlannerWorkspaceResponse,
     PlanDayRequest,
     PlanDayResponse,
     PlanDayWithMissionRequest,
 )
 from backend.spec_loop.planner.service import (
+    build_planner_workspace,
     create_or_update_day_plan,
     get_day_plan_by_date,
+    get_planner_client_state,
     restore_day_plan,
+    save_planner_client_state,
     save_day_with_mission,
     soft_delete_day_plan,
 )
 
 router = APIRouter(prefix="/plan", tags=["plan"])
+
+
+@router.get("/workspace", response_model=PlannerWorkspaceResponse)
+def get_planner_workspace(
+    active_date: date | None = Query(None, alias="active_date"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_spec),
+) -> PlannerWorkspaceResponse:
+    uid = str(getattr(user, "id", None) or getattr(user, "user_id", None) or "")
+    if not uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+    return build_planner_workspace(db=db, user_id=uid, active_date=active_date)
+
+
+@router.get("/client-state", response_model=PlannerClientStateResponse)
+def get_planner_client_state_endpoint(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_spec),
+) -> PlannerClientStateResponse:
+    uid = str(getattr(user, "id", None) or getattr(user, "user_id", None) or "")
+    if not uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+    return get_planner_client_state(db=db, user_id=uid)
+
+
+@router.put("/client-state", response_model=PlannerClientStateResponse)
+def put_planner_client_state_endpoint(
+    body: PlannerClientStateUpsertRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_spec),
+) -> PlannerClientStateResponse:
+    uid = str(getattr(user, "id", None) or getattr(user, "user_id", None) or "")
+    if not uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+    return save_planner_client_state(db=db, user_id=uid, body=body)
 
 
 @router.post("/day", response_model=PlanDayResponse)

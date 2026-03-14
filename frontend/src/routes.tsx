@@ -1,108 +1,133 @@
-import React from "react";
-import LoginPage from "./pages/LoginPage";
-import MobileLinkPage from "./pages/MobileLinkPage";
-import RootLanding from "./pages/RootLanding";
-import Dashboard from "./pages/Dashboard";
-import ARDemo from "./pages/ARDemo";
-import ARTest from "./pages/ARTest";
-// ARHolisticTest_게이밍네이션0128tsx 파일은 확장자가 없어 esbuild 오류 발생.
-// 파일명을 ARHolisticTest_게이밍네이션0128.tsx 로 바꾼 뒤 아래를 다시 사용하세요:
-// import ARHolisticTest from "./pages/ARHolisticTest_게이밍네이션0128";
-import ARHolisticTest from "./pages/ARHolisticTest";
-import ArCalibrationPage from "./pages/ArCalibrationPage";
-import { EFTStrictPage } from "./pages/EFTStrictPage";
-import AIChat from "./components/feature/AIChat";
-import EmotionSessionsListPage from "./pages/EmotionSessionsListPage";
-import EmotionSessionDetailPage from "./pages/EmotionSessionDetailPage";
-import InsightsPage from "./pages/InsightsPage";
-import InsightDetailPage from "./pages/InsightDetailPage";
-import TriModalMeditation from "./components/meditation/TriModalMeditation";
-import ARBoxBreathingPage from "./pages/ARBoxBreathingPage";
-import MeditationThemePage from "./pages/MeditationThemePage";
-import MeditationSessionPage from "./pages/MeditationSessionPage";
-import MeditationRunPage from "./pages/MeditationRunPage";
-import PlanDayPage from "./pages/PlanDayPage";
-import InstallGuidePage from "./pages/InstallGuidePage";
-import CheckinRebalancePage from "./pages/CheckinRebalancePage";
-import ResistanceEventPage from "./pages/ResistanceEventPage";
-import SignalInboxPage from "./pages/SignalInboxPage";
-import MorningBriefPage from "./pages/MorningBriefPage";
-import ExecuteBoardPage from "./pages/ExecuteBoardPage";
-import ChatRoomsPage from "./pages/ChatRoomsPage";
-import ChatRoomPage, { ChatInvitePage } from "./pages/ChatRoomPage";
-import DecisionMirrorPage from "./pages/DecisionMirrorPage";
-import DemoStartPage from "./pages/DemoStartPage";
-import DemoResultPage from "./pages/DemoResultPage";
-import FeedbackPage from "./pages/FeedbackPage";
-import SessionAdvicePage from "./pages/SessionAdvicePage";
-import RecoveryChoicePage from "./pages/RecoveryChoicePage";
-import MealCoachPage from "./pages/MealCoachPage";
-import MenstrualModulePage from "./pages/MenstrualModulePage";
-import MenstrualOutputsPage from "./pages/MenstrualOutputsPage";
-import OpenChatPage from "./pages/OpenChatPage";
-import ConditionHubPage from "./pages/ConditionHubPage";
-import ConditionModulePage from "./pages/ConditionModulePage";
-import WorkGuideDemoPage from "./pages/WorkGuideDemoPage";
-import AddAlarmPage from "./pages/AddAlarmPage";
-import DeadlinePlannerPage from "./pages/DeadlinePlannerPage";
-import MyPage from "./pages/MyPage";
-import { Routes, Route, Navigate } from "react-router-dom";
+import React, { Suspense, lazy } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+
+import { buildPlannerHref, type PlannerTab } from "./utils/plannerRoutes";
+
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const MobileLinkPage = lazy(() => import("./pages/MobileLinkPage"));
+const RootLanding = lazy(() => import("./pages/RootLanding"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const ARDemo = lazy(() => import("./pages/ARDemo"));
+const ARTest = lazy(() => import("./pages/ARTest"));
+const ARHolisticTest = lazy(() => import("./pages/ARHolisticTest"));
+const ArCalibrationPage = lazy(() => import("./pages/ArCalibrationPage"));
+const EFTStrictPage = lazy(() =>
+  import("./pages/EFTStrictPage").then((module) => ({ default: module.EFTStrictPage }))
+);
+const AIChat = lazy(() => import("./components/feature/AIChat"));
+const EmotionSessionsListPage = lazy(() => import("./pages/EmotionSessionsListPage"));
+const EmotionSessionDetailPage = lazy(() => import("./pages/EmotionSessionDetailPage"));
+const InsightsPage = lazy(() => import("./pages/InsightsPage"));
+const InsightDetailPage = lazy(() => import("./pages/InsightDetailPage"));
+const TriModalMeditation = lazy(() => import("./components/meditation/TriModalMeditation"));
+const ARBoxBreathingPage = lazy(() => import("./pages/ARBoxBreathingPage"));
+const MeditationThemePage = lazy(() => import("./pages/MeditationThemePage"));
+const MeditationSessionPage = lazy(() => import("./pages/MeditationSessionPage"));
+const MeditationRunPage = lazy(() => import("./pages/MeditationRunPage"));
+const PlannerPage = lazy(() => import("./pages/PlannerPage"));
+const InstallGuidePage = lazy(() => import("./pages/InstallGuidePage"));
+const CheckinRebalancePage = lazy(() => import("./pages/CheckinRebalancePage"));
+const ResistanceEventPage = lazy(() => import("./pages/ResistanceEventPage"));
+const SignalInboxPage = lazy(() => import("./pages/SignalInboxPage"));
+const MorningBriefPage = lazy(() => import("./pages/MorningBriefPage"));
+const ExecuteBoardPage = lazy(() => import("./pages/ExecuteBoardPage"));
+const ChatRoomsPage = lazy(() => import("./pages/ChatRoomsPage"));
+const ChatRoomPage = lazy(() => import("./pages/ChatRoomPage"));
+const ChatInvitePage = lazy(() =>
+  import("./pages/ChatRoomPage").then((module) => ({ default: module.ChatInvitePage }))
+);
+const DecisionMirrorPage = lazy(() => import("./pages/DecisionMirrorPage"));
+const DemoStartPage = lazy(() => import("./pages/DemoStartPage"));
+const DemoResultPage = lazy(() => import("./pages/DemoResultPage"));
+const FeedbackPage = lazy(() => import("./pages/FeedbackPage"));
+const SessionAdvicePage = lazy(() => import("./pages/SessionAdvicePage"));
+const RecoveryChoicePage = lazy(() => import("./pages/RecoveryChoicePage"));
+const MealCoachPage = lazy(() => import("./pages/MealCoachPage"));
+const MenstrualModulePage = lazy(() => import("./pages/MenstrualModulePage"));
+const MenstrualOutputsPage = lazy(() => import("./pages/MenstrualOutputsPage"));
+const OpenChatPage = lazy(() => import("./pages/OpenChatPage"));
+const ConditionHubPage = lazy(() => import("./pages/ConditionHubPage"));
+const ConditionModulePage = lazy(() => import("./pages/ConditionModulePage"));
+const WorkGuideDemoPage = lazy(() => import("./pages/WorkGuideDemoPage"));
+const MyPage = lazy(() => import("./pages/MyPage"));
+
+const RouteFallback: React.FC = () => (
+  <div className="flex min-h-[40vh] items-center justify-center px-6">
+    <div className="rounded-3xl border border-slate-200 bg-white px-5 py-4 text-sm font-medium text-slate-600 shadow-sm">
+      Loading page...
+    </div>
+  </div>
+);
+
+const LegacyPlannerRedirect: React.FC<{ tab?: PlannerTab }> = ({ tab = "alarm" }) => {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={buildPlannerHref(tab, { baseSearchParams: location.search })}
+      replace
+      state={location.state}
+    />
+  );
+};
 
 export default function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<RootLanding />} />
-      <Route path="/mobile-link" element={<MobileLinkPage />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/plan/day" element={<PlanDayPage />} />
-      <Route path="/profile-setup" element={<MyPage />} />
-      <Route path="/my-page" element={<MyPage />} />
-      <Route path="/add-alarm" element={<AddAlarmPage />} />
-      <Route path="/deadline-planner" element={<DeadlinePlannerPage />} />
-      <Route path="/signal-inbox" element={<SignalInboxPage />} />
-      <Route path="/morning-brief" element={<MorningBriefPage />} />
-      <Route path="/execute-board" element={<ExecuteBoardPage />} />
-      <Route path="/checkin" element={<CheckinRebalancePage />} />
-      <Route path="/condition" element={<ConditionHubPage />} />
-      <Route path="/condition/module/:metricKey" element={<ConditionModulePage />} />
-      <Route path="/resistance" element={<ResistanceEventPage />} />
-      <Route path="/recover" element={<RecoveryChoicePage />} />
-      <Route path="/eft-strict" element={<EFTStrictPage />} />
-      <Route path="/ai-chat" element={<AIChat />} />
-      <Route path="/demo" element={<DemoStartPage />} />
-      <Route path="/demo/result" element={<DemoResultPage />} />
-      <Route path="/feedback" element={<FeedbackPage />} />
-      <Route path="/session/advice" element={<SessionAdvicePage />} />
-      <Route path="/meal-coach/*" element={<MealCoachPage />} />
-      <Route path="/menstrual" element={<MenstrualModulePage />} />
-      <Route path="/menstrual/outputs" element={<MenstrualOutputsPage />} />
-      <Route path="/openchat" element={<OpenChatPage />} />
-      <Route path="/work-guide-demo" element={<WorkGuideDemoPage />} />
-      <Route path="/emotion-sessions" element={<EmotionSessionsListPage />} />
-      <Route path="/emotion-sessions/:id" element={<EmotionSessionDetailPage />} />
-      <Route path="/insights" element={<InsightsPage />} />
-      <Route path="/insights/:id" element={<InsightDetailPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/auth/signup" element={<LoginPage />} />
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/" element={<RootLanding />} />
+        <Route path="/mobile-link" element={<MobileLinkPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/planner" element={<PlannerPage />} />
+        <Route path="/plan/day" element={<LegacyPlannerRedirect tab="today" />} />
+        <Route path="/profile-setup" element={<MyPage />} />
+        <Route path="/my-page" element={<MyPage />} />
+        <Route path="/add-alarm" element={<LegacyPlannerRedirect tab="alarm" />} />
+        <Route path="/deadline-planner" element={<LegacyPlannerRedirect tab="deadline" />} />
+        <Route path="/signal-inbox" element={<SignalInboxPage />} />
+        <Route path="/morning-brief" element={<MorningBriefPage />} />
+        <Route path="/execute-board" element={<ExecuteBoardPage />} />
+        <Route path="/checkin" element={<CheckinRebalancePage />} />
+        <Route path="/condition" element={<ConditionHubPage />} />
+        <Route path="/condition/module/:metricKey" element={<ConditionModulePage />} />
+        <Route path="/resistance" element={<ResistanceEventPage />} />
+        <Route path="/recover" element={<RecoveryChoicePage />} />
+        <Route path="/eft-strict" element={<EFTStrictPage />} />
+        <Route path="/ai-chat" element={<AIChat />} />
+        <Route path="/demo" element={<DemoStartPage />} />
+        <Route path="/demo/result" element={<DemoResultPage />} />
+        <Route path="/feedback" element={<FeedbackPage />} />
+        <Route path="/session/advice" element={<SessionAdvicePage />} />
+        <Route path="/meal-coach/*" element={<MealCoachPage />} />
+        <Route path="/menstrual" element={<MenstrualModulePage />} />
+        <Route path="/menstrual/outputs" element={<MenstrualOutputsPage />} />
+        <Route path="/openchat" element={<OpenChatPage />} />
+        <Route path="/work-guide-demo" element={<WorkGuideDemoPage />} />
+        <Route path="/emotion-sessions" element={<EmotionSessionsListPage />} />
+        <Route path="/emotion-sessions/:id" element={<EmotionSessionDetailPage />} />
+        <Route path="/insights" element={<InsightsPage />} />
+        <Route path="/insights/:id" element={<InsightDetailPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/signup" element={<LoginPage />} />
 
-      <Route path="/chat/rooms" element={<ChatRoomsPage />} />
-      <Route path="/chat/rooms/:roomId" element={<ChatRoomPage />} />
-      <Route path="/chat/rooms/:roomId/decision-mirror" element={<DecisionMirrorPage />} />
-      <Route path="/chat/invite/:inviteToken" element={<ChatInvitePage />} />
+        <Route path="/chat/rooms" element={<ChatRoomsPage />} />
+        <Route path="/chat/rooms/:roomId" element={<ChatRoomPage />} />
+        <Route path="/chat/rooms/:roomId/decision-mirror" element={<DecisionMirrorPage />} />
+        <Route path="/chat/invite/:inviteToken" element={<ChatInvitePage />} />
 
-      <Route path="/ar-demo" element={<ARDemo />} />
-      <Route path="/ar-test" element={<ARTest />} />
-      <Route path="/ar-holistic" element={<ARHolisticTest />} />
-      <Route path="/eftar" element={<ARHolisticTest />} />
-      <Route path="/ar-box-breathing" element={<ARBoxBreathingPage />} />
-      <Route path="/ar-calibration" element={<ArCalibrationPage />} />
+        <Route path="/ar-demo" element={<ARDemo />} />
+        <Route path="/ar-test" element={<ARTest />} />
+        <Route path="/ar-holistic" element={<ARHolisticTest />} />
+        <Route path="/eftar" element={<ARHolisticTest />} />
+        <Route path="/ar-box-breathing" element={<ARBoxBreathingPage />} />
+        <Route path="/ar-calibration" element={<ArCalibrationPage />} />
 
-      <Route path="/meditation" element={<TriModalMeditation />} />
-      <Route path="/meditation/theme" element={<MeditationThemePage />} />
-      <Route path="/meditation/session" element={<MeditationSessionPage />} />
-      <Route path="/meditation/run" element={<MeditationRunPage />} />
-      <Route path="/install-guide" element={<InstallGuidePage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="/meditation" element={<TriModalMeditation />} />
+        <Route path="/meditation/theme" element={<MeditationThemePage />} />
+        <Route path="/meditation/session" element={<MeditationSessionPage />} />
+        <Route path="/meditation/run" element={<MeditationRunPage />} />
+        <Route path="/install-guide" element={<InstallGuidePage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
