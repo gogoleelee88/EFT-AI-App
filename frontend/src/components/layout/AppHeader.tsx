@@ -59,8 +59,7 @@ export default function AppHeader() {
                 <button
                   type="button"
                   onClick={async () => {
-                    const result = await promptInstall();
-                    console.log("PWA install outcome:", result?.outcome);
+                    await promptInstall();
                   }}
                   className="rounded-full bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-sky-700"
                 >
