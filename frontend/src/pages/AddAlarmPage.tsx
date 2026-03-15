@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Lock,
   ShieldCheck,
+  Sparkles,
   Smartphone,
 } from "lucide-react";
 import { flushSync } from "react-dom";
@@ -113,6 +114,12 @@ const hasDraftContent = (draft: AddAlarmDraft) =>
 const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
   if (resistanceLevel == null) return "시작 저항 보통";
   return resistanceLevel >= 7 ? "시작 저항 높음" : "시작 저항 보통";
+};
+
+const STUDIO_PRIVACY_LABELS: Record<PrivacyMode, string> = {
+  NORMAL: "Visible sync",
+  MASKED: "Masked sync",
+  APP_ONLY: "App-only private",
 };
 
 const StepPill: React.FC<{
@@ -277,6 +284,20 @@ const AddAlarmPage: React.FC<{ activeDate?: string }> = ({ activeDate }) => {
       (entry) => entry.startMinutes < endMinutes && entry.endMinutes > startMinutes
     );
   }, [selectedWindow, timelineEntries, wizard.state.alarm?.ends_next_day]);
+
+  const currentStepMeta = STEP_META.find((item) => item.step === wizard.step) ?? STEP_META[0];
+  const activePrivacyMode = wizard.state.privacy_mode ?? completedPrivacyMode;
+  const syncStatusLabel = googleLoading
+    ? "Syncing now"
+    : isConnected
+    ? "Google calendar live"
+    : "Private app-only timeline";
+  const launchWindowLabel = selectedWindow
+    ? `${selectedWindow.startLabel} - ${selectedWindow.endLabel}`
+    : wizard.state.alarm?.start_time || wizard.state.alarm?.time || "Window not locked";
+  const draftStatusLabel = draftSavedAt
+    ? `Protected ${formatDateTime(draftSavedAt)}`
+    : "No protected draft";
 
   const applyDraft = (draft: AddAlarmDraft) => {
     flushSync(() => {
@@ -584,47 +605,124 @@ const AddAlarmPage: React.FC<{ activeDate?: string }> = ({ activeDate }) => {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_right,_rgba(14,165,233,0.16),_transparent_26%),linear-gradient(180deg,_#f9fcff_0%,_#f4f9ff_44%,_#f8fafc_100%)] pb-28">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-4 lg:grid-cols-[1.18fr_0.82fr]">
-          <Card className="rounded-[32px] border-slate-200 bg-white/90 p-6 backdrop-blur">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <Card className="overflow-hidden rounded-[36px] border-slate-200 bg-[linear-gradient(135deg,_rgba(14,165,233,0.12),_rgba(255,255,255,0.98)_38%,_rgba(15,23,42,0.04))] p-6 backdrop-blur">
+            <div className="grid gap-5 xl:grid-cols-[1.06fr_0.94fr] xl:items-end">
               <div className="space-y-4">
-                <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
+                <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
                   <BellPlus className="h-3.5 w-3.5" />
-                  Production Alarm Builder
+                  Alarm Studio
                 </span>
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-                    Add Alarm
+                  <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-[2.3rem]">
+                    Design a launch-grade execution block
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                    작업, 미세 행동, 검증 미션, 동기화 정책을 분리해서 단계별로
-                    설정하는 실행 전용 페이지입니다.
+                    Alarm Studio is now a dedicated production flow. It turns intent into an
+                    executable block with timing, privacy mode, sync strategy, and mission logic
+                    tuned for real-world delivery.
                   </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Blueprint
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      Task, trigger, and mission stack
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Shape the block from action design down to resistance handling.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Sync Policy
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      {isConnected ? "Google calendar is live" : "App-only mode is ready"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Choose between visible sync, masked sync, or app-only delivery.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Launch State
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      {draftSavedAt ? "Draft protected locally" : "Fresh studio session"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Resume safely after interruption without losing timing or mission state.
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                    Sync
+              <div className="grid gap-3">
+                <div className="rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,_#020617_0%,_#111827_52%,_#0f172a_100%)] p-5 text-white shadow-[0_24px_60px_rgba(15,23,42,0.32)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-sky-200">
+                        Control Deck
+                      </div>
+                      <div className="mt-2 text-2xl font-semibold">Stage {wizard.step}</div>
+                      <div className="mt-1 text-sm text-slate-300">
+                        {currentStepMeta.label} · {currentStepMeta.summary}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-3">
+                      <Sparkles className="h-5 w-5 text-sky-200" />
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {isConnected ? "Google 연결됨" : "앱 전용 저장"}
+
+                  <div className="mt-5 grid gap-3 text-xs text-slate-300">
+                    <div className="rounded-2xl bg-white/5 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                        Sync Layer
+                      </div>
+                      <div className="mt-1 text-sm text-white">{syncStatusLabel}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                        Launch Window
+                      </div>
+                      <div className="mt-1 text-sm text-white">{launchWindowLabel}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                        Draft Guard
+                      </div>
+                      <div className="mt-1 text-sm text-white">{draftStatusLabel}</div>
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                    Date
+
+                <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
+                  <div className="rounded-[24px] border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                      Privacy
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {STUDIO_PRIVACY_LABELS[activePrivacyMode]}
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {wizard.state.date}
+                  <div className="rounded-[24px] border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                      Date
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {wizard.state.date}
+                    </div>
                   </div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                    Draft
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900">
-                    {draftSavedAt ? "자동 저장됨" : "초안 없음"}
+                  <div className="rounded-[24px] border border-slate-200 bg-white/80 px-4 py-3 shadow-sm">
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                      Conflicts
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {scheduleConflicts.length > 0 ? `${scheduleConflicts.length} live` : "Clear"}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -635,45 +733,47 @@ const AddAlarmPage: React.FC<{ activeDate?: string }> = ({ activeDate }) => {
             <button
               type="button"
               onClick={() => navigate("/my-page")}
-              className="rounded-[28px] border border-slate-200 bg-white/85 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
+              className="group relative overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.9))] p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:border-sky-300 hover:shadow-[0_24px_60px_rgba(14,165,233,0.16)]"
             >
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300 to-transparent opacity-70" />
               <div className="flex items-center justify-between">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-900/15 transition group-hover:scale-105">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
-                <ArrowRight className="h-4 w-4 text-slate-400" />
+                <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-sky-600" />
               </div>
               <div className="mt-4 text-sm font-semibold text-slate-900">
-                마이페이지 가기
+                Open My Page
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                목표와 강점 정보를 먼저 정리하면 알람 제안 정확도가 더 좋아집니다.
+                Tighten identity, strengths, and constraints before finalizing this execution block.
               </div>
             </button>
 
             <button
               type="button"
               onClick={() => navigate("/signal-inbox")}
-              className="rounded-[28px] border border-slate-200 bg-white/85 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
+              className="group relative overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.9))] p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:border-sky-300 hover:shadow-[0_24px_60px_rgba(14,165,233,0.16)]"
             >
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-300 to-transparent opacity-70" />
               <div className="flex items-center justify-between">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-900/10 transition group-hover:scale-105">
                   <CalendarDays className="h-5 w-5" />
                 </div>
-                <ArrowRight className="h-4 w-4 text-slate-400" />
+                <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-emerald-600" />
               </div>
               <div className="mt-4 text-sm font-semibold text-slate-900">
-                신호함에서 데이터 보기
+                Review Signal Inbox
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                저장한 신호, 반복 로그, 행동 질문을 한곳에서 확인할 수 있습니다.
+                Pull recent loops and signal data into the execution decision before launch.
               </div>
             </button>
 
             <button
               type="button"
               onClick={() =>
-                navigate(buildPlannerHref("deadline", { baseSearchParams: searchParams }), {
+                navigate(buildPlannerHref("today", { baseSearchParams: searchParams }), {
                   state: {
                     draftTitle: wizard.state.task?.task_title,
                     draftDate: wizard.state.date,
@@ -683,19 +783,20 @@ const AddAlarmPage: React.FC<{ activeDate?: string }> = ({ activeDate }) => {
                   },
                 })
               }
-              className="rounded-[28px] border border-slate-200 bg-white/85 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
+              className="group relative overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.9))] p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:border-sky-300 hover:shadow-[0_24px_60px_rgba(14,165,233,0.16)]"
             >
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300 to-transparent opacity-70" />
               <div className="flex items-center justify-between">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-600 text-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-lg shadow-sky-900/10 transition group-hover:scale-105">
                   <BellPlus className="h-5 w-5" />
                 </div>
-                <ArrowRight className="h-4 w-4 text-slate-400" />
+                <ArrowRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-sky-600" />
               </div>
               <div className="mt-4 text-sm font-semibold text-slate-900">
-                마감 플랜 만들기
+                Open Planner Workspace
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-500">
-                마감일과 가용 시간을 기준으로 오늘 체크리스트와 주간 계획을 함께 관리합니다.
+                Return to today and deadline operations with this block ready to deploy.
               </div>
             </button>
           </div>

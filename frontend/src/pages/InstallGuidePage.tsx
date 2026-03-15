@@ -1,58 +1,36 @@
+import { useMemo } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import { Link } from "react-router-dom";
+
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
-import { buildApkDownloadUrl } from "../utils/apkDownload";
-
-const getAppInstallUrl = () => {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  const raw =
-    import.meta.env.VITE_APP_INSTALL_URL ||
-    import.meta.env.VITE_DIRECT_APK_URL ||
-    `${window.location.origin}/latest.apk`;
-  return buildApkDownloadUrl(raw);
-};
-
-const playStoreUrl = import.meta.env.VITE_PLAY_STORE_URL || "";
-const directApkUrl = import.meta.env.VITE_DIRECT_APK_URL || "";
-const internalTestQrUrl = import.meta.env.VITE_INTERNAL_TEST_QR_URL || "";
-
-const isApkLikeUrl = (url: string): boolean => {
-  const normalized = url.toLowerCase();
-  return normalized.includes(".apk") || normalized.includes("/latest.apk");
-};
-
-const resolveInternalTestQrUrl = (fallbackInstallUrl: string): string => {
-  if (!internalTestQrUrl) {
-    return fallbackInstallUrl;
-  }
-
-  const resolved = buildApkDownloadUrl(internalTestQrUrl);
-  if (!isApkLikeUrl(resolved)) {
-    return fallbackInstallUrl;
-  }
-
-  return resolved;
-};
-
-const getQrImage = (url: string) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=1&data=${encodeURIComponent(url)}`;
+import { useInstallBootstrap } from "../hooks/useInstallBootstrap";
+import {
+  getFallbackInstallBootstrap,
+  getInstallChannelLabel,
+  getInstallPrimaryLabel,
+} from "../utils/installBootstrap";
 
 const SectionTitle = ({ title }: { title: string }) => (
   <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
 );
 
 const InstallGuidePage = () => {
-  const appInstallUrl = getAppInstallUrl();
-  const fallbackApkUrl = buildApkDownloadUrl(
-    directApkUrl || (typeof window !== "undefined" ? `${window.location.origin}/latest.apk` : "")
-  );
-  const qrApkUrl = resolveInternalTestQrUrl(appInstallUrl);
+  const { bootstrap, loading, warning } = useInstallBootstrap();
+  const fallbackBootstrap = useMemo(() => getFallbackInstallBootstrap(), []);
+  const currentBootstrap = loading ? fallbackBootstrap : bootstrap;
+  const primaryInstallUrl =
+    currentBootstrap.installUrl || currentBootstrap.fallbackUrl;
+  const fallbackInstallUrl =
+    currentBootstrap.fallbackUrl || currentBootstrap.installUrl;
+  const qrValue = currentBootstrap.qrPayload || primaryInstallUrl;
+  const playStoreUrl =
+    currentBootstrap.channel === "play_store"
+      ? currentBootstrap.installUrl
+      : (import.meta.env.VITE_PLAY_STORE_URL || "").trim();
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="mx-auto max-w-2xl px-4 py-6">
         <div className="mb-4 text-sm text-gray-500">
           <Link to="/" className="text-indigo-600 hover:underline">
             홈으로
@@ -61,91 +39,121 @@ const InstallGuidePage = () => {
 
         <h1 className="text-2xl font-bold text-gray-900">앱 설치 안내</h1>
         <p className="mt-2 text-sm text-gray-600">
-          안드로이드 APK 또는 Play Store에서 앱을 받아 설치하는 방법입니다. 아래 링크와 QR 코드를 통해
-          최신 설치 파일을 내려받아 주세요.
+          안드로이드 앱 설치 경로와 QR 정보를 한곳에서 확인할 수 있습니다.
+          최신 설치 메타데이터가 있으면 우선 사용하고, 없으면 안전한 기본 경로로
+          안내합니다.
         </p>
 
         <div className="mt-5">
           <AlarmInstallGuide
-            title="직접 테스트를 위한 알림 앱 설치"
-            description="현재 사용 중인 설치 URL을 기준으로, 기기에서 APK 또는 QR 복구를 진행할 수 있습니다."
-            installUrl={appInstallUrl}
+            title="알람 전달용 앱 설치"
+            description="브라우저보다 앱 환경에서 알람 전달이 더 안정적입니다. 아래 링크나 QR을 사용해 설치를 이어가세요."
+            bootstrap={currentBootstrap}
+            loading={loading}
+            warning={warning}
             className="bg-white"
           />
         </div>
 
         <section className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-          <SectionTitle title="플레이 스토어 설치" />
-          {playStoreUrl ? (
+          <SectionTitle title="현재 배포 정보" />
+          <div className="mt-3 space-y-2 text-sm text-gray-700">
+            <p>
+              채널:{" "}
+              <span className="font-medium">
+                {getInstallChannelLabel(currentBootstrap.channel)}
+              </span>
+            </p>
+            <p>
+              기본 링크:{" "}
+              <code className="break-all">{primaryInstallUrl || "(없음)"}</code>
+            </p>
+            <p>
+              메타데이터 소스:{" "}
+              <span className="font-medium">
+                {currentBootstrap.source === "manifest" ? "manifest" : "fallback"}
+              </span>
+            </p>
+            {currentBootstrap.versionName && (
+              <p>버전: {currentBootstrap.versionName}</p>
+            )}
+            {currentBootstrap.buildId && <p>빌드 ID: {currentBootstrap.buildId}</p>}
+            {currentBootstrap.releaseNotes && (
+              <p className="leading-6">릴리스 노트: {currentBootstrap.releaseNotes}</p>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
+          <SectionTitle title="기본 설치 경로" />
+          {primaryInstallUrl ? (
             <a
-              href={playStoreUrl}
+              href={primaryInstallUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-3 inline-flex rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
-              Play Store에서 설치하기
+              {getInstallPrimaryLabel(currentBootstrap.channel)}
             </a>
           ) : (
-            <p className="mt-3 text-sm text-gray-600">현재 Play Store 링크가 설정되어 있지 않습니다.</p>
+            <p className="mt-3 text-sm text-gray-600">
+              현재 설치 링크가 비어 있습니다.
+            </p>
+          )}
+          {playStoreUrl && playStoreUrl !== primaryInstallUrl && (
+            <a
+              href={playStoreUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 mt-3 inline-flex rounded border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+            >
+              Play Store 열기
+            </a>
           )}
         </section>
 
         <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-          <SectionTitle title="대체 APK QR 다운로드" />
+          <SectionTitle title="QR 설치 경로" />
           <p className="mt-3 break-all text-xs text-gray-600">
-            현재 QR 대상 URL: <code>{qrApkUrl || "(없음)"}</code>
+            현재 QR 대상: <code>{qrValue || "(없음)"}</code>
           </p>
-          {qrApkUrl ? (
+          {qrValue ? (
             <div className="mt-3 space-y-3">
-              <p className="text-sm text-gray-700">APK 링크가 유효한 경우 QR로도 바로 설치할 수 있습니다.</p>
               <a
-                href={qrApkUrl}
+                href={qrValue}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
-                APK QR 링크 열기
+                QR 대상 열기
               </a>
-              <div>
-                <img
-                  src={getQrImage(qrApkUrl)}
-                  alt="APK QR"
-                  className="h-44 w-44 rounded border bg-white"
-                />
+              <div className="inline-flex rounded border bg-white p-3">
+                <QRCodeCanvas value={qrValue} size={180} level="M" includeMargin />
               </div>
             </div>
           ) : (
-            <p className="mt-3 text-sm text-gray-600">현재 APK QR 링크가 설정되어 있지 않습니다.</p>
+            <p className="mt-3 text-sm text-gray-600">
+              QR 대상 링크가 아직 준비되지 않았습니다.
+            </p>
           )}
         </section>
 
         <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-          <SectionTitle title="폴백 다운로드 APK" />
-          <p className="mt-3 text-sm text-gray-700">
-            Play Store 접속이 어려운 경우 아래 APK로 직접 받아 설치할 수 있습니다.
-          </p>
-          {fallbackApkUrl ? (
+          <SectionTitle title="대체 설치 경로" />
+          {fallbackInstallUrl ? (
             <a
-              href={fallbackApkUrl}
+              href={fallbackInstallUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-3 inline-flex rounded bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black"
             >
-              APK 직접 다운로드
+              대체 설치 링크 열기
             </a>
           ) : (
-            <p className="mt-3 text-sm text-gray-600">현재 APK 링크가 설정되어 있지 않습니다.</p>
+            <p className="mt-3 text-sm text-gray-600">
+              대체 설치 경로가 준비되지 않았습니다.
+            </p>
           )}
-        </section>
-
-        <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-          <SectionTitle title="안내" />
-          <ul className="mt-3 space-y-2 text-sm text-gray-700 list-disc list-inside">
-            <li>iOS: Safari에서는 앱 설치가 지원되지 않습니다.</li>
-            <li>Android: Chrome 또는 기본 브라우저에서 링크를 열어주세요.</li>
-            <li>설치가 완료되면 안내 메시지를 따라 앱을 실행하세요.</li>
-            <li>설치 실패가 반복되면 QR 이미지 파일을 새로고침해 다시 시도해 주세요.</li>
-          </ul>
         </section>
       </div>
     </div>

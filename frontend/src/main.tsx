@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { API_CONFIG, resolveBackendUrl, isApiPath } from "./config/api";
+import { refreshBackendSession } from "./services/authSession";
 
 declare const __BUILD_ID__: string
 declare const __BUILD_TIME__: string
@@ -68,6 +69,30 @@ const shouldAttachApiCredentials = (rawUrl: string): boolean => {
   }
 }
 
+const shouldRetryWithRefresh = (requestUrl: URL): boolean => {
+  if (!isApiPath(requestUrl.pathname)) {
+    return false
+  }
+  return !/^\/api\/auth\/(login|logout|refresh|me)(\/|$)/.test(requestUrl.pathname)
+}
+
+const fetchWithRefreshRetry = async (
+  requestUrl: URL,
+  execute: () => Promise<Response>
+): Promise<Response> => {
+  const response = await execute()
+  if (response.status !== 401 || !shouldRetryWithRefresh(requestUrl)) {
+    return response
+  }
+
+  const refreshed = await refreshBackendSession()
+  if (!refreshed) {
+    return response
+  }
+
+  return execute()
+}
+
 window.fetch = async (input: RequestInfo, init?: RequestInit) => {
   try {
     // PRODUCTION SAFETY:
@@ -79,15 +104,19 @@ window.fetch = async (input: RequestInfo, init?: RequestInit) => {
         if (!isAbsoluteUrl(value)) {
           const requestUrl = new URL(value, window.location.origin)
           if (isApiPath(requestUrl.pathname)) {
-            return originalFetch(requestUrl.pathname + requestUrl.search, withApiCredentials(init))
+            return fetchWithRefreshRetry(requestUrl, () =>
+              originalFetch(requestUrl.pathname + requestUrl.search, withApiCredentials(init))
+            )
           }
         }
       } else if (input instanceof Request) {
         try {
           const requestUrl = new URL(input.url)
           if (requestUrl.origin === window.location.origin && isApiPath(requestUrl.pathname)) {
-            const rewrittenRequest = new Request(requestUrl.pathname + requestUrl.search, input)
-            return originalFetch(rewrittenRequest, withApiCredentials(init))
+            return fetchWithRefreshRetry(requestUrl, () => {
+              const rewrittenRequest = new Request(requestUrl.pathname + requestUrl.search, input.clone())
+              return originalFetch(rewrittenRequest, withApiCredentials(init))
+            })
           }
         } catch {
           // Ignore invalid request URL and continue fallback logic.
@@ -98,15 +127,21 @@ window.fetch = async (input: RequestInfo, init?: RequestInit) => {
     if (typeof input === 'string') {
       const value = input.trim()
       if (isAbsoluteUrl(value)) {
-        return shouldAttachApiCredentials(value)
-          ? originalFetch(value, withApiCredentials(init))
-          : originalFetch(value, init)
+        const requestUrl = new URL(value, window.location.origin)
+        if (!shouldAttachApiCredentials(value)) {
+          return originalFetch(value, init)
+        }
+        return fetchWithRefreshRetry(requestUrl, () =>
+          originalFetch(value, withApiCredentials(init))
+        )
       }
       const requestUrl = new URL(value, window.location.origin)
       if (isApiPath(requestUrl.pathname)) {
-        return originalFetch(
-          resolveBackendUrl(requestUrl.pathname + requestUrl.search),
-          withApiCredentials(init)
+        return fetchWithRefreshRetry(requestUrl, () =>
+          originalFetch(
+            resolveBackendUrl(requestUrl.pathname + requestUrl.search),
+            withApiCredentials(init)
+          )
         )
       }
       return originalFetch(value, init)
@@ -115,11 +150,13 @@ window.fetch = async (input: RequestInfo, init?: RequestInit) => {
     if (input instanceof Request) {
       const requestUrl = new URL(input.url, window.location.origin)
       if (requestUrl.origin === window.location.origin && isApiPath(requestUrl.pathname)) {
-        const rewrittenRequest = new Request(
-          resolveBackendUrl(requestUrl.pathname + requestUrl.search),
-          input
-        )
-        return originalFetch(rewrittenRequest, withApiCredentials(init))
+        return fetchWithRefreshRetry(requestUrl, () => {
+          const rewrittenRequest = new Request(
+            resolveBackendUrl(requestUrl.pathname + requestUrl.search),
+            input.clone()
+          )
+          return originalFetch(rewrittenRequest, withApiCredentials(init))
+        })
       }
     }
 

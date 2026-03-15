@@ -48,7 +48,7 @@ interface UseGoogleCalendarResult {
 }
 
 export function useGoogleCalendar(): UseGoogleCalendarResult {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -64,12 +64,26 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
 
   // 초기 연결 상태 확인
   useEffect(() => {
+    if (authLoading) return;
+    if (!user?.uid) {
+      setIsConnected(false);
+      setGoogleEvents([]);
+      setLastSync(null);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch(resolveBackendUrl("/api/spec/google/status"), {
           credentials: "include",
         });
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) {
+            setIsConnected(false);
+          }
+          return;
+        }
         if (!res.ok) return;
         const data = (await res.json()) as { connected?: boolean };
         if (!cancelled) {
@@ -82,10 +96,14 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authLoading, user?.uid]);
 
   const connectGoogle = useCallback(async () => {
     setError(null);
+    if (!user?.uid) {
+      redirectToLogin();
+      return;
+    }
     try {
       const nextPath = window.location.pathname;
       const authPath = `/api/spec/google/auth?next=${encodeURIComponent(nextPath)}`;
@@ -110,7 +128,7 @@ export function useGoogleCalendar(): UseGoogleCalendarResult {
       console.error("Google 연동 시작 실패:", e);
       setError("Google 캘린더 연동을 시작할 수 없습니다.");
     }
-  }, []);
+  }, [user?.uid]);
 
   const fetchGoogleEvents = useCallback(async (dateIso: string) => {
     setLoading(true);

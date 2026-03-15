@@ -17,7 +17,7 @@ import PlanSummary from "../components/plan/PlanSummary";
 import { TimeTable } from "../components/schedule/TimeTable";
 import type { ScheduleItem } from "../components/schedule/TimeTable";
 import AlarmInstallGuide from "../components/feature/AlarmInstallGuide";
-import { buildApkDownloadUrl } from "../utils/apkDownload";
+import { getFallbackInstallBootstrap } from "../utils/installBootstrap";
 import {
   addMinutesToKoreaOffsetDateTime,
   buildKoreaOffsetDateTime,
@@ -25,6 +25,7 @@ import {
   parseKoreaTimeValue,
 } from "../utils/koreaTime";
 import type { PlannerWorkspaceResponse } from "../services/plannerWorkspaceService";
+import { PLANNER_CLIENT_STATE_CHANGED_EVENT } from "../services/plannerClientStateService";
 import {
   type AppOnlyEvent,
   buildPrivacyKey,
@@ -172,19 +173,8 @@ const PlanDayPage: React.FC<{
   const [bannerPatchResult, setBannerPatchResult] = useState<string | null>(null);
   const [showEmotionPrompt, setShowEmotionPrompt] = useState(false);
   const [showAlarmInstallGuide, setShowAlarmInstallGuide] = useState(false);
-  const directApkSource = (
-    import.meta.env.VITE_APP_INSTALL_URL ??
-    import.meta.env.VITE_DIRECT_APK_URL ??
-    (typeof window !== "undefined"
-      ? `${window.location.origin.replace(/\/+$/, "")}/latest.apk`
-      : "")
-  ).trim();
-  const normalizedDirectApkUrl = !directApkSource
-    ? ""
-    : /(?:\/latest\.apk(?:$|\?)|\.apk(?:$|\?))/i.test(directApkSource)
-      ? directApkSource
-      : `${directApkSource.replace(/\/+$/, "")}/latest.apk`;
-  const appInstallUrl = buildApkDownloadUrl(normalizedDirectApkUrl);
+  const installBootstrap = useMemo(() => getFallbackInstallBootstrap(), []);
+  const appInstallUrl = installBootstrap.installUrl || installBootstrap.fallbackUrl;
 
   const buildPlanStartResistanceLabel = (resistanceLevel?: number) => {
     if (resistanceLevel == null) return "시작 저항";
@@ -232,6 +222,29 @@ const PlanDayPage: React.FC<{
   useEffect(() => {
     void refreshAppOnlyEvents();
   }, [refreshAppOnlyEvents]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const handlePlannerStateChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (!detail?.userId || detail.userId !== userId) {
+        return;
+      }
+      void refreshAppOnlyEvents();
+    };
+
+    window.addEventListener(
+      PLANNER_CLIENT_STATE_CHANGED_EVENT,
+      handlePlannerStateChanged as EventListener
+    );
+    return () => {
+      window.removeEventListener(
+        PLANNER_CLIENT_STATE_CHANGED_EVENT,
+        handlePlannerStateChanged as EventListener
+      );
+    };
+  }, [refreshAppOnlyEvents, userId]);
 
   useEffect(() => {
     if (wizard.state.step === 1) {
