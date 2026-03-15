@@ -3,10 +3,10 @@ import {
   AlertCircle,
   ArrowRight,
   BellPlus,
+  CalendarClock,
   CheckCircle2,
   Egg,
   Inbox,
-  LayoutDashboard,
   LoaderCircle,
   LogOut,
   RefreshCw,
@@ -27,6 +27,7 @@ import {
   saveProfileBundle,
 } from "../services/profileService";
 import type { CapabilityProfilePayload, AspirationProfilePayload } from "../types/proposalOS";
+import { buildPlannerHref } from "../utils/plannerRoutes";
 import {
   buildProfileCompletion,
   buildProfileReadiness,
@@ -82,6 +83,7 @@ const clearDraft = (userId: string) => {
 };
 
 const formatDateTime = (value?: string | null) => {
+  if (!value) return "None";
   if (!value) return "없음";
   try {
     return new Intl.DateTimeFormat("ko-KR", {
@@ -190,18 +192,19 @@ const QuickActionCard: React.FC<{
   <button
     type="button"
     onClick={onClick}
-    className="flex w-full items-start justify-between rounded-3xl border border-slate-200 bg-white/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md"
+    className="group relative flex w-full items-start justify-between overflow-hidden rounded-[30px] border border-slate-200 bg-[linear-gradient(145deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.9))] p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:border-sky-300 hover:shadow-[0_24px_60px_rgba(14,165,233,0.16)]"
   >
-    <div className="space-y-2">
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white">
+    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300 to-transparent opacity-70" />
+    <div className="space-y-3">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-900/15 transition group-hover:scale-105">
         {icon}
       </div>
       <div>
-        <div className="text-sm font-semibold text-slate-900">{title}</div>
+        <div className="text-sm font-semibold tracking-[0.01em] text-slate-950">{title}</div>
         <div className="mt-1 text-xs leading-5 text-slate-500">{description}</div>
       </div>
     </div>
-    <ArrowRight className="mt-1 h-4 w-4 text-slate-400" />
+    <ArrowRight className="mt-1 h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-sky-600" />
   </button>
 );
 
@@ -438,7 +441,167 @@ const MyPage: React.FC = () => {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_32%),linear-gradient(180deg,_#f8fbff_0%,_#eef5ff_45%,_#f8fafc_100%)] pb-28">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-4 lg:grid-cols-[1.25fr_0.95fr]">
-          <Card className="rounded-[32px] border-slate-200 bg-white/85 p-6 backdrop-blur">
+          <Card className="overflow-hidden rounded-[36px] border-slate-200 bg-[linear-gradient(135deg,_rgba(14,165,233,0.12),_rgba(255,255,255,0.98)_38%,_rgba(16,185,129,0.08))] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="grid gap-6 xl:grid-cols-[1.12fr_0.88fr]">
+              <div className="space-y-4">
+                <span className="inline-flex items-center gap-2 rounded-full bg-sky-100/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Profile OS
+                </span>
+                <div>
+                  <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-[2.3rem]">
+                    Build the profile that drives every execution decision
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                    This page now behaves like a personal operating system. Identity, strengths,
+                    constraints, and execution evidence are shaped here first, then reused by
+                    Alarm Studio, planning, and recommendation flows across the app.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Identity
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      {readiness.identity ? "Ready for strategic use" : "Needs sharper direction"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Aspiration, target role, and north star framing.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Plan Layer
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      {readiness.plan ? "Roadmap is structured" : "Roadmap needs shaping"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Values, constraints, and 90-day direction.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Execution
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      {readiness.execution ? "Signals are usable" : "Signals are still thin"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Strengths, tools, and proof of delivery.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusChip
+                    label={readiness.identity ? "Identity ready" : "Identity needs work"}
+                    tone={readiness.identity ? "ready" : "pending"}
+                  />
+                  <StatusChip
+                    label={readiness.plan ? "Plan layer ready" : "Plan layer needs work"}
+                    tone={readiness.plan ? "ready" : "pending"}
+                  />
+                  <StatusChip
+                    label={readiness.execution ? "Execution signals ready" : "Execution needs work"}
+                    tone={readiness.execution ? "ready" : "pending"}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4">
+                <div className="rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,_#020617_0%,_#111827_52%,_#0f172a_100%)] p-5 text-white shadow-[0_24px_60px_rgba(15,23,42,0.32)]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-[0.18em] text-sky-200">
+                        Profile Readiness
+                      </div>
+                      <div className="mt-2 text-4xl font-semibold">{completion}%</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/10 p-3">
+                      <Target className="h-5 w-5 text-sky-200" />
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-400 via-cyan-300 to-emerald-300"
+                      style={{ width: `${completion}%` }}
+                    />
+                  </div>
+                  <div className="mt-5 grid gap-3 text-xs text-slate-300">
+                    <div className="rounded-2xl bg-white/5 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                        Last Publish
+                      </div>
+                      <div className="mt-1 text-sm text-white">{formatDateTime(lastSavedAt)}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                        Local Draft
+                      </div>
+                      <div className="mt-1 text-sm text-white">{formatDateTime(draftSavedAt)}</div>
+                    </div>
+                    <div className="rounded-2xl bg-white/5 px-3 py-3">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                        Account
+                      </div>
+                      <div className="mt-1 break-all text-sm text-white">{user.email || user.uid}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[28px] border border-slate-200 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Active Goals
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">
+                      {topGoalSummaries.length}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Live deadline programs currently influencing execution.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-slate-200 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Sync State
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950">
+                      {hasUnsavedChanges ? "Profile changed locally" : "Profile synced to source"}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Keep this layer clean before you generate alarms or recommendations.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+            <QuickActionCard
+              icon={<BellPlus className="h-5 w-5" />}
+              title="Open Alarm Studio"
+              description="Turn this profile into a precise execution alarm with sync and privacy rules."
+              onClick={() => navigate("/add-alarm")}
+            />
+            <QuickActionCard
+              icon={<Inbox className="h-5 w-5" />}
+              title="Review Signal Inbox"
+              description="Inspect recent loops and pressure signals before choosing the next move."
+              onClick={() => navigate("/signal-inbox")}
+            />
+            <QuickActionCard
+              icon={<CalendarClock className="h-5 w-5" />}
+              title="Open Planner Workspace"
+              description="Move into the live execution board once your profile layer is ready to drive decisions."
+              onClick={() => navigate(buildPlannerHref("today"))}
+            />
+          </div>
+
+          <Card className="hidden rounded-[32px] border-slate-200 bg-white/85 p-6 backdrop-blur">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-4">
                 <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -498,7 +661,7 @@ const MyPage: React.FC = () => {
             </div>
           </Card>
 
-          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+          <div className="hidden grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
             <QuickActionCard
               icon={<BellPlus className="h-5 w-5" />}
               title="알람 만들기"

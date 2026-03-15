@@ -1,8 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, CalendarClock, Clock3, Crosshair, ListTodo } from "lucide-react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BellPlus,
+  CalendarClock,
+  Crosshair,
+  ListTodo,
+  UserRound,
+} from "lucide-react";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import AddAlarmPage from "./AddAlarmPage";
 import DeadlinePlannerPage from "./DeadlinePlannerPage";
 import PlanDayPage from "./PlanDayPage";
 import {
@@ -14,6 +21,7 @@ import {
   type PlannerWorkspaceResponse,
 } from "../services/plannerWorkspaceService";
 import {
+  buildAddAlarmHref,
   buildPlannerHref,
   normalizePlannerActiveDate,
   normalizePlannerTab,
@@ -21,28 +29,22 @@ import {
 } from "../utils/plannerRoutes";
 
 const TABS: Array<{
-  id: PlannerTab;
+  id: Exclude<PlannerTab, "alarm">;
   label: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   {
-    id: "deadline",
-    label: "마감",
-    description: "마감 목표를 만들고 목표를 쪼개서 오늘 분량까지 이어서 관리합니다.",
-    icon: ListTodo,
-  },
-  {
     id: "today",
-    label: "오늘",
-    description: "오늘 배정과 실행 흐름을 같은 planner 안에서 조정합니다.",
+    label: "Today",
+    description: "Run the live daily execution board in one focused workspace.",
     icon: CalendarClock,
   },
   {
-    id: "alarm",
-    label: "알람",
-    description: "오늘 일정과 연결된 알람 정책을 한 화면에서 맞춥니다.",
-    icon: Clock3,
+    id: "deadline",
+    label: "Deadline",
+    description: "Break down long goals and keep delivery windows under control.",
+    icon: ListTodo,
   },
 ];
 
@@ -114,7 +116,7 @@ const PlannerPage: React.FC = () => {
     };
   }, [activeDate]);
 
-  const handleTabChange = (nextTab: PlannerTab) => {
+  const handleTabChange = (nextTab: Exclude<PlannerTab, "alarm">) => {
     if (nextTab === activeTab) return;
     navigate(
       buildPlannerHref(nextTab, {
@@ -130,15 +132,15 @@ const PlannerPage: React.FC = () => {
   const snapshotCards = useMemo(
     () => [
       {
-        label: "Goal items",
+        label: "Goal Items",
         value: workspace?.goal_items.length ?? 0,
       },
       {
-        label: "Today assignments",
+        label: "Today Assignments",
         value: workspace?.daily_assignments.length ?? 0,
       },
       {
-        label: "Alarm policies",
+        label: "Alarm Policies",
         value: workspace?.alarm_policies.length ?? 0,
       },
       {
@@ -176,8 +178,7 @@ const PlannerPage: React.FC = () => {
     return {
       taskUid: focusedTaskUid,
       title: assignment?.title || goalItem?.title || "Planner item",
-      plannedMinutes:
-        assignment?.planned_minutes ?? goalItem?.est_minutes ?? null,
+      plannedMinutes: assignment?.planned_minutes ?? goalItem?.est_minutes ?? null,
       status:
         executionState?.status ||
         assignment?.status ||
@@ -209,42 +210,101 @@ const PlannerPage: React.FC = () => {
   const hasMissingFocusedTask =
     Boolean(focusedTaskUid) && !workspaceLoading && !workspaceError && !focusMatch;
 
-  const renderActiveTab = () => {
-    if (activeTab === "deadline") return <DeadlinePlannerPage activeDate={activeDate} />;
-    if (activeTab === "today") {
-      return (
-        <PlanDayPage
-          activeDate={activeDate}
-          workspace={workspace}
-          focusedTaskUid={focusedTaskUid}
-          workspaceLoading={workspaceLoading}
-          workspaceError={workspaceError}
-        />
-      );
-    }
-    return <AddAlarmPage activeDate={activeDate} />;
-  };
+  if (activeTab === "alarm") {
+    return (
+      <Navigate
+        to={buildAddAlarmHref({
+          baseSearchParams: searchParams,
+          activeDate,
+        })}
+        replace
+        state={location.state}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
       <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
-        <div className="rounded-[32px] border border-slate-200 bg-white/95 p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="rounded-[36px] border border-slate-200 bg-[linear-gradient(135deg,_rgba(14,165,233,0.12),_rgba(255,255,255,0.98)_42%,_rgba(16,185,129,0.10))] p-5 shadow-sm sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[1.12fr_0.88fr]">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-600">
-                Planner
+              <div className="inline-flex items-center rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                Planner Workspace
               </div>
-              <h1 className="mt-2 text-2xl font-semibold text-slate-950">
-                마감, 오늘, 알람을 하나의 planner 워크스페이스로 엽니다.
+              <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                The operating room for daily execution and deadline control
               </h1>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                기존 분리 페이지는 유지하되, 메인 진입점은 `/planner` 하나로 묶었습니다.
-                웹과 앱이 같은 planner 데이터 축으로 수렴할 수 있도록 snapshot 상태도 함께 노출합니다.
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                Planner now owns the live board for today and the deadline system for long-range
+                delivery. Alarm creation has been pulled into a dedicated Alarm Studio so each
+                screen does one job at production quality.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                  Today + Deadline only
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                  Alarm Studio separated
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                  Shared Workspace Snapshot
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    buildAddAlarmHref({
+                      baseSearchParams: searchParams,
+                      activeDate,
+                    }),
+                    {
+                      state: location.state,
+                    }
+                  )
+                }
+                className="rounded-[28px] border border-slate-200 bg-white/90 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                    <BellPlus className="h-5 w-5" />
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-slate-400" />
+                </div>
+                <div className="mt-4 text-sm font-semibold text-slate-950">
+                  Open Alarm Studio
+                </div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">
+                  Design execution blocks, repeat rules, and sync strategy in the dedicated flow.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate("/my-page")}
+                className="rounded-[28px] border border-slate-200 bg-white/90 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white">
+                    <UserRound className="h-5 w-5" />
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-slate-400" />
+                </div>
+                <div className="mt-4 text-sm font-semibold text-slate-950">
+                  Open My Page
+                </div>
+                <div className="mt-1 text-xs leading-5 text-slate-500">
+                  Shape identity, strengths, and constraints before you build execution logic.
+                </div>
+              </button>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
             {TABS.map((tab) => {
               const isActive = tab.id === activeTab;
               const Icon = tab.icon;
@@ -255,8 +315,8 @@ const PlannerPage: React.FC = () => {
                   onClick={() => handleTabChange(tab.id)}
                   className={`rounded-[28px] border px-5 py-4 text-left transition ${
                     isActive
-                      ? "border-sky-500 bg-sky-50 shadow-sm"
-                      : "border-slate-200 bg-slate-50 hover:border-sky-300 hover:bg-white"
+                      ? "border-sky-500 bg-white shadow-sm"
+                      : "border-slate-200 bg-slate-50/90 hover:border-sky-300 hover:bg-white"
                   }`}
                 >
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
@@ -271,7 +331,7 @@ const PlannerPage: React.FC = () => {
             })}
           </div>
 
-          <div className="mt-5 rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-5 rounded-[28px] border border-slate-200 bg-white/80 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -279,9 +339,9 @@ const PlannerPage: React.FC = () => {
                 </div>
                 <div className="mt-2 text-sm text-slate-700">
                   {workspaceLoading
-                    ? "Planner snapshot을 불러오는 중입니다."
+                    ? "Loading planner snapshot."
                     : workspaceError
-                    ? "Planner snapshot을 아직 불러오지 못했습니다. 기존 화면은 그대로 사용할 수 있습니다."
+                    ? "Planner snapshot is temporarily unavailable. The current screen remains usable."
                     : `Active date ${workspace?.active_date ?? activeDate} / source ${
                         workspace?.source.projection_source ?? "unknown"
                       }`}
@@ -291,7 +351,7 @@ const PlannerPage: React.FC = () => {
                 )}
               </div>
 
-              <div className="grid min-w-full gap-3 sm:grid-cols-4 lg:min-w-[420px]">
+              <div className="grid min-w-full gap-3 sm:grid-cols-4 lg:min-w-[440px]">
                 {snapshotCards.map((card) => (
                   <div
                     key={card.label}
@@ -334,7 +394,7 @@ const PlannerPage: React.FC = () => {
                     onClick={clearFocusedTask}
                     className="inline-flex items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
                   >
-                    Clear focus
+                    Clear Focus
                   </button>
                 </div>
               ) : focusMatch ? (
@@ -379,17 +439,27 @@ const PlannerPage: React.FC = () => {
                         onClick={() => handleTabChange("today")}
                         className="inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-white px-4 py-2 text-sm font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
                       >
-                        Today tab
+                        Today Tab
                         <ArrowRight className="h-4 w-4" />
                       </button>
                     )}
-                    {focusMatch.alarmPolicy && activeTab !== "alarm" && (
+                    {focusMatch.alarmPolicy && (
                       <button
                         type="button"
-                        onClick={() => handleTabChange("alarm")}
+                        onClick={() =>
+                          navigate(
+                            buildAddAlarmHref({
+                              baseSearchParams: searchParams,
+                              activeDate,
+                            }),
+                            {
+                              state: location.state,
+                            }
+                          )
+                        }
                         className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                       >
-                        Alarm tab
+                        Alarm Studio
                         <ArrowRight className="h-4 w-4" />
                       </button>
                     )}
@@ -398,7 +468,7 @@ const PlannerPage: React.FC = () => {
                       onClick={clearFocusedTask}
                       className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
                     >
-                      Clear focus
+                      Clear Focus
                     </button>
                   </div>
                 </div>
@@ -424,7 +494,7 @@ const PlannerPage: React.FC = () => {
                       onClick={clearFocusedTask}
                       className="inline-flex items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100"
                     >
-                      Clear focus
+                      Clear Focus
                     </button>
                   )}
                 </div>
@@ -434,7 +504,17 @@ const PlannerPage: React.FC = () => {
         </div>
       </section>
 
-      {renderActiveTab()}
+      {activeTab === "deadline" ? (
+        <DeadlinePlannerPage activeDate={activeDate} />
+      ) : (
+        <PlanDayPage
+          activeDate={activeDate}
+          workspace={workspace}
+          focusedTaskUid={focusedTaskUid}
+          workspaceLoading={workspaceLoading}
+          workspaceError={workspaceError}
+        />
+      )}
     </div>
   );
 };

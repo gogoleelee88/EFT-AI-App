@@ -27,7 +27,7 @@ import {
   toChecklistEditorText,
 } from "../utils/deadlinePlanner";
 import { todayInKoreaIso } from "../utils/koreaTime";
-import { buildPlannerHref } from "../utils/plannerRoutes";
+import { buildAddAlarmHref } from "../utils/plannerRoutes";
 
 type PlannerLocationState = {
   draftTitle?: string;
@@ -104,7 +104,62 @@ const GoalCard: React.FC<{
     agenda.nextItems.length > 0;
 
   return (
-    <Card className="rounded-[28px] border-slate-200 p-5">
+    <Card className="overflow-hidden rounded-[32px] border-slate-200 bg-[linear-gradient(145deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.92))] p-6 shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <PlannerBadge label={summary.dDay >= 0 ? `D-${summary.dDay}` : `D+${Math.abs(summary.dDay)}`} />
+            <PlannerBadge label={`Completion ${summary.completionRate}%`} tone="emerald" />
+            {summary.driftMessage && <PlannerBadge label="Drift Risk" tone="amber" />}
+          </div>
+          <div>
+            <div className="text-xl font-semibold text-slate-950">{plan.title}</div>
+            <div className="mt-1 text-sm text-slate-500">
+              {plan.startDate} to {plan.deadlineDate} · {plan.windowStartTime} - {plan.windowEndTime}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-[24px] bg-slate-950 px-4 py-3 text-white shadow-[0_18px_40px_rgba(15,23,42,0.2)]">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-sky-200">Goal Egg</div>
+              <div className="mt-2 text-2xl font-semibold">{summary.hatchProbability}%</div>
+              <div className="mt-1 text-xs text-slate-300">{summary.hatchStage}</div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white/85 px-4 py-3 shadow-sm">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Open Items</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">{agenda.pendingItems.length}</div>
+            </div>
+            <div className="rounded-[24px] border border-slate-200 bg-white/85 px-4 py-3 shadow-sm">
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Completed</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-900">
+                {summary.completedCount}/{summary.totalCount}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => onEdit(plan)}>
+            <span className="inline-flex items-center gap-2">
+              <Pencil className="h-4 w-4" />
+              Edit
+            </span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void onDelete(plan.id);
+            }}
+          >
+            <span className="inline-flex items-center gap-2 text-rose-600">
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </span>
+          </Button>
+        </div>
+      </div>
+
+      <div className="hidden">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -159,6 +214,75 @@ const GoalCard: React.FC<{
         </div>
       </div>
 
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {agenda.pendingItems.length === 0 ? (
+          <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+            Today's visible queue is clear.
+          </div>
+        ) : (
+          agenda.pendingItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                void onToggle(plan.id, item.id);
+              }}
+              className="flex w-full items-start gap-3 rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-50"
+            >
+              <div
+                className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border ${
+                  item.lane === "overdue"
+                    ? "border-amber-400 bg-amber-50 text-amber-600"
+                    : "border-sky-300 bg-sky-50 text-sky-600"
+                }`}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-medium text-slate-900">{item.title}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {item.estMinutes} min ·{" "}
+                  {item.lane === "overdue" ? "Recovered from backlog" : "Scheduled for today"}
+                </div>
+              </div>
+            </button>
+          ))
+        )}
+
+        {completedTodayItems.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Completed Today
+            </div>
+            {completedTodayItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  void onToggle(plan.id, item.id);
+                }}
+                className="flex w-full items-start gap-3 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-left transition hover:bg-emerald-100"
+              >
+                <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 bg-emerald-500 text-white">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-emerald-900 line-through">
+                    {item.title}
+                  </div>
+                  <div className="mt-1 text-xs text-emerald-700">
+                    Tap again to return it to the live queue.
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="hidden">
       <div className="mt-5 space-y-3">
         {agenda.pendingItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
@@ -224,6 +348,31 @@ const GoalCard: React.FC<{
         )}
       </div>
 
+      </div>
+
+      {hasPullForwardAction && (
+        <div className="mt-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-emerald-900">Reserve capacity detected.</div>
+              <div className="mt-1 text-xs text-emerald-700">
+                Pull {agenda.nextItems.length} future items into today while space is still open.
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                void onPullForward(plan.id);
+              }}
+            >
+              Pull Forward
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="hidden">
       {hasPullForwardAction && (
         <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -245,6 +394,7 @@ const GoalCard: React.FC<{
           </div>
         </div>
       )}
+      </div>
     </Card>
   );
 };
@@ -393,7 +543,102 @@ const DeadlinePlannerPage: React.FC<{ activeDate?: string }> = ({
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_30%),linear-gradient(180deg,_#f6fbff_0%,_#eef6ff_42%,_#f8fafc_100%)] pb-28">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-4 lg:grid-cols-[1.18fr_0.82fr]">
-          <Card className="rounded-[32px] border-slate-200 bg-white/90 p-6 backdrop-blur">
+          <Card className="overflow-hidden rounded-[36px] border-slate-200 bg-[linear-gradient(135deg,_rgba(56,189,248,0.14),_rgba(255,255,255,0.98)_36%,_rgba(16,185,129,0.08))] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="space-y-4">
+                <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Deadline Engine
+                </span>
+                <div>
+                  <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-[2.25rem]">
+                    Run deadline programs like a production system
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                    This workspace breaks a large outcome into visible daily load, protects time
+                    windows, and keeps drift under control. It is the long-range control room
+                    behind the faster execution flows.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Goal Volume
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{plans.length}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Active deadline programs currently in flight.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Drift Alerts
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">
+                      {summaries.filter((item) => item.driftMessage).length}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Plans that need intervention before they slip.
+                    </div>
+                  </div>
+                  <div className="rounded-[28px] border border-white/70 bg-white/85 px-4 py-4 shadow-sm">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Finished
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">
+                      {summaries.filter((item) => item.completionRate >= 100).length}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">
+                      Programs that already crossed the line.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[32px] border border-slate-200/70 bg-[linear-gradient(180deg,_#020617_0%,_#111827_52%,_#0f172a_100%)] p-5 text-white shadow-[0_24px_60px_rgba(15,23,42,0.32)]">
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-sky-200">
+                  Deadline Snapshot
+                </div>
+                <div className="mt-3 text-3xl font-semibold">
+                  {summaries.length > 0
+                    ? `${Math.round(
+                        summaries.reduce((sum, item) => sum + item.hatchProbability, 0) /
+                          summaries.length
+                      )}%`
+                    : "0%"}
+                </div>
+                <div className="mt-2 text-sm text-slate-300">
+                  Average hatch probability across active programs.
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                  <div className="rounded-2xl bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                      Focus Date
+                    </div>
+                    <div className="mt-1 text-sm text-white">{activeDate}</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/5 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                      Notifications
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await requestNotificationPermission();
+                        setSaveNotice("Notification permission check completed.");
+                      }}
+                      className="mt-2 inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15"
+                    >
+                      <BellRing className="h-4 w-4" />
+                      Check Permission
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+          <Card className="hidden rounded-[32px] border-slate-200 bg-white/90 p-6 backdrop-blur">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-4">
                 <span className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -446,9 +691,37 @@ const DeadlinePlannerPage: React.FC<{ activeDate?: string }> = ({
             <button
               type="button"
               onClick={() =>
-                navigate(buildPlannerHref("alarm", { baseSearchParams: searchParams }))
+                navigate(
+                  buildAddAlarmHref({
+                    baseSearchParams: searchParams,
+                    activeDate,
+                  })
+                )
               }
-              className="rounded-[28px] border border-slate-200 bg-white/85 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
+              className="rounded-[28px] border border-slate-200 bg-[linear-gradient(145deg,_rgba(255,255,255,0.96),_rgba(241,245,249,0.92))] p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:border-sky-300 hover:shadow-[0_24px_60px_rgba(14,165,233,0.16)]"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                  <AlarmClockCheck className="h-5 w-5" />
+                </div>
+                <ArrowRight className="h-4 w-4 text-slate-400" />
+              </div>
+              <div className="mt-4 text-sm font-semibold text-slate-900">Open Alarm Studio</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                Build execution alarms and sync policy in the dedicated studio flow.
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  buildAddAlarmHref({
+                    baseSearchParams: searchParams,
+                    activeDate,
+                  })
+                )
+              }
+              className="hidden rounded-[28px] border border-slate-200 bg-white/85 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300"
             >
               <div className="flex items-center justify-between">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">

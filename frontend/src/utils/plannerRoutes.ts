@@ -3,18 +3,21 @@ import { todayInKoreaIso } from "./koreaTime";
 export type PlannerTab = "alarm" | "deadline" | "today";
 
 export const PLANNER_PATH = "/planner";
+export const ADD_ALARM_PATH = "/add-alarm";
 
-export const DEFAULT_PLANNER_TAB: PlannerTab = "alarm";
+export const DEFAULT_PLANNER_TAB: PlannerTab = "today";
 
 const ISO_DATE_RX = /^\d{4}-\d{2}-\d{2}$/;
 
-type BuildPlannerHrefOptions = {
+type BuildHrefOptions = {
   activeDate?: string | null;
   baseSearchParams?: string | URLSearchParams | null;
 };
 
 export const normalizePlannerTab = (value: string | null | undefined): PlannerTab =>
-  value === "deadline" || value === "today" ? value : DEFAULT_PLANNER_TAB;
+  value === "alarm" || value === "deadline" || value === "today"
+    ? value
+    : DEFAULT_PLANNER_TAB;
 
 export const normalizePlannerActiveDate = (
   value: string | null | undefined,
@@ -24,9 +27,24 @@ export const normalizePlannerActiveDate = (
   return trimmed && ISO_DATE_RX.test(trimmed) ? trimmed : fallback;
 };
 
+const applyActiveDate = (
+  params: URLSearchParams,
+  activeDate: string | null | undefined
+) => {
+  if (activeDate === undefined) return;
+
+  const normalized = activeDate ? normalizePlannerActiveDate(activeDate, "") : "";
+  if (normalized) {
+    params.set("active_date", normalized);
+    return;
+  }
+
+  params.delete("active_date");
+};
+
 export const buildPlannerHref = (
   tab: PlannerTab = DEFAULT_PLANNER_TAB,
-  options: BuildPlannerHrefOptions = {}
+  options: BuildHrefOptions = {}
 ): string => {
   const params = new URLSearchParams(options.baseSearchParams ?? undefined);
 
@@ -36,17 +54,17 @@ export const buildPlannerHref = (
     params.set("tab", tab);
   }
 
-  if (options.activeDate !== undefined) {
-    const normalized = options.activeDate
-      ? normalizePlannerActiveDate(options.activeDate, "")
-      : "";
-    if (normalized) {
-      params.set("active_date", normalized);
-    } else {
-      params.delete("active_date");
-    }
-  }
+  applyActiveDate(params, options.activeDate);
 
   const search = params.toString();
   return search ? `${PLANNER_PATH}?${search}` : PLANNER_PATH;
+};
+
+export const buildAddAlarmHref = (options: BuildHrefOptions = {}): string => {
+  const params = new URLSearchParams(options.baseSearchParams ?? undefined);
+  params.delete("tab");
+  applyActiveDate(params, options.activeDate);
+
+  const search = params.toString();
+  return search ? `${ADD_ALARM_PATH}?${search}` : ADD_ALARM_PATH;
 };

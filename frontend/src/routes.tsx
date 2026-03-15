@@ -1,7 +1,11 @@
 import React, { Suspense, lazy } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import { buildPlannerHref, type PlannerTab } from "./utils/plannerRoutes";
+import {
+  buildAddAlarmHref,
+  buildPlannerHref,
+  type PlannerTab,
+} from "./utils/plannerRoutes";
 
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const MobileLinkPage = lazy(() => import("./pages/MobileLinkPage"));
@@ -25,6 +29,7 @@ const MeditationThemePage = lazy(() => import("./pages/MeditationThemePage"));
 const MeditationSessionPage = lazy(() => import("./pages/MeditationSessionPage"));
 const MeditationRunPage = lazy(() => import("./pages/MeditationRunPage"));
 const PlannerPage = lazy(() => import("./pages/PlannerPage"));
+const AddAlarmPage = lazy(() => import("./pages/AddAlarmPage"));
 const InstallGuidePage = lazy(() => import("./pages/InstallGuidePage"));
 const CheckinRebalancePage = lazy(() => import("./pages/CheckinRebalancePage"));
 const ResistanceEventPage = lazy(() => import("./pages/ResistanceEventPage"));
@@ -59,11 +64,24 @@ const RouteFallback: React.FC = () => (
   </div>
 );
 
-const LegacyPlannerRedirect: React.FC<{ tab?: PlannerTab }> = ({ tab = "alarm" }) => {
+const LegacyPlannerRedirect: React.FC<{ tab?: Exclude<PlannerTab, "alarm"> }> = ({
+  tab = "today",
+}) => {
   const location = useLocation();
   return (
     <Navigate
       to={buildPlannerHref(tab, { baseSearchParams: location.search })}
+      replace
+      state={location.state}
+    />
+  );
+};
+
+const LegacyAlarmRedirect: React.FC = () => {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={buildAddAlarmHref({ baseSearchParams: location.search })}
       replace
       state={location.state}
     />
@@ -81,7 +99,8 @@ export default function AppRoutes() {
         <Route path="/plan/day" element={<LegacyPlannerRedirect tab="today" />} />
         <Route path="/profile-setup" element={<MyPage />} />
         <Route path="/my-page" element={<MyPage />} />
-        <Route path="/add-alarm" element={<LegacyPlannerRedirect tab="alarm" />} />
+        <Route path="/add-alarm" element={<AddAlarmPage />} />
+        <Route path="/planner/alarm" element={<LegacyAlarmRedirect />} />
         <Route path="/deadline-planner" element={<LegacyPlannerRedirect tab="deadline" />} />
         <Route path="/signal-inbox" element={<SignalInboxPage />} />
         <Route path="/morning-brief" element={<MorningBriefPage />} />
@@ -125,6 +144,7 @@ export default function AppRoutes() {
         <Route path="/meditation/theme" element={<MeditationThemePage />} />
         <Route path="/meditation/session" element={<MeditationSessionPage />} />
         <Route path="/meditation/run" element={<MeditationRunPage />} />
+        <Route path="/install/android" element={<InstallGuidePage />} />
         <Route path="/install-guide" element={<InstallGuidePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
